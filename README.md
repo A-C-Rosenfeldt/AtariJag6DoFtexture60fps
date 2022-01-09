@@ -1,3 +1,7 @@
+# Synergy between bilinear interpolation and the cache
+The texture is stored as 2x2 px in external RAM. MIP mapping is used to use the carry flag to see if we go into another ROW or column.
+CRY is unpacked into 4*3 = 12 registers. When we move in texel space, a lot of move instruction shift this "window" around.
+The two new texels are unpacked. Ah, looks like two calls into the cache. I see no synergy.
 # AtariJag6DoFtexture60fps
 Atari Jaguar  6 DoF ( polygon beat-em-up or dog fight ) game with texture mapping running at 60 fps by also using the line buffer
 
