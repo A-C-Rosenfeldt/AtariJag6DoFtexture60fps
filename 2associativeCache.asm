@@ -50,7 +50,7 @@ LOAD (14+1),3  ; position of cache in internal RAM
 MOVE 3,1E ; backup copy for MostRecentlyUsed
 AND 1F,3 ; clear MRU bits
 XOR 1,3   ; words are both used. Bit 15 of each word needs to be zero
-SUB 1F,3
+SUB 1F,3  ; combine XOR and SUB after debugging
 SHLQ 16,1F
 AND 1F,3  ; Just brainstorming at the moment
 OR 1F,3 ; set MRU flags  Flag is set one cycle later for JR
@@ -65,11 +65,11 @@ JR ~Z
 	ADD B,0 ; add base address:  internal -> external
 	MOVE 0,10  ; creata phrase spaced addresses in byte address space
 	ADDQ 8,0   ; external memory has byte addresses
-	MOVE 0,12  ; Maybe use MOVETA
+	MOVE 0,12  ; Maybe use MOVETA 
 	ADDQ 8,0
 	MOVE 0,14  ; And later swap bit 14 of (F02100)
 	ADDQ 8,0
-	MOVE 0,16
+	MOVE 0,16  ; And do the ADDQ without pipeline stall
 
 	; page mode RAM
 	LOADP 10,11
