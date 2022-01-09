@@ -1,3 +1,9 @@
+; Since we cache 4x4 texels and choose MipMap to blow up the texture to no load any unecessary data, we need to draw thick lines ( not scanlines )
+; So we need to draw 4x4 px into framebuffer
+; right, left, right, left
+; For each row we need to check the Deltas ( we interpolate the, and thus they can switch sign) and set UV_flip_mirror and also flip U,V,DeltaU,DeltaV
+; Then we can go to the block to the right. 2 assciative and 4 slot cache should not trash itself until our polygons is more wide than about 16 texels .. but do we even care at this point?
+
 ; Here for easy readablity I place the color data in the upper part of the 16 registers
 ; C
 ; [45]
@@ -47,4 +53,4 @@ JR C   ; pipeline delays the flag setting. so this is for U
 	}
 }
 
-
+call ./bilinear.asm  ( UV_flip_mirror)

@@ -34,6 +34,7 @@ SHLQ 16,0
 SHRQ 16,0
 SHRQ 16,1
 
+called from ./sampler.asm
 call to ./2associativeCache.asm(  integerPart U  : integerPart V )  ; no comb on this level because I only burst inside of cachelines and probalby lose to other memory users in between anyway
 
 
@@ -116,7 +117,7 @@ OR 4,D
 ; now comes some code to collect a phrase
 JUMP , pixelCounterLow
 {
-	0: MOVE D, 1F
+	0: MOVE D, 1F  ; This needs to become ReadModifyWrite  ( AND, OR ) so that we can draw edges.
 	1: {
 		SHLQ 16,1F
 	}
