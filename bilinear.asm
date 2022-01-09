@@ -34,6 +34,7 @@ SHLQ 16,0
 SHRQ 16,0
 SHRQ 16,1
 
+call to ./2associativeCache.asm(  integerPart U  : integerPart V )  ; no comb on this level because I only burst inside of cachelines and probalby lose to other memory users in between anyway
 
 
 ; Pack doesn't help me, I need
@@ -112,6 +113,23 @@ SHRQ D,16 ; factors are fixed point
 OR 4,D
 
 
+; now comes some code to collect a phrase
+JUMP , pixelCounterLow
+{
+	0: MOVE D, 1F
+	1: {
+		SHLQ 16,1F
+	}
+	OR D,1F
+	2: MOVE D, 1E
+	3: {
+		SHLQ 16,1E
+	}
+	OR D,1E
+	STOREP 1D, 1E:1F
+	ADDQ 8,1D  ; aaarg why do we need all addressing granualirities there are ?
+	XOR pixelCounterLow,pixelCounterLow
+}
 
 
 
