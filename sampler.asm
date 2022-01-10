@@ -49,8 +49,10 @@ JR C   ; pipeline delays the flag setting. so this is for U
 		MOVE 7,5
 		MOVE B,9
 		MOVE F,D
-		J  ,  LoadProcedure
+		J  ,  ./2associativeCache.asm/LoadProcedure( buffer )
 	}
 }
-
-call ./bilinear.asm  ( UV_flip_mirror)
+NOT buffer  ; double buffer
+scroll
+unpack
+call ./bilinear.asm  ( UV_flip_mirror, buffer)

@@ -7,6 +7,9 @@ MOVEI F02118,A  ; Phrase Highword
 ; 14 : position of internal cache keys
 ; 15 : position of internal cache values (15=14+'8' ?)
 
+; This procedure tries to deliver all values which are cached.
+; To avoid a deadlock and enable fast hits, thre is not pure blitter 1pass
+; please unpack clean values while the blitter works. Request a diagonal as two calls.
 
 ;Filter for position inside cachline
 MOVE 0,11
@@ -78,9 +81,9 @@ SHRQ 3, 0 ; Oh, more shift
 		MOVE 0,16  ; And do the ADDQ without pipeline stall
 
 		; page mode RAM
-		LOADP 10,11
-		LOAD (A),10
-		LOADP 12,13
+		LOADP 10,11   ; e (internal memory at cycle 3 or 4, external memory subject to bus latency) .. so it is latency. The GPU does no wait
+		LOAD (A),10   ; here GPU would need to wait. We cannot  entangle two loads because the GPU could stall for other reasons and the Load finish after 1 instruction read cycle
+		LOADP 12,13   ; use ./blitter.asm/block move  instead 
 		LOAD (A),12
 		LOADP 14,15
 		LOAD (A),14
@@ -136,7 +139,7 @@ SHRQ 3, 0 ; Oh, more shift
 			ADDQ '1',1; carry into next cache line
 			ADDQ '1',0; and original address
 		}
-		If ( BTST 1,1D) { // proceed vertically -- there is no diagonal here ( unlike in sampler )
+		If ( BTST 1,1D) { // proceed vertically -- Diagonal is important to fetch misses in a second pass?
 			ADDQ '4',11; carry into word address
 			CMPQ '16',11
 			JUMP N,continue
