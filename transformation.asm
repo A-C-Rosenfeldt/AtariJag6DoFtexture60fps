@@ -64,10 +64,10 @@ IMACN  11,5
 IMACN  12,6
 RESMAC 1B
 
-; fixed point
-SHRQ 16,13   ; field of view 90° at 256px. Screen half width 160px . 7 bit suppixel precision
-SHRQ 16,14   ; 320 px full width and 240p full height lead to square pixels
-SHRQ 16,15   ; z buffer is 16 bit anyway
+; float into fixed point position ( we don't tell MMULT about the floating stuff )
+SHRQ 0x10,13   ; field of view 90° at 256px. Screen half width 160px . 7 bit suppixel precision
+SHRQ 10,14   ; 320 px full width and 240p full height lead to square pixels
+SHRQ 10,15   ; z buffer is 16 bit anyway
 
 
 
@@ -76,11 +76,34 @@ SHRQ 16,15   ; z buffer is 16 bit anyway
 ; Params(
 ;)
 
-; pack 16 bit factors
+; pack 16 bit factors. There is only one Matrix width because it is square ( I don't know why they limit the possiblities )
+; pack 3 words looks like this
 MOVE 4,14
 SHLQ 16,14
 OR 5,14
 MOVE 6,15  ; Seems like we can get away with one pack less when we only have 3 registers. Vertices are in the first factor. If packing is along rows .. we have to pack internal of a vertex. No 4 vertex  vertex-buffer.
+
+; Here we only care for the vertex itself .. not the attributes. We could store these parts in different phrases and maybe this time don't invoke the blitter
+LOADP 14,15
+LOAD (A),14
+; We got 8 bytes
+; We want 9 words
+; Then again a lot of level geometry is like Minecraft and does not need a lot of bits
+; Escape Codes?
+; combine packing with floating can be done like this
+
+; 7 contains the floating value ( propertie of the source )
+MOVQ 0x10, 10 ; the shifter  ( target )
+ADD 10,7		;  Was: ADDQ 5,7 ; I think this is the difference between IEE and fixed point.  ToDo: check
+SH 4,7
+SH 6,7
+SUB 10,7
+NEG 10     ; SH2 has this great combined command
+ADQ 4,10   ; but JRISC lacks the swapped sub
+ADD 10,7
+SH 5,7
+OR 5,4     ; pack
+; 6 is dangling pack .. https://www.mulle-kybernetik.com/jagdox/risc_doc.html  says that we need to solve this. Unroll loop for two vertices?
 
 ; core
 
