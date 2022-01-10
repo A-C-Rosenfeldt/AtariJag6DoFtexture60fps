@@ -114,3 +114,32 @@ ADDQ 1F,4  ; DSP Matrix register   .. So byte addressing after all?
 STORE MAtrix address, 1F ; Matrix needs to be 32bit aligned :    2-11 MTXADDR Matrix address.   This is the camera matrix 
 
 MMULT 0 /* Alternative register bank, these vertices */, 13 /* this register bank, this register and following */
+
+
+
+
+
+
+;[13,17,1B] x y z
+OR 1B,1B  ;   no nono:  no jump for negative or zero .. like on 6502
+JR NZ, outside
+;nonsense NEG 1B  ; compensate
+XOR 6,6
+BSET 16,6
+;F0211C = 1  16.16 / 16.16   to keep everything neatly centered if we round anyway
+DIV 1B,6  ; Cycle 18: Destination register write   looks like we should do something else now .  DIV;DIV has a bug and the scoreboard cannot avoid any hazard of register reuse
+;; 
+NOP ;; 16 of that   .. pixel shader? Stagger with next vertex group?
+MOVE 13,4
+MOVE 17,5
+;;
+IMULT 6,4
+IMULT 6,5
+CMP 4, 120px.fraction
+JR ~Z ~N , outside
+CMP 5, 160px.fraction
+JR ~Z ~N , outside
+
+inside:
+
+outside:
