@@ -8,8 +8,15 @@ Right now I am coding to write back into framebuffer. Software renderer using th
 This way I can controll all caching (There is no trap mechanism in the blitter).
 Currently it looks like a will draw a lot of small triangles simply scanline by scanline.
 If I use a 4 associative texture cache, I can read 4 values for bilinear interpolation without trashing myself even if zoomed out ( no Mipmaps ).
-The same cache also allow to store 8 block long cached lines in texture ram ( 2x2 cache lines ).. good enough for scanline rendering
-
+The same cache also allow to store 8 block long cached lines in texture ram ( 2x2 cache lines ).. good enough for scanline rendering.
+# Todo
+https://github.com/toarnold/jag2048.git
+https://hub.docker.com/r/toarnold/jaguarvbcc/
+# no compiler needed
+Vector code naturally fits the pipeline. Lots of registers while interrupt disabled.
+Branch delay slot via hint.
+Often the vectors are feed into MultiplyAndAccumulate sequences. These don't mix with other code ( why even? ), especially loops.
+Thus most small loops are unrolled anyway. You can read the memory requirements (I avoid MOVEI mostly) and the speed from the line numbers.
 # documentation
 Website with a code editor. Left sane assembler -- right reordered, renamed for JagRISC.
 Canvas examples to show BeamTree.
