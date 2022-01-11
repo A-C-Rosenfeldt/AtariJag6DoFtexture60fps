@@ -21,6 +21,29 @@
 ; So at vertices I multiply  U and V with Z and at the tile nodes I divide by W
 ; At the corner of the screen maybe I can just omit one divide ?
 
+
+
+; tip
+;scan line iterated -1,-1 
+; to avoid code duplication around the vertices, I should always calculate all max 4 x [start|end] 8 registers
+; so the loop is like always
+; x values packed in high:low word
+; scroll them through using MOVE
+; scanline counter checks for 00 in lsb
+;  => actually render scanline since last time
+; stupid min max x
+; then floor(x). Then in this block do the scanlines which encompass this block.  ( for almost horizontal shivers )
+; minmx y
+; blitter command
+; x++ as long <= ceil xstarts 
+
+; not only need I max(3) for vertices of triangle and ordinates of vertex
+; I need minMax(4) .. 
+; shift method again?
+; 4 values can be sorted with fixed layout in mergeSort ( heap and qsort need pointer)
+; sort two pairs 
+; sort the mins and the maxs
+
 ; scanlines are iterated with a multiplied bresenham to jump +1 +3 -1 -1 +3
 ; so we know the x start and stop in tile coordinates
 ; within tile we know which of if any of the 3 edges is relevant. Split along x or y ?
