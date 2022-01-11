@@ -107,10 +107,10 @@ SHQ 24,7  ; zero out copies
 
 ;;max  simple and stupid .. Maybe reuse for triangle y
 CMP 13,17
-CMP 17,18 ; pipeline effect
+;CMP 17,18 ; pipeline effect .. no, this will not work
 JR N,   
 { ; 13<17
-	NOP ; Jump after jump is not allowed
+	CMP 17,1 ;NOP ; Jump after jump is not allowed
 	JR N,  
 	{  
 		MOVE 18,7 ; delay slot
@@ -225,6 +225,7 @@ BSET 16,6
 DIV 1B,6  ; Cycle 18: Destination register write   looks like we should do something else now .  DIV;DIV has a bug and the scoreboard cannot avoid any hazard of register reuse
 ;; 
 NOP ;; 16 of that   .. pixel shader? Stagger with next vertex group?
+OR 6,6 ; await DIV
 MOVE 13,4
 MOVE 17,5
 ;;
