@@ -16,3 +16,7 @@
 ; not much space for other code paths, but tips could be done like small tries
 
 ;;;;;;; Call into the texture mapper
+
+;; There is synergy between perspective correct texture mapping and these tiles
+; So at vertices I multiply  U and V with Z and at the tile nodes I divide by W
+; At the corner of the screen maybe I can just omit one divide ?
