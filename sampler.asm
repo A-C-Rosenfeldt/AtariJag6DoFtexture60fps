@@ -69,3 +69,25 @@ await LoadProcedure ; await blitter ;  CounterRegister is WriteOnly. So we have 
 ;eventually (misaligned reads for the blitter) the LoadProcedure needs to be called multiple time
 unpack
 call ./bilinear.asm  ( UV_flip_mirror, buffer)
+
+
+
+
+;About all the branches:
+
+00000 0 Jump always
+00001 1 NZ Jump if zero flag is clear
+00010 2 Z Jump if zero flag is set
+00100 4 NC Jump if carry flag is clear
+00101 5 NC NZ Jump if carry flag is clear and zero flag is clear
+00110 6 NC Z Jump if carry flag is clear and zero flag is set
+01000 8 C Jump if carry flag is set
+01001 9 C NZ Jump if carry flag is set and zero flag is clear
+01010 A C Z Jump if carry flag is set and zero flag is set
+10100 14 NN Jump if negative flag is clear
+10101 15 NN NZ Jump if negative flag is clear and zero flag is clear
+10110 16 NN Z Jump if negative flag is clear and zero flag is set
+11000 18 N Jump if negative flag is set
+11001 19 N NZ Jump if negative flag is set and zero flag is clear
+11010 1A N Z Jump if negative flag is set and zero flag is set
+11111 1F Jump never
