@@ -1,3 +1,10 @@
+; DMA on DSP is quite different from Blitter on GPU
+; So the render code has to run on GPU exclusively
+; Like in other programs, the DSP only helps with transformations
+; So I only use LoadQ 
+; DSP and GPU would have a producer consumer relation. Both have their read respectivly write pointer ( atomic memory access of course .. 64 bit).
+; Busy wait lock algorithm: both processors are gentlemen and  push the other to do stuff. When denied, they write into common. 
+
 ;Params(
 ; vertex 4,5,6
 ; camera position 0,1,2
@@ -194,10 +201,10 @@ OR 5,4     ; pack
 
 ; core
 
-MOVEI F1A104, 1F   ; DSP Matrix register
+MOVEI F1A104, 1F   ; DSP Matrix register  .. GPU at F02104
 MOVEQ 3,1E   ; Matrix width . I don't need this row column thing. I leave bit 4 as zero. Convention over configuration
 STORE 1E,1F
-ADDQ 1F,4  ; DSP Matrix register   .. So byte addressing after all?
+ADDQ 1F,4  ;  Matrix Address register   .. So byte addressing after all?
 STORE MAtrix address, 1F ; Matrix needs to be 32bit aligned :    2-11 MTXADDR Matrix address.   This is the camera matrix 
 
 MMULT 0 /* Alternative register bank, these vertices */, 13 /* this register bank, this register and following */

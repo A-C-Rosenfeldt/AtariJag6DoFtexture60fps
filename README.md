@@ -3,7 +3,12 @@ The texture is stored as 2x2 px in external RAM. MIP mapping is used to use the 
 CRY is unpacked into 4*3 = 12 registers. When we move in texel space, 6 move instruction shift this "window" around.
 The two new texels are unpacked. Ah, looks like two calls into the cache. I see no synergy.
 # AtariJag6DoFtexture60fps
-Atari Jaguar  6 DoF ( polygon beat-em-up or dog fight ) game with texture mapping running at 60 fps by also using the line buffer
+Atari Jaguar  6 DoF ( polygon beat-em-up or dog fight ) game with texture mapping running at 60 fps by also using the line buffer.
+Right now I am coding to write back into framebuffer. Software renderer using the GPU and only phrase-mode blitter.
+This way I can controll all caching (There is no trap mechanism in the blitter).
+Currently it looks like a will draw a lot of small triangles simply scanline by scanline.
+If I use a 4 associative texture cache, I can read 4 values for bilinear interpolation without trashing myself even if zoomed out ( no Mipmaps ).
+The same cache also allow to store 8 block long cached lines in texture ram ( 2x2 cache lines ).. good enough for scanline rendering
 
 # documentation
 Website with a code editor. Left sane assembler -- right reordered, renamed for JagRISC.

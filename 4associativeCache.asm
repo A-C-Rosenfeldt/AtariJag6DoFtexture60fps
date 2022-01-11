@@ -16,7 +16,7 @@ MOVE 0,11
 SHLQ 32-4,11
 SHRQ 32-3,11
 
-;Filter for packed high / low word
+;Filter for color (value) packed high / low word
 XOR 10,10
 ADDQ 1,10  filter LSB
 MOVE 0,2 copy parameter
@@ -28,9 +28,12 @@ SHRQ 32-4,2
 ; Filter for the part which is looked up and translated to position in SRAM  
 XOR 5,5
 NOT 5
-SHLQ 16,5
+SHLQ 8,5  ; 4*8 = 4 associative   was:  2*16 = 2 associative
 MOVE 0,1
 MOV 1,2    ; copy all bits to the high word to match the key table in internal RAM
+;dito
+;dito
+;dito
 SHLQ 16,2
 OR 2,1  
 XOR 1F,1F
@@ -41,7 +44,20 @@ BSET 16,1F
 ;MOVE 0,1 ; copy
 ;AND 2,1 ; get position in local ram based on 3LSBs ;I now try to do less shift
 
-;Register 9 has most recently used data
+;MRU
+;New
+; clear MRU bits
+; set MRU bits for the current batch
+; Or decrement MRU bits (2 bit values) and saturate at 0 .. or 
+ADDQ 1,  ;increment .. 
+AND '8', ;filter out next higher bit,
+MOV ; 
+SH
+MOV
+SH
+OR
+OR ; saturate age at 0b11 .. How to find minal value of 4? I already have code for 3
+;Old Register 9 has most recently used data
 ;MOVE 9,8
 ;SHRQ 1,8   ;  Todo remove offset of 1
 
