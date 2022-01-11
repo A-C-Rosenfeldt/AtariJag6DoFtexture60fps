@@ -14,7 +14,7 @@ SUB 2,6
 
 ;;;;;;;;;; NORM
 
-;float with a common exponent .. I plan to use a smart z-buffer
+;float with a common exponent .. I plan to use a smart z-buffer .. I mean, I want to use full precision for W interpolation (exponent of far vertex), and only SH just before CMP; For the packaging maybe even switch sign.
 ;32bit float has unsigned 8bit exponent  ... Typical interpretation into real world units applies a bias of 127. Not that integer would not need that bias
 ;IEEE 754 does not use 2s complement ( there is +0  and -0 )
 ;A sign in front of the exponent steals one bit .. normalization gives one back
