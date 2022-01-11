@@ -21,6 +21,11 @@
 ;after rounding
 ;check if edge goes through (0,0,0)  .. truncated frustum. Edges are not supposed to stick through the eye of the player. A water plane and an edge modelling the waves .. somehow. Saturate Z !
 
+;https://en.wikipedia.org/wiki/Line_(geometry)
+; Would be cool to have pure Multiplication code to check if edge crosses screen border ( early out if vertices are not on different sides)
+; shear transformation using two frustum edges and the edge in question
+; CMP vertex position
+
 MOVE B,3 ; backup deltaY   ; todo swap register assignment
 JR Z , never render this edge
 {
@@ -50,6 +55,11 @@ REASMAC 5  ; for Bresenham
 
 
 ;;;;;;;;; Triangles rasterizer
+
+; A triangle can be visible if only one edge is visble => screen corners become other vertices.
+; A triangle may be visible without any edge or vertex on screen .. all corner become vertices.
+; Use raytracing to determine [W,U,V] at the corners. Early out if W is behind camera. Multiply with W to get U and V.
+
 
 ;Backface culling
 IMULT
@@ -89,6 +99,11 @@ JR C, return
 ;; maybe try 8x4 and 4x8 and 4x4
 ;; calculate 
 
-
+; So we still separate in upper and lower triangle
+; we floor and ceil the line to tile line
+; we floor uper line and lower line of left edge
+; we ceil  uper line and lower line of right edge
+; loop over tiles. Check for each pixel if inside triangle
+; not much space for other code paths, but tips could be done like small tries
 
 ;;;;;;; Call into the texture mapper
