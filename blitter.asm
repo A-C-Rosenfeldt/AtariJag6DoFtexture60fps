@@ -94,3 +94,31 @@ So to use all registers, I need to clear bit 4-8 in the flag register
 2 Timing generator
 1 DSP interrupt, the interrupt output from Jerry
 0 CPU interrupt
+
+
+;Doom source
+;=====================
+; program blitter
+;=====================
+
+;	while ( ! (*(int *)0xf02238 & 1) )			// wait for blitter to finish
+
+;;;;;;;;;; Doom code on linux
+	// Current texture index in u,v.
+	spot = ((yfrac>>(16-6))&(63*64)) + ((xfrac>>16)&63);
+
+	// Lookup pixel from flat texture tile,
+	//  re-index using light/colormap.
+	*dest++ = ds_colormap[ds_source[spot]];
+
+	// Next step in u,v.
+	xfrac += ds_xstep; 
+	yfrac += ds_ystep;
+	
+    } while (count--);
+
+
+; Also Skyhammer looks verymuch as if you just has to live with 16x16px x 16bit textures ( 256 /2 =128 words in internal RAM). Oh so skyhammer is 32x32px = 512 = half of internal RAM
+; move framebuffer around for software on DSP? Move code around? All for a little less splitting?
+; At least make cache compatible! It alreay occupies the same memory ( 4x4 blocks x 4 lines x 4 acossiations)
+; The diagonale direction is problematic .. switch aspect ratio for others. Place values in empty space
