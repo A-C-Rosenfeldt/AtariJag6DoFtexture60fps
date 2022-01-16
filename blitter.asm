@@ -3,11 +3,11 @@
 ;)
 XOR 0,0
 MOVEI 'F02200',A
-MOVE A,B
-BSET 5,B ; 2
-BSET 2,B ; 4
+;MOVE A,B
+;BSET 5,B ; 2
+;BSET 2,B ; 4
 STORE 1,(A) ; destination & ~7 -> A1 base
-STORE 2,(B); source & ~7 -> A2 base
+STORE 2,(A+C); Word address. the add here only costs one cycle and no instruction space !  Only Load has also latency .. but we have the scoreBoard for that probably     ; and   source & ~7 -> A2 base
 
 ADDQ 'C',A; (not for cache) (source & 7) >>1 -> X (low)   ; for CRY  So I guess that the target address needs to be phrase aligned to the source ?
 STORE 0,A ;; 0 -> Y(high)  ; resonable 
@@ -253,3 +253,7 @@ One-tick overhead when turning round from a read to a write transfer
 Bits 0-5 enable corresponding memory cycles within the inner loop. Destination write cycles are always performed (subject to comparator control), but all other cycle types are optional.
 
 Blitting into the linebuffer probably also takes 2 cycles because it is 32 bit.
+By adding 8000h to the above address ranges 32-bit writes can be made to the line buffer. This is mainly to 
+accelerate the Blitter. ; So again, don't care bits at 8 bit granularity ?
+
+Since the blitter trashes its tables anyway, we could just as well use the GPU to read and write, too.
