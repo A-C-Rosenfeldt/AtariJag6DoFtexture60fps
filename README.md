@@ -1,3 +1,53 @@
+# Scrap that. Racing the beam does not work on this system
+The fastest methods on the Jag (64bit fast-page) are clearing the buffers ( frame and z)
+and reading the buffer to display it on screen.
+Memory is not an issue. Google found me on Atriage.com the Doom code
+ the GPU write the $6C1 value in the vmode register wich is : $0006C1=VIDEN | MODE_16CRY | CSYNC | BGEN | PWIDTH_332
+ and
+ and $00EC1 is : VIDEN | MODE_16CRY | CSYNC | BGEN | PWIDTH_166
+
+Bits 9-11 PWIDTH This field determines the width of pixels in video clock cycles. The 
+width is one more than the value in this field.
+
+(6 >>1 =3  )+1=4
+(4*2=8 ) -1 = 7 )*2 =14
+ABCDEF
+01234
+
+So we reduce the number of pixels to keep our high frame rate and to use less memory.
+We have memory where the OP can load a texture to.  -- Benchmark: Different texture positions: linebuffer, GPU, CLUT, 16x16px
+
+The fastest way to react on the blitter end is to prepare everything on the CPU and 
+0 GPUGO  GO=false and wait for the blitter.
+For longer lines, a different interupt may be needed.
+I guess the GPU will be busy also, so I could just use normal interrupts.
+There is no tight loop and the algorithm ( beam tree) is going to be complicated.
+Maybe the stopping technique can be used at the end to flush the buffer.
+GPU DMA priority and Blitter busHog to not lose any cycles.
+
+Triangel rasterizer code is indeed a loop. Since I don't care for coherence
+and in pixelMode the blitter forgets to switch to the next line anyway,
+I could draw triangle ( halves ) from top an bottom ( switch register set). This also means that we should probably be able to draw quads .. when we need to split a large texture
+Every line the code modifes itself to move the wait for the blitter up.
+One half starts at the upper vertex. The other half starts at the center vertex.
+Though instead of self modify, a simple interrupt is probably best.
+Interrupts force a call to an address in local RAM, given by 
+sixteen times the interrupt number (in bytes), from the base of RAM.
+Interrupts are always in register bank0... so still feels like either needs to load data from RAM or branch or be modified ( one less SRAM access ).
+
+Code path:
+CMP xWidth, 1
+JR N, skip line  -- we fell into the cracks between the px 
+JR Z, StoreB     -- but z compare and write? (optionally) , 
+Blitter loop
+
+The linebuffer is a bit unconvinient because we need to switch between two textures .. Async bugs.
+The GPU needs to start its loop while Horizontal count indicates that the texture is loaded by OP.
+Vertical count needs to be checked if anything went wrong. We need to update the object for the next texture and use the old texture then.
+Before the screen ends and buffers will be swapped, we have to draw a different texture.
+So we always need two code paths. We can check timing and if both create the same image. Maybe compare with no caching.
+Caching texture in GPU RAM is faster than in CLUT because GPU got a 32bit write gateway to the bus load code and data fast.
+
 # Synergy between bilinear interpolation and the cache
 The texture is stored as 2x2 px in external RAM. MIP mapping is used to use the carry flag to see if we go into another row or column.
 CRY is unpacked into 4*3 = 12 registers. When we move in texel space, 6 move instruction shift this "window" around.

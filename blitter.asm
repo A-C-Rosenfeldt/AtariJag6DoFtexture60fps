@@ -257,3 +257,16 @@ By adding 8000h to the above address ranges 32-bit writes can be made to the lin
 accelerate the Blitter. ; So again, don't care bits at 8 bit granularity ?
 
 Since the blitter trashes its tables anyway, we could just as well use the GPU to read and write, too.
+
+
+https://forum.beyond3d.com/threads/atari-jaguar-architecture-discussion.58306/page-2
+When you mention the blitter halting the GPU this mean for the entire duration of the blit, or just for the 1 out of 5 cycles per pixel where it should be accessing the SRAM?
+It's software-halted for each line blitted. The blitter is slowed down while the GPU is running (since it adds cycles in bus arbitration), so somebody must have concluded it was better to avoid arbitration.
+
+
+>There's a bottleneck in getting the data in and out of the DSP over its slow 16-bit bus
+So cannot be used for pixel pushing? Pinout shows 32bit for data and 24 for address. That matches the instruction set.
+>Because Tom treats Jerry the same way as the microprocessor Jerry may only use the lower 16 bits of the data bus if the microprocessor is 16 bits
+>> Ah, a MIPS CPU is so much better!
+
+My Idea: Know what is free in the framebuffer and store texture next to it. Texture copy using source and zbuffer ( 128 bit) page miss 2 times so 8 cycles for 8 texel.
