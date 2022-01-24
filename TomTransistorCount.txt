@@ -1,0 +1,72 @@
+Tom has very large regions filled with flip-flops to store information.
+There alse seem to be a lot of full adders.
+And there are busses and multiplexers.
+
+Flip flop in CMOS constist of two NAND gates.
+To read it out a row on the memory bus, you need a gate :
+Inverter whose "power line" is off most of the time ( rails inverted ).
+
+I just want to stress that with this 2d geometry with SRAM just like with DRAM
+you read out whole rows. The bus is wide.
+Also flip flips have a separate input.
+Now you need to gate the input to select a row anyway.
+So you can select a row for read or for write ( with DRAM it is the same .. capacitor only has one port )
+So can, but you need not, to connect the data lines to in put and output.
+
+The hardware multiplier consists of a 2d array of full adders.
+The blitter and OP need many adds at once.
+Both don't listen for the carry flag so much. Everything can be ripple carry
+and skewed over the 4 equal length phases.
+
+x and y are combed into a single address ( likewise u and v ).
+But the lower bits of both become the address in the page.
+But the memory controller needs to know the address of the page,
+to check if it changed. But even here the compare can ripple in the correct direction.
+
+Fortunately the external memory runs at half the speed than the internal transistors.
+With 4 phases a register / latch can be used as a pipeline stage.
+With external memory being slower by 1 cylce, we can deskew a whole cycle.
+Address of page and Address in page are independent anyway.
+
+What I want to say is: Transistor count is easy and layout also.
+
+
+Data from external memory pins is routed to any of the bytes of the internal bus. The internal bus bytes have "don't care bits" so that the data is not CAS to external DRAM.
+
+
+to multiplexers becoem address generators.
+
+The idea with the 64 bit data bus is that the majority of pins and metal lines on the die
+carry actual data and not addresses.
+So it feels natural to seek synergy and logically expand the 64 bit bus onto the die.
+But on the other hand, internal communication can have twice the clock rate and
+prefers skewed data.
+
+With so many lines already present and similar to 68k it makes sense have a lot of lines
+to declare the bus master.
+Back in the day SIMD was not really a thing beside bitwise operation.
+We would be lucks if every component on the die could use the bus every 4th cycle to load and store
+16 bit pixel values, or instructions, or z-values.
+32 bit fixed point or pre-gamma RGBor RGBA or Pointers would be the larger data items: every second cycle.
+So in order not to come up with ultra fast pririty circtuitry,
+components get assigned slots and signal in advance if they need them and then give them a friend.
+
+So our good old friend, the fast-page mode, does not like those alternating access, but want bursts.
+Thus all components hook onto the back door of a part of the internal SRAM.
+The bus can be used to copy from and to internal SRAM.
+Internal and external address bus point to different addresses.
+Transfer can be a range of addresses, but sometimes components write in a somewhat random manner.
+So in their local RAM they need to store (address|value) paris.
+When their buffer is full, they signal "pressure" and release all writes (and get their reads filled).
+
+Either there is volatile or a flush command, all components need to check each other for address collisions.
+We wanted to save on address line :-(
+
+The real Jag indeed has some more busses of differnt width. So we are not yet at the full transistor count.
+Now we wonder: How does read after write and write after write consistency work with Intel CPUs ?
+
+A problem may be the external ROM, DSP and CPU which directly access some data lines for the RAM directly,
+and some indirectly through the bus interface.
+Usually those other components are told to get off the bus.
+It is not quite clear why TOM should activate the memory chips for every CPU read.
+It could deliver cached values, like it already has to deliver the other bits on the databus.
