@@ -64,6 +64,13 @@ We wanted to save on address line :-(
 
 The real Jag indeed has some more busses of differnt width. So we are not yet at the full transistor count.
 Now we wonder: How does read after write and write after write consistency work with Intel CPUs ?
+Internal eventual consistency? CPU and video/audio out are extern, but DRAM, SRAM, blitter. OP, and GPU are intern.
+Every buffered read and write gets a timestamp.
+Basically we have to sort all requests by address to check for collsions.
+We do this on the fly. So we may be late the detection.
+Then transfer from  DRAM to and from the buffers need to be repeated in correct order.
+Processor operation needs to be rolled back .. which would mean a shadow set of registers
+or two: One freshly created and an old one where everything is already consistent.
 
 A problem may be the external ROM, DSP and CPU which directly access some data lines for the RAM directly,
 and some indirectly through the bus interface.
