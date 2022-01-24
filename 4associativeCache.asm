@@ -63,11 +63,37 @@ OR ; saturate age at 0b11 .. How to find minal value of 4? I already have code f
 
 ;ADD 7,1  
 
+;Same problem: with gaps in numbering we cannot find the smallest using arithmethic and bubbles
+;We are only allowed to decrement all places above the old position of the current entry
+;So we either need to set bits for the SUB instruction .. that sounds easy
+;Or we would need to set bits for a mask .. then 
+SUBQ 1,30   // NEG 30    ; spread
+AND 30,31   ; clear higher bits
+ROLQ 8, 31  ; shift higher bits to low
+OR 32,31  ;  insert new value on low
+
 SHRQ 3, 0 ; Oh, more shift
+
+; Read MRU
+
+Load accessedLines,20
+SHLQ 16,20  ; shift old access out
+OR currentRead,20
+; okay this does not work, if there is already a read in there not on last position
+; so do it the other way around
+OR 0b000100010001, 20 ; supply borrow for all counters 
+SUBQ 0b000100010001, 20 ; count down  
+; .. saturate?
+; mask carray
+; add back 1   like scrolling on a phone saturate for counters
+OR  ;  set current counter to  UINT.max
+
 
 { ; batch
 	AND 5,1	--  GL_REPEAT  for the sampler and for our batch
 
+;compare pointers in cache with new pointer 
+  ;2-asscociation
 	LOAD (14+1),3  ; position of cache in internal RAM
 	MOVE 3,1E ; backup copy for MostRecentlyUsed
 	AND 1F,3 ; clear MRU bits
@@ -76,6 +102,23 @@ SHRQ 3, 0 ; Oh, more shift
 	SHLQ 16,1F
 	AND 1F,3  ; Just brainstorming at the moment
 	OR 1F,3 ; set MRU flags  Flag is set one cycle later for JR
+  ;4-asscociation
+	LOAD (14+1),3  ; positions of cache in internal RAM
+
+	;spread requested over 4 places .. maybe better use IMULT with 0b1000100010001
+	MOVE 40,41  ; 40 requested address
+	ROLQ 8,41
+	OR 41,40
+	MOVE 40,41  ; 40 requested address
+	ROLQ 16,41
+	OR 41,40
+
+	;CMP
+	SUB 3,40
+	OR 1000100100,40  ; set all sign bits
+	SUBQ 1, 001001001,40  ; if zero, "sign bit" falls
+	AND   filter out Sign bits
+	
 	JR ~Z
 	{
 		; no cache hit

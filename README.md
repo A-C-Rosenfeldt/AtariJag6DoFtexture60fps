@@ -62,11 +62,38 @@ The same cache also allow to store 8 block long cached lines in texture ram ( 2x
 # Todo
 https://github.com/toarnold/jag2048.git
 https://hub.docker.com/r/toarnold/jaguarvbcc/
-# no compiler needed
+# compiler needed ?
 Vector code naturally fits the pipeline. Lots of registers while interrupt disabled.
 Branch delay slot via hint.
 Often the vectors are feed into MultiplyAndAccumulate sequences. These don't mix with other code ( why even? ), especially loops.
 Thus most small loops are unrolled anyway. You can read the memory requirements (I avoid MOVEI mostly) and the speed from the line numbers.
+
+We have to interleave two threads for the pipeline and to reuse the last output register as input ( we cannot interleave 3 threads).
+This makes the code hard to read.
+Now I did use all registers. Also I like to use 256 registers in hex notation to be systematic. So at least close the gaps.
+I read that Java goes through the code and marks the range for registers. So I can reuse the register after that ( only for(;;) considered).
+Preoccupied: 14,15  or what the name was. Just boring.
+Manage constants (transform between them with one instruction? A chain) .. Offset for address has range limit, center.. bases!
+I guess that the np-hard part is to decide when to swap out registers into SRAM ( 64 registers vs 1k SRAM words .. alread full with code and vertex and pixel cache. uh). So we swap out only minimal amount of registers. So after our first assignment will may have too many regs. We can try to combine any two of them
+and swap them out outside of loops ( ask assembler for free slot). Memory slots again only live for the range of the original registers and are reused,
+unfortunately we cannot swap directly in a load store architecture. Anyway the SRAM may be congested. So we spread store and load.
+
+So Doom does not seem to have functions. Only if else and for . So they split the code outside of the loops.
+
+With functions ( methods ), we have a range where the function is used first to last.
+We don't want to check in inner loop for function. So the loader loads the function at the block start.
+All following blocks which need the function don't overwrite it.
+The np-hard problem is to keep multiple functions. So I don't have so many functions and this problem is only interesting if functions are not moved.
+So I can only change the order of the function and let them fall down all blocks until they land on anything. We can brute force it , faculty:
+1,2,3,4,5
+1,2,6,24,120
+
+Optimization (the np-hard part) is incremental and stored in a database and visualizer.
+
+I feel like I need small helper functions => inline   can be optimized to squeeze out some space.
+Likewise maybe there is some loop-unrolling ( optional ).
+The loader can do these two ( debug on emulator! ).
+
 # documentation
 Website with a code editor. Left sane assembler -- right reordered, renamed for JagRISC.
 Canvas examples to show BeamTree.
@@ -99,7 +126,7 @@ Anyway, the texture in the gap still needs to be copied into GPU ram for rotatio
 
 So line buffer remains. no z-buffer there. so  like not set nor read. So all beam tree including the 4px jaggie edges. And we can have no back to front rendering because the object processor starts immediate after switching buffers. I feel like I am back at Doom coverage buffers.
 
-# Pure BeamTree without a z-buffer in MVP
+# BeamTree with span buffer and bit masks
 I cannot read back the z-buffer and not even gather statistics to switch over. There is no elegance, but it may be put back in later.
 On the other hand the GPU can work fast on bit patterns to calculate coverage.
 So I want to utilize 8 directions const-z rendering, so the horizontal resolution is not the only important one, like with 32bit  in the GPU we only need 10 values to cover a scanline in CGA resolution.
@@ -118,6 +145,18 @@ Then when a span is removed (gap filled), I pull in the shorter side. When a spa
 This would be most important when the span buffer is in RAM and I use LoadP to get it.
 So I really would love to store all run lengths in a single phrase. It may help if the tree structure above cuts down, until I reach this limit.
 I don't know how to switch back from span to tree though .. only next frame :-(
+
+For our Beam tree comparison we need to multiply a lot. And we may need to check with floating.
+The MAC may be close to zero. So we cannot decide where to edges cross. Now assume that these edges belong to large areas; then we don't want to switch to lines.
+Variable precision on demand for very large area? We only feed through the deviation: The final MAC has 40 bits .. so no problem here.
+But we had to round the factors to 16 bit. Now we need to MAC  ( AL * BH ) + ( AH * BL ) for the next 16 bit.
+Alternatively we could calculate the scanline where all three edges cross and look if the scanline is far away from the crossing.
+Then we could check if the pixels are far away. Thus we still get results about (complete) coverage.
+
+I don't know if a BSP tree merger can sustain some more re-rounding. We already used the values for other checks.
+What happens with the merger if we don't fully resolve the edge. It means that any edge crossing that pixel can also not be sorted into the tree.
+We have a main assumption, but also mark the alternative. We only look at the alternative if we compare edges near that pixel.
+
 
 # Demo SceneGraph
 
