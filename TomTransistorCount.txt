@@ -34,7 +34,7 @@ What I want to say is: Transistor count is easy and layout also.
 Data from external memory pins is routed to any of the bytes of the internal bus. The internal bus bytes have "don't care bits" so that the data is not CAS to external DRAM.
 
 
-to multiplexers becoem address generators.
+to multiplexers become address generators.
 
 The idea with the 64 bit data bus is that the majority of pins and metal lines on the die
 carry actual data and not addresses.
@@ -45,6 +45,8 @@ prefers skewed data.
 With so many lines already present and similar to 68k it makes sense have a lot of lines
 to declare the bus master.
 Back in the day SIMD was not really a thing beside bitwise operation.
+With standard definition video ( and CD audio, stereo only) and some buffering, we can overdraw each pixel 4 times
+( at the 27 MHz of the Jag ). Sure there should be a hierarchy: Most power for pixel, less for lines, even less for vertices.
 We would be lucks if every component on the die could use the bus every 4th cycle to load and store
 16 bit pixel values, or instructions, or z-values.
 32 bit fixed point or pre-gamma RGBor RGBA or Pointers would be the larger data items: every second cycle.
@@ -72,8 +74,26 @@ Then transfer from  DRAM to and from the buffers need to be repeated in correct 
 Processor operation needs to be rolled back .. which would mean a shadow set of registers
 or two: One freshly created and an old one where everything is already consistent.
 
+Adresses need further sorting to detect shared pages and shared phrases. Also a page break lets the scheduler/router reevaluate the pressure.
+
 A problem may be the external ROM, DSP and CPU which directly access some data lines for the RAM directly,
 and some indirectly through the bus interface.
 Usually those other components are told to get off the bus.
 It is not quite clear why TOM should activate the memory chips for every CPU read.
 It could deliver cached values, like it already has to deliver the other bits on the databus.
+
+
+
+
+Unified OP, Blitter, and GPU.
+All those have register ( a lot of ), counters, adders, and Load and Store. CMP, AND, OR.
+GPU as mul and div and ScoreBoard for register reads ( MAR is a register , flags are in a registers )
+GPU and OP can branch .. though modern blitter pixel shaders also branch.
+
+So they all have a ALU with two inputs and two outputs. We already discussed that SRAM naturally only has one output.
+So there is a multiplexer as a proxy and the ALU sits like the spider in a corner of 4 SRAM areas.
+Also the value of the last instruction is at the proxy ( like it is in the Jag), but it is available right in the next turn?
+Unskew for flags costs a cycle.
+
+The blitter basically has a 64 bit ALU with SIMD. It needs to write back the counters. The blitter has a very regular access pattern and thus doesn not need a scoreboard. Also it can use indexed addressing on the register file to save the write back.
+GPU access on blitter goes through index offset logic.
