@@ -157,10 +157,22 @@ I don't know if a BSP tree merger can sustain some more re-rounding. We already 
 What happens with the merger if we don't fully resolve the edge. It means that any edge crossing that pixel can also not be sorted into the tree.
 We have a main assumption, but also mark the alternative. We only look at the alternative if we compare edges near that pixel.
 
+For const-z I really want convex polygons from the BSP. I cannot use spans.
+We choose the direction which gives the lowest z difference across the longest cut.
+Ah scrap that. We like long runs. We use delta z after one step.
+Diagonal z is longer thus only applies for a smaller angle.
+
+We want to double buffer blitter register values in the GPU. So I draw long and short.
+It seems like we calculat two spans. Then we check for idle. Then we allow the interrupt.
+We prepare the interrupt for the second span and write the first span into the blitter.
+The interrupt disables the blitter interrupt.
+On a polygon we split at the other vertex most close to the middle of the extremes.
+
 
 # Demo SceneGraph
 
 Showcase figure with independent arms and hands. Vehicle with figure in it. Level with all angles and overhangs.
+LoD. Abstract polyhedrons. Computer Solid Geometry : Unions
 
 # Memory bus
 
