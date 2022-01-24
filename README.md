@@ -99,6 +99,29 @@ Anyway, the texture in the gap still needs to be copied into GPU ram for rotatio
 
 So line buffer remains. no z-buffer there. so  like not set nor read. So all beam tree including the 4px jaggie edges. And we can have no back to front rendering because the object processor starts immediate after switching buffers. I feel like I am back at Doom coverage buffers.
 
+# Pure BeamTree without a z-buffer in MVP
+I cannot read back the z-buffer and not even gather statistics to switch over. There is no elegance, but it may be put back in later.
+On the other hand the GPU can work fast on bit patterns to calculate coverage.
+So I want to utilize 8 directions const-z rendering, so the horizontal resolution is not the only important one, like with 32bit  in the GPU we only need 10 values to cover a scanline in CGA resolution.
+If I go the tile path ( only for coverage, const-z, Bresenham, and forward rendering of texture patches don't like tiles ), and use Doom resolution ( 160x200 ), I could cover "squares" of 4x8px .
+Or I say I want a recipe for the pipelining in JRSIC and always .. ah who cares. I need to ROR and check with overlapping tiles anyway.
+Unfortunately JRISC has not ANDN nor ORN ( test in other languages ). Only CMP. At least we could use OR to fill coverage, and we use AND to  ..
+Ah, I see, the z-buffer may be important for const-z or generally long blitter runs behind a high detail coverage. We simulate the fineal coverage on GPU, but have less coupling.
+This needs tuning: When to switch over? With the texture in GPU RAM ( renderer is fully flexible using self modified code) and known coverage, StoreW is quite fast.
+
+So JRISC loves CMP? That is scanline and span buffer territory. How expensive is it to insert a span?
+{
+	CMP
+}while( x ) 
+Maybe if I do switch to bit patterns ( not tiles ), I can avoid links and just have an array with two sides for capacity.
+Then when a span is removed (gap filled), I pull in the shorter side. When a span drops in a gap, I push the shorter side.
+This would be most important when the span buffer is in RAM and I use LoadP to get it.
+So I really would love to store all run lengths in a single phrase. It may help if the tree structure above cuts down, until I reach this limit.
+I don't know how to switch back from span to tree though .. only next frame :-(
+
+# Demo SceneGraph
+
+Showcase figure with independent arms and hands. Vehicle with figure in it. Level with all angles and overhangs.
 
 # Memory bus
 
