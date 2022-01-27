@@ -23,7 +23,7 @@ For longer lines, a different interupt may be needed.
 I guess the GPU will be busy also, so I could just use normal interrupts.
 There is no tight loop and the algorithm ( beam tree) is going to be complicated.
 Maybe the stopping technique can be used at the end to flush the buffer.
-GPU DMA priority and Blitter busHog to not lose any cycles.
+GPU DMA priority and Blitter busHog to not lose any cycles. .. DMA priority is not well tested and we don't even want to access external RAM. We could request a vertex while the blitter runs.
 
 Triangel rasterizer code is indeed a loop. Since I don't care for coherence
 and in pixelMode the blitter forgets to switch to the next line anyway,

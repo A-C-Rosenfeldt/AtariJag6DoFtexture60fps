@@ -2,14 +2,14 @@
 ;Params( 1,2,3,4,5,6
 ;)
 XOR 0,0
-MOVEI 'F02200',A
+MOVEI #F02200,A
 ;MOVE A,B
 ;BSET 5,B ; 2
 ;BSET 2,B ; 4
 STORE 1,(A) ; destination & ~7 -> A1 base
 STORE 2,(A+C); Word address. the add here only costs one cycle and no instruction space !  Only Load has also latency .. but we have the scoreBoard for that probably     ; and   source & ~7 -> A2 base
 
-ADDQ 'C',A; (not for cache) (source & 7) >>1 -> X (low)   ; for CRY  So I guess that the target address needs to be phrase aligned to the source ?
+ADDQ #C,A; (not for cache) (source & 7) >>1 -> X (low)   ; for CRY  So I guess that the target address needs to be phrase aligned to the source ?
 STORE 0,A ;; 0 -> Y(high)  ; resonable 
 
 MOVE B,C ; 24

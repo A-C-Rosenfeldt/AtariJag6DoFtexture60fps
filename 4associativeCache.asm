@@ -5,7 +5,7 @@ MOVEI F02118,A  ; Phrase Highword
 ; parameter mirror_flip_mask   -- is fed through bilinear and comes from the outer block for the subdivision. The signs of the Delta U and Delta V values expanded onto the bits into the texture
 
 ; 14 : position of internal cache keys
-; 15 : position of internal cache values (15=14+'8' ?)
+; 15 : position of internal cache values (15=14+#8#?)
 
 ; This procedure tries to deliver all values which are cached.
 ; To avoid a deadlock and enable fast hits, thre is not pure blitter 1pass
@@ -50,7 +50,7 @@ BSET 16,1F
 ; set MRU bits for the current batch
 ; Or decrement MRU bits (2 bit values) and saturate at 0 .. or 
 ADDQ 1,  ;increment .. 
-AND '8', ;filter out next higher bit,
+AND #8, ;filter out next higher bit,
 MOV ; 
 SH
 MOV
@@ -139,6 +139,14 @@ OR  ;  set current counter to  UINT.max
 		ADDQ 8,0
 		MOVE 0,16  ; And do the ADDQ without pipeline stall
 
+		; phrases cannot be burst without blitter. Only single phrase + 32 bit  once in a while
+
+		storep r0, (r1)
+		store  r4, (somewhere_in_external_memory)
+		store  r2, (high_word_register)
+		nop
+		storep r0, (r3)
+
 		; page mode RAM
 		LOADP 10,11   ; e (internal memory at cycle 3 or 4, external memory subject to bus latency) .. so it is latency. The GPU does no wait
 		LOAD (A),10   ; here GPU would need to wait. We cannot  entangle two loads because the GPU could stall for other reasons and the Load finish after 1 instruction read cycle
@@ -191,24 +199,24 @@ OR  ;  set current counter to  UINT.max
 				ROR 2,13   ; or something like this
 				JUMP ,break
 			}
-			ADDQ '1',11; carry into word address
+			ADDQ #1,11; carry into word address
 			BTST 0,11
 			JUMP ~Z,continue
-			SUBQ '2',11; wrap around
-			ADDQ '1',1; carry into next cache line
-			ADDQ '1',0; and original address
+			SUBQ #2,11; wrap around
+			ADDQ #1,1; carry into next cache line
+			ADDQ #1,0; and original address
 		}
 		If ( BTST 1,1D) { // proceed vertically -- Diagonal is important to fetch misses in a second pass?
-			ADDQ '4',11; carry into word address
-			CMPQ '16',11
+			ADDQ #4,11; carry into word address
+			CMPQ #16,11
 			JUMP N,continue
-			SUBQ '16',11 ; wrap around
-			ADDQ '2',1   ; carry into next cache line. So we have 4x4px per cacheline. So 4 phrases, 8 words. With 4 cachelines we use 32 words of 1k already 
-			ADDQ '16',0; and original address. Texture is 16 bytes wide ?
+			SUBQ #16,11 ; wrap around
+			ADDQ #2,1   ; carry into next cache line. So we have 4x4px per cacheline. So 4 phrases, 8 words. With 4 cachelines we use 32 words of 1k already 
+			ADDQ #16,0; and original address. Texture is 16 bytes wide ?
 		}
 	}while(false);     || 1D&3=0/*proceed_horizontally*/ &&   ) ; we_stay_in_cache_line
 
-	CMPQ '0',1D
+	CMPQ #0#,1D
 }JUMP ~Z  ;
 return to unpack
 

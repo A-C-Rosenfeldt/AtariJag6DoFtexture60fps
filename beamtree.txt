@@ -1,0 +1,69 @@
+
+Clipping to viewport and portals and to merge BSP needs a division.
+On the Jag with fast MUL we might want to use fraction also for compare.
+Sometimes we get to close to zero. One code path would be to pull in more precision on demand:
+But we had to round the factors to 16 bit. Now we need to MAC  ( AL * BH ) + ( AH * BL ) for the next 16 bit.
+Highest precision max once a frame?
+I think I calculated that I need three factors.
+If I want planar bsp without triangulation, I also have the rotation multiplication.
+I don't know how to do floats here. I want to translate and the float.
+Hopefully the same exponents enter all products in the MAC.
+
+We have to transit to pixel some time.
+Due to the planned const-z shader I hesitate to use scanlines nor kd-trees.
+Anyway, a polygon becomes smaller and may only cover on of our const-z directions:
+horizontal, vertical, both diagonales.
+Then we need to get the extreme pixels which are still covered.
+
+A small polygon may even fall throught the cracks between the pixel centers.
+
+When the cut between three edges as area to close to 0 with 16bit = 65000 subpixels on SD screen
+of 320 px we have a high chance to be away from a pixel center after DIV.
+The Jag has a config register to set options of div to get useful, large, numbers, even
+32 bit maybe ( fixed point ) .. so sounds attractive.
+
+So we don't know the order of cuts on the vertex on comparison.
+We have a tree, but some edges appear as ghost in other nodes. Just add an attribute for this
+linked list of ghosts in the corners.
+We just use the rounded value to determine the color for the pixel.
+
+We need to keep the straights straight.
+When we merge two BSP, we need to be able to trust the comparison with parent splits.
+Those splits are not allowed to be curved or tesselated in an uncontrolled way.
+We know the ghosts and copy them into the result. What do we do with them?
+
+
+Lets say I have a convex polygon in our BSPt and want to split it further.
+Around we have a ring of : edge, vertex, edge, vertex
+Additionally there can be ghosts in the vertices.
+Theoretically I could have nearly parallel lines and thus ghost on an edge.
+Now the split may stay clear of the vertices and the ghost ends up in only one of the children.
+Otherwise the ghost can be in both. So many references to one ghost-creator.
+I don't think that the ghost creator is interested in its ghosts.
+
+
+#flat polygons for architecture and machines
+
+BSP in the scenery are described by a triangle with computed solid geometry after camera rotation.
+One would think that this gives us complicted vertices,
+but the BeamTree is concerned more with edges.
+Edges between planes .. even more multiplications.
+
+
+#B-Tree
+
+Our Memory container is of course our beloved b-Tree. So I store the binary tree in an n-tree with
+a tuned size. Over that size, b-tree nodes split. Below they merge.
+A node will first compact itself following the binary tree structure in it.
+We don't have sectors in RAM and pages are not well known. So nodes are not usually aligned.
+They can grow to both sides until they collide with other nodes.
+Then the larger node will split.
+With large free regions ( I keep a sorted list ), I may want to pull in nodes from the outside,
+so that they better match their position in the tree.
+
+#Demo SceneGraph
+I could use spheres, but I have trouble to use them for LoD. Somehow they introduce squared surfaces and cones.
+So I could create a random tree with convex leafs ( asteroid field) and just aggregate by proxity.
+The bounding volume is composed of all the faces which don't see the siblings and then
+the closest two vertices of from different siblings are connected, then the next, until the volume in between is triangulized.
+Inflate until nothing sticks out and the shape is convex. Simplify small faces and angles.
