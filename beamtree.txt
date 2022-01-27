@@ -41,6 +41,9 @@ Now the split may stay clear of the vertices and the ghost ends up in only one o
 Otherwise the ghost can be in both. So many references to one ghost-creator.
 I don't think that the ghost creator is interested in its ghosts.
 
+#Comparison with Doom coverage buffer
+Using the edge equations avoid strange jitter like the coverage buffer in Doom.
+Even the comments in the visiPlane code mention that it only works well due to the fact that edges filled the coverage buffer .. and not sprites with transparency for example.
 
 #flat polygons for architecture and machines
 
