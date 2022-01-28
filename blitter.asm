@@ -270,3 +270,12 @@ So cannot be used for pixel pushing? Pinout shows 32bit for data and 24 for addr
 >> Ah, a MIPS CPU is so much better!
 
 My Idea: Know what is free in the framebuffer and store texture next to it. Texture copy using source and zbuffer ( 128 bit) page miss 2 times so 8 cycles for 8 texel.
+
+
+
+; Funny games with the Blitter, pages and OP. We need a Beam tree for this. It tells us how much area a texture covers and thus with which texture to start where on the screen.
+Philip Wood Now I have an OP use: I could not find an efficent way to read back the z-buffer. So I drop it from my concept. Now I only need a single buffer in each of the 2kib == 1kiPx pages. Now I propose to put a 16x16px texture at the end of the page and to use the OP to assemble the rest as 48x16px tiles. Now for skinning ( fight for life fighters, battleSphere ships ), I find the position where the texture will be used, align it on phrase. If Tiles overlap, both go back equal lenght of px. Then they grow to fill seams, especially horizontally to speed up OP.
+
+This way the Blitter can texturemap within a page. I think that this will be relative fast because internal SRAM needs 4 cycles for access because they saved a transistor or two. So two cycle extern DRAM wins. Of course there is cost for OP.
+
+I don't get why OP can reflect, but there is no way to flip ( bottom up ). The blitter also cannot do that in phrase mode. We could cache rotated values. My idea was to find a spot in a texture where 3,4 or more px match the 90° textures. Then for a zoomed texture we come from outside and pull the texture using pixel mode. Pixel mode allows us for example to go forward like written english until we hit the center. And then we go the end and go backwards. So pixel mode would happen inside a page. Only the initial copy would be trans page. But since we have no z-buffer, we can abuse zread and write flags to read two phrases , page flip , write two phrases , page flip .
