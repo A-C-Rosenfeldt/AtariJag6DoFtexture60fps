@@ -1,3 +1,66 @@
+; To use the high register for phrase mode is a safe manner, we need to
+LoadP , 0
+or 0,0 ; wait
+Load (hi) ,1
+or 1,1
+Store 2,(hi)
+; ?? 
+StoreP 3,
+:
+LoadP ,0  ; repeat
+; now we know that hi register was done
+
+; To operate on packed pixels in a fast manner we need to concentrate on carry bits.
+; We use narrow pixel and fill horizontal phrases .. but 4 on top of each other
+; we store a large as possible block of texture phrases in GPU ram ( come from blitter) .. ??
+; But we have 32 bit registers. So we also rende 2x2 px
+; we have different regs, different ror, different jumps for each target px
+; So it looks like we have 4x4 = 16 code blocks
+; this code is espcially for small (non slither) triangles and near the vertices,
+; thus we need ReadModifyWrite and per pixel check before each block?
+
+Move px_in_first_phrase, A
+
+LoadI #FFFF,2
+RORQ #16,0
+#if on left side of block
+{
+	move 5,1 ; we may still need the other part
+	AND 2,1
+}
+OR   1,0
+SubQ 1, A
+J ~C
+{
+	StoreP ,B
+	AddQ  framePitch, B
+	moveQ 4, A
+}
+
+; but we pull from 2x2 texture
+; each positin in this block corresponds to one position in code
+{
+{
+	ADD delta, fractionU
+}
+JR ~C,
+RORQ 16,3  ; move to the left
+
+
+	ADD delta, fractionV
+}
+JR ~C,
+AddQ 4,7   ; weird memory layout from LoadP
+
+
+; on the left side of the square
+AddQ 8, 7   ; next phrase  check cache?
+
+; on the lower side of the square
+moveI pitch, 9
+AddQ 9, 7   ; next phrase   check cache 
+
+
 ; Since we cache 4x4 texels and choose MipMap to blow up the texture to no load any unecessary data, we need to draw thick lines ( not scanlines )
 ; So we need to draw 4x4 px into framebuffer
 ; right, left, right, left
