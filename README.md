@@ -63,7 +63,30 @@ The same cache also allow to store 8 block long cached lines in texture ram ( 2x
 https://github.com/toarnold/jag2048.git
 https://hub.docker.com/r/toarnold/jaguarvbcc/
 # compiler needed ?
-Vector code naturally fits the pipeline. Lots of registers while interrupt disabled.
+Vector code naturally fits the pipeline. Though we want to use 256 register names to use the nibbles to denote vector and component.
+The pipeline in conjunction with the two way register file want two threads. With Vec3 we get ugly code which is better left to the compiler.
+The programm needs more registers and more memory then present in the hardware.
+Even withouth functions, and blocks only, I want to denote a *Register as new if I don't expect it to have a value.
+Likewise I denote the last use of a register as ~Register.
+Block borders pass all registers in and those also out again, but none if they are followed by a , . Passing registers have to be named explicitely .. maybe with renaming. 
+break;continue; can be placed in any combination on a line. I hope to avoid labels this way.
+
+I already have an example for visitor pattern or so. I have 4 functions and when the cursor moves, we may jump from one function to another.
+We have this for source ( texture or vertex buffer ) and for target ( frame buffer ). So kinda want all combinations of double inheritance. Generated at runtime (load code). Then it executes the textureMapper.
+Alternatively we have ping / pong function pointers. Source or target side either jump conditionally to pong or the move their ping pointer and then unconditionally jump to pong. jump is as cheap as branch.
+
+Von Neuman architecture means that we want a common memory manager for code an data.
+Code is structured .. so we look for cuts at low indent.
+functions and objects can be declared within the structure and the position of the first call. This call sets the return address behind the function. Other calling places just let it return... A function needs a name!!
+But for list or array there is no such trick. They are allocated trailing to the code. Code does not wrap around at the end of the memory so we need to find loopes which exit in the middle and place those at the end.
+Or data in front where it can live until code starts whith does not need the data anymore.
+
+There are no Macros. Functions can have the "inline" qualifier. Since we don't self modify ( thanks to so many registers ), there is no need to keep a single instance.
+The compiler can count the bytes and only keept the function is is saves a lot of money or is dynamically pointed at ( enum of functions ).
+
+R12 and R15 are preassigned for addressing. R31 is for backup of PP on interrupt. Some addresses are reserved for the interrupt routine. And likewise maybe some addresses are the result of a hash code on data. 
+
+Lots of registers while interrupt disabled.
 Branch delay slot via hint.
 Often the vectors are feed into MultiplyAndAccumulate sequences. These don't mix with other code ( why even? ), especially loops.
 Thus most small loops are unrolled anyway. You can read the memory requirements (I avoid MOVEI mostly) and the speed from the line numbers.

@@ -293,3 +293,12 @@ A different idea woud be spill over: The texture is stored in the center of the 
 Or really we can make a chain so that neighboring tiles on screen are aligned in memory ( same width, same x) so that the rasterize can just go over each triangle individually and just be happy with faster memory access.
 Unfortunately this does not work in horizontal direction. Instead it leads to thick columns.
 The horizontal direction profits from a split of the triangle in 3 rectangles. We would have the wide center section and then the aligned ( to our top and bottom neighbor ) top and bottom section which are narrower.
+
+scrap that: Object clipPixel   (and reflect ( compensated in blitter ) )
+allows us unaligned width, and thus there is no need to align position.
+Thus every vertex creates a cross of tiles. The rays of the cross grow until the hit other rays.
+Triangles whose middle vertex is on a cross are rendered above and below because the OP cannot flip an object. We can have overspill on both sides.
+Rectangles to thin are assigned to a neighbour with memory left. 
+
+Bus Hog for GPU (for vertex data) and blitter. The OP has a lot to do to assemble or those objects back together. At 60fps I think that is okay.
+With lower framerate I guess we could live with some branch objects and manipulation and still have 2 scanlines assigned their main texture. If we branch, hey at least have two objects with 4 scanlines.
