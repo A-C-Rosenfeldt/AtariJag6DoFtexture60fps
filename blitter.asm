@@ -279,3 +279,17 @@ Philip Wood Now I have an OP use: I could not find an efficent way to read back 
 This way the Blitter can texturemap within a page. I think that this will be relative fast because internal SRAM needs 4 cycles for access because they saved a transistor or two. So two cycle extern DRAM wins. Of course there is cost for OP.
 
 I don't get why OP can reflect, but there is no way to flip ( bottom up ). The blitter also cannot do that in phrase mode. We could cache rotated values. My idea was to find a spot in a texture where 3,4 or more px match the 90° textures. Then for a zoomed texture we come from outside and pull the texture using pixel mode. Pixel mode allows us for example to go forward like written english until we hit the center. And then we go the end and go backwards. So pixel mode would happen inside a page. Only the initial copy would be trans page. But since we have no z-buffer, we can abuse zread and write flags to read two phrases , page flip , write two phrases , page flip .
+
+
+So the blitter in phrase mode is only useful for block copy with {pixel, z-buffer} copy ( double phrase aligned).
+If we need the same texuture in different tiles, we duplicate it and the duplicates are cached.
+A rectangular tile on a triangle will almost certainly not cover the tips .. but we could try to snap on. With large triangles we want splits for perspective correction .. uh but not show the OP!
+For the OP we want wide tiles .. but 4px high? So it is better than with the line buffer at least. We could try to cut out thick lines out of the texture almost like I've planned for texture cache.
+We still have that wrap around problem for diagonal slicies. Ah, we already feel lucky.
+We can use the full 2kB page to copy a slice of our texture to. I think horizontal pull coordinate is just added to the vertical pull ordinate, so we have at leas one wrap around.
+We make the source buffer as small as possible to save on memory. We will the texture from the high address to low (roughly). We render from low to high using the free choice of delta (y|x) = (1-|0|+1).
+We'd rather also cache this.
+A different idea woud be spill over: The texture is stored in the center of the page, and the OP is instructed to pull a little from the outside, if this makes our triangle just fit in.
+Or really we can make a chain so that neighboring tiles on screen are aligned in memory ( same width, same x) so that the rasterize can just go over each triangle individually and just be happy with faster memory access.
+Unfortunately this does not work in horizontal direction. Instead it leads to thick columns.
+The horizontal direction profits from a split of the triangle in 3 rectangles. We would have the wide center section and then the aligned ( to our top and bottom neighbor ) top and bottom section which are narrower.
