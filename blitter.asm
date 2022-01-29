@@ -302,3 +302,21 @@ Rectangles to thin are assigned to a neighbour with memory left.
 
 Bus Hog for GPU (for vertex data) and blitter. The OP has a lot to do to assemble or those objects back together. At 60fps I think that is okay.
 With lower framerate I guess we could live with some branch objects and manipulation and still have 2 scanlines assigned their main texture. If we branch, hey at least have two objects with 4 scanlines.
+
+Seems like zoo of techniques is still needed. The OP can load the current page with two objects and two data.
+One is the original texture which is loaded in the hidden rear part of the line buffer and then used by the blitter to blit to other pages.
+One is an already mapped part on the current frame. Everytime the blitter is finished we look if we have enough time to use the data in the line buffer. And we need to check afterwards.
+Only when we used the texture to its full extent, we can insert a new one in the object list. We always have two textures due to the two buffers. So lots of variables we cannot all keep in the register (nor do we want).
+With blitter hog it may take a large part of the scanline until we can use our texture. With lots of objects it probably takes the full scanline. So swap out of texture costs one scanline. We use CLUT texture then.
+So really I need a pointer to the texture source. The scheduler decides based on horizontal scanline position, which to use right now. BeamTree asigns larges area to CLUT. Then triangles grab their objects.
+I use the object processor to draw the parts outside. What if a texture was not visble in the last frame? Loads into linebuffer have to be independent of contents on current frame.
+Spreadsheet timing for a pixel are anywhere from 5 to 11 cycles. Linebuffer is 16bit and if using the object processor or if rendering just in time, we only access it once per pixel , so max 4 cycles
+if 16 bit is really expanded in 16 indentical 16 bits. It is like a page miss in DRAM and Doom had two of those. Really let people test it. Anyway: Max 2 cycles more than page to page.
+It might be interesting to fill in the foreign triangles here ( after OP has finished).
+
+Though for the same effort I could shift the individual scanlines of objects ( and clip or render left to right ) and have no foreign px. This does not fly with the blitter address generator for const-z.
+Const-z is in danger :-(
+Maybe at least store two textures every scanline. I can shift both and I can clip the second on ( or even reflect the first and also clip ). So there is one edge every scanline with a page change.
+There are two important triangles every scanline. I mean, this could still work with const z. Generally const z still works when we overwrite with the clip edge ( render right to left )
+
+Even if we only have one object per scanline, we should place the most common texture into the invisible border. All textures live right of the screen over two buffers. I've not seen a Jag game with so many textures.
