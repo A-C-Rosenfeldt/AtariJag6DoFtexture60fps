@@ -329,3 +329,10 @@ This was for cross. For criss ( less dominant ), there is 1:1 OP of a 16 color b
 The second layer may even hide the exact pixel borders. Now almost horizontal becomes the problem. Find the problem with smallest remeinder .. OP.render to both sides by means of reflection. Blitt to match with pixel precision.
 
 Two OP reads and writes and two dummy data reads of 1 bit sprite (optional zoom) may be justfied starting with 8px spans. No shift on GPU. A queue to StoreQ into.
+
+Diagonal squares: Texels are rendered in this way:  opaque transparent transparent transparent  ( clear + pitch ). The to vary the width of a texel to objects are shifted over each other.
+The gaps behind are rendered into the linebuffer first.
+I guess that this may work with three layers? Widest spans last .. second widest before .. the rest 
+Or basically we render the texture at low res ( blitter galore ) and then draw thick lines over the jaggies to make it look nice.
+Or we have pre-rotated/zoomed index patterns (long0, short1, long2, short3 ) and shift around the colors in the CLUT .
+We save on CLUT by having the short parts in a zoomed texture behind.
