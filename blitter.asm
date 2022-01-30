@@ -320,3 +320,12 @@ Maybe at least store two textures every scanline. I can shift both and I can cli
 There are two important triangles every scanline. I mean, this could still work with const z. Generally const z still works when we overwrite with the clip edge ( render right to left )
 
 Even if we only have one object per scanline, we should place the most common texture into the invisible border. All textures live right of the screen over two buffers. I've not seen a Jag game with so many textures.
+
+So it would be really cool to have a demo where you can shift around the workload over those different methods.
+I feel that like with the beamtree there needs to be an instant version, but inter frame coherence as an option.
+For example we see that in the next frame some textures are needed more, so we do the delta copies. Any extreme change goes to the other techniques.
+Extreme zooming is so inefficent on the blitter, that this may be better implemented as spans in ObjectSpace. Find integer scale sequence? Pull in so that remainder matches!
+This was for cross. For criss ( less dominant ), there is 1:1 OP of a 16 color bitmap rendered on CPU. Texel color stored in CLUT. So there may be a better use for CLUT then as source for blitter!
+The second layer may even hide the exact pixel borders. Now almost horizontal becomes the problem. Find the problem with smallest remeinder .. OP.render to both sides by means of reflection. Blitt to match with pixel precision.
+
+Two OP reads and writes and two dummy data reads of 1 bit sprite (optional zoom) may be justfied starting with 8px spans. No shift on GPU. A queue to StoreQ into.
