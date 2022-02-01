@@ -140,6 +140,11 @@ mp_wait2:
 	store	mp_blitcommand,(mp_blitter+14)	; command register
 
 
+;	*(int *)0xf02270 = light;	// iinc   f02270 : Looks like this register cannot only add to the intensity of the last pixel Gouraud, but also to the SourceData of the current pixel
+	movei	#$f02270,scratch
+	store	mp_light,(scratch)
+
+
 ;;;;;;;;;; Doom code on linux
 	// Current texture index in u,v.
 	spot = ((yfrac>>(16-6))&(63*64)) + ((xfrac>>16)&63);
@@ -336,3 +341,7 @@ I guess that this may work with three layers? Widest spans last .. second widest
 Or basically we render the texture at low res ( blitter galore ) and then draw thick lines over the jaggies to make it look nice.
 Or we have pre-rotated/zoomed index patterns (long0, short1, long2, short3 ) and shift around the colors in the CLUT .
 We save on CLUT by having the short parts in a zoomed texture behind.
+
+Patterns needed: So we need to combine criss and cross. Both have an integer part and a bit pattern for carry. With all that effort we could go per correct and just allow all patterns ( no continued fractions?? )
+With eight borders, we have .. uh too much.
+So max 4 borders allowed for criss and cross for 256 carry combinations. 8*8 base length combinations: 16 . 4 relative shifts ( we can swap roles )
