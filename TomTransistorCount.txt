@@ -153,3 +153,53 @@ QuadBuffer memory would fit to the quad register file.
 The linebuffer is a double buffer in the Jag.
 A quad buffer could be used for low res: multiple lines and for hi-res: no splitting of sprites on scanline needed.
 ScoreBoard for writes is bad because I cannot queue those.
+
+
+
+About the OP
+
+Another indirection where we store the spans for each scanline.
+Lets assume we want to fit it into two object phrases.
+Those we keep:
+* These twenty-one bits define bits 3 to 23 of the data address
+* 12 bit xpos
+* FirstPix within phrase
+
+0-7 Hscale  becomes the U in the texture mapping UV
+8-15 Vscale becomes the V in the texture mapping UV
+Remainder not only for U,
+
+but for V.
+
+Replace Index with a color offset.
+Add color increment.
+
+Is space left for z and delta_z ? We may compress data a bit by sorting by z and using relfect to draw back to front so that we always use the z-start value (and not something in the center which would be unfriendly to OP)
+
+
+JRISC is MIPS ( 32x32 register file) where one source is also the target to have 16 bit encoding. This is similar to many onthers like Atmel8bit, SuperFx, SH2.
+I wonder if reduced instructions can be sorted in a different way than MIPS does it ( based on immemdiate). That is more 32bit encoding stuff like also for RISC_V.
+
+Due to pipeline, the source registers are encoded as address. One bit denotes a literal => 2*6 = 12 bit
+We could specify a target:
+writes to second Source?  1 bit
+	ALU
+		commute
+			4   2 bit
+		sub
+			only instruction which allows a constant in both operands (xor)
+	LoadStore
+		Move  pointer          <- regs only 
+		Add   Adreessing mode  <- literal   .. implicit register like in 6502 (X,Y), 68k, z80 (SI, DI)
+flags?  Write to Flags? 1 bit
+	writes to
+		CMP
+		Test
+		Btest
+	reads
+		Jump  ( all jumps are conditinal .. all other instructions are not)
+	both
+		ADC
+		SBC
+implicit
+	Jump

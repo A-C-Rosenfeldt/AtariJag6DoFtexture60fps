@@ -1,0 +1,59 @@
+Explanation on the web needs typescript like the CPU-simulator.
+Fun demos can run on the Jag which has limited precision for factors. So we can show off lazy added precision.
+Similarly, 8 bit CPUs could try to calculate large runs on 8 bit.
+Both CPUs have relative fast branches and memory access.
+
+After trying to understand the 3d pipeline, I could not find a way to make following stuff work:
+1) On a texture not leak outside the source region.
+2) clipping so that the order of edges is naturally unchanged
+3) consistent beam tree; even if I promote scanlines and pixel borders I still need 2) 
+4) If I use a BSP to split and order polygons into fragments, I also need precision.
+	Sometimes geometry is just so suited for this. Or I start with overlapping boxes, shrink, and half the faces end up on real geometry.
+	Does anybody know why Doom has no fragments on inner nodes? I thought we pick polygons as splitters..
+
+Graphics pipeline
+
+Already without any tree the level is a mesh: Vertices, connected by edges, and faces which in turn have a texture.
+Lightning on the target hardware can only be baked in or rather simple: No shadows, no use of precision math.
+Edges are important for clipping against the viewport and in beam tree.
+Date sits in a large flow graph and only local dependend stuff is pushed through it. No large vertex buffer!
+
+
+
+Camera has 32 bit position and a transformation matrix with 16 bit entries ( allows typical field of views, but maybe no telescope):
+The transition to parallel perspective needs to be implemented differently ( next iteration ).
+To reduce the number of exceptions, I may want to use floating point with one exponent per vector. Components have no norm. Only 4 bit exponent.
+
+Clipping per face of frustum. Near plane is at 0 : Don't render planes which cut the camera. 32 bit precision of position
+in a large level still may hit this. Also people expect this in the code.
+A blanket far plane makes no sense on the target platforms because they are so bad at skyboxes that we can rather use real geometry.
+
+Field of view ( z-buffer scale) and screen aspect ratio (in pixels) make it so that the frustum planes are defined by a vector
+with number of pixels * 2^n ( floating point: we always shift around bits. Only real division is expensive).
+So clipping a vetex is not a simple comparison, but one side is multiplied by 3 (4) ( oldschool target platform has 3:4 AR).
+So ah, 4 is 2^n. 3 is also onyl two bits. Now z scale is more free for me because z-buffer has only limited use on the target platforms.
+
+A cut throuhg an edge results in a fraction ( nominator / denominator ). For perspecitve we divide by z and then one co-ordinate is exactly on the border of the screen,
+but both 1/z and other/z have it and there is a sum somwhere and it stays.
+Vertices are sorted by Y. In fact we multiply the denominator with the line number. Costs 8 bits. Will mostly suffice.
+For triangel setup we need to know the slope of the edge: Another division.
+So if the slope is not conclusive, we can always test 2 pixel instead of just one.
+Also the target platforms like fixed points / floats. So we have a slope with a fraction and only check a pixel if we come close to it.
+Similarly, for the slope of the texture, I can trace a ray to check which of the two or four texels I hit.
+
+Now for a beam tree we need to cross edges to get a point. We even need to do it with 3 edges to decide if one edge needs to be split.
+So, lots of divisions and multiplications. One could say that a beam tree really needs floating point.
+It was discussed when Quake was new. Quake uses the floats. But it also seems that variable precision is most badly needed here.
+
+To pull in more precision in a chain of MAC, the graph is followed backwards ( each edge has a direction but the back direction is also stored in RAM )
+Each node can append more digits for the fraction. We need to know the error of our floats after division. Like:
+slope of edge, slope of texture coordinates. We divide U and V by z at the vertex and calculate a slope.
+Going along the slope we add those values up, but that is equivalent to multiplication.
+We cannot add precision to this code path ( with floats and += ). Exception goes over to MAC and final division.
+I don't see no easier way to calculate the uncertainty than by variing the nominator and denominator into their extreme values.
+( +1 , -1  or 0, +1 ).
+
+So texture mapping does not interfere with the beam tree, but I want to use at atlas and never have "general protection fault".
+That Jaguar blitter can do linear spans. So how do I know that the line hits the correct pixels?
+I cannot really. I can only take start and end pixel and the 3 edges in texture space and check for safety distanc > rounding errors due to writing to hardware registers of blitter ( inner loop in C64 ).
+Bilinear makes even more sense because I need to check distance in 2d anyway. So it also works for affine. This would all work with floats and some branches .. so beam tree is really expensive? In terms of code size?
