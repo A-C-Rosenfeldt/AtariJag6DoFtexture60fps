@@ -57,3 +57,9 @@ So texture mapping does not interfere with the beam tree, but I want to use at a
 That Jaguar blitter can do linear spans. So how do I know that the line hits the correct pixels?
 I cannot really. I can only take start and end pixel and the 3 edges in texture space and check for safety distanc > rounding errors due to writing to hardware registers of blitter ( inner loop in C64 ).
 Bilinear makes even more sense because I need to check distance in 2d anyway. So it also works for affine. This would all work with floats and some branches .. so beam tree is really expensive? In terms of code size?
+
+About that perspective correction: We divide per point ( span start, or upper left corner of block). So we can keep nominator and denominator up to that point. We can pull in more precision for both.
+Only the subspan is does rounding. We say that it is hybrid between pixelation and real vector. We create no pixel gaps. First and last px are precise anyway ( integer ), only the gap is rounded.
+When we round in UV space, we only need the precsion there. Grazing incidence on screen is no problem. Only slithers in an atlas woudl be a problem.
+
+High precision clipping ( at screen border or occluders ) gives us high precsion U,V -- read UV within source domain.
