@@ -63,3 +63,22 @@ Only the subspan is does rounding. We say that it is hybrid between pixelation a
 When we round in UV space, we only need the precsion there. Grazing incidence on screen is no problem. Only slithers in an atlas woudl be a problem.
 
 High precision clipping ( at screen border or occluders ) gives us high precsion U,V -- read UV within source domain.
+
+Fractions for slope avoid edge crossing on rasterization just as with bresenham. So there is no new branch. Indeed with fractions, the exception branch is only taken seldomly and would perform on branchprediction hardware
+like ARM or pentium.. .
+
+BSP merging is a complicate algorithm which would generate a datadependency graph -- not use a given one. An exception in the clipping in the texture may very well reach through the whole Beam tree to up the precision.
+Do I persist the whole graph with all pointers into (local) RAM, or do I regenerate it only in case?
+The latter is the spirit of the exception. The code path needs to know where to concentrate on.
+We have a tree .. which is most of our datadependency graph .. it even includes top level screen borders. 
+No matter what the heuristics looked at, we just go up to the parents and get the clipping edges.
+Each node could contain a sorted list of vertices of its convex shape2D. Edge definiton may be independent of vertices if that dependency chain is shorter that way.
+Sorting information may only be acurate relative to scanlines. Or not even available? What if that subTree is hidden anyway?
+
+Bounding volumes are meshes like everything else. So the beamtree really splits stuff up. Heuristics may want to use horizontal lines for a frame. Now I feel, like MVP should not already do this.
+
+Usually shaders are expensive to load, but either way: Draw convex leaf of BeamTree or draw polygon with BSP as clip mask / scissor mask / stencel mask ( latter ones are usually stored as bitmaps).
+
+Caching of transformed vertices is possible ( read: We don't need to have a transformed buffer as big as the original buffer ) because we use a bounding mesh hierarchy.
+Those meshes can overlap and edges can reach into vertices in the next node. So the "current node" where we cache  is really a tree growing in the global tree.
+Also this tree as links to from the beam tree. Already without the precision thing we would cache those.
