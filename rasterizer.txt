@@ -1,0 +1,68 @@
+Setting up the blitter is quite expensive.
+So we want to draw as long lines as possible.
+People don't complain about squares scrolling through.
+Thus switching the directions ( x,y, both diagonales ) is okay.
+Optimize to minimize scanlines and for minimal zchange ( hard limit on max z change)
+Small triangles are drawn using affine transormation.
+Quake and descent had scanline spans.
+So when the scanline is really long, divide the rest in 16px or 8px spans.
+In between, switch on perspective correction on the edges.
+The top and bottom tip can stay affine.
+
+Squares are so attractive because they don't need the edge calculation.
+The spans can be shorter and the GPU is still faster than the blitter.
+Squares only make sense for large triangles.
+Spans are as fast because divsion .. even though it inssist on 32 bit, only takes 18 cycles.
+The blitter cannot do 4 px in 18 cycles.
+Only if I try to do other stuff ( interupts ) while drawing the span, squares / rectangles would make sense.
+As we all know there is no 64 bit texture source beside DRAM.
+If we go for 50 fps, we could render to linebuffer .. do we go ?
+
+For perspective on the edges ( const-z renderer like Doom ),
+do I calculate exactly on the edge? Maybe for this precision thing?
+Like I use 1/z and multiply(2 MAC) with the edge vector in texture space.
+One division ( fixed point ) for linerp. So per line: 3 div, 4 mul.
+2 Mul with fraction to go on the first pixel center.
+Pro: Can be proven to stay in triangle. With low z variance we do affine anyway:
+We can do multiple lines with one division for width and 2 Mul for subpixel.
+Still seems faster than to calculate the diagonal.
+
+Calculate on the first and last pixel: two div, 4 mul. integer div.
+Bresenham to jump on pixel center. Adds for all 3 components of homogenous coordinates.
+Pro: perspecitve closer to actual pixel. natural transition to affine.
+Staying inside texture triangle can be forced by precsion on demand.
+
+So I always calculate first and last pixel on the GPU,
+but the blitter already for short spans allows me to write unaliged without RMW.
+Maybe it makes sense to write up to 4 pixel into the source register ..
+Todo: Test if 2n sourc register is shifted over without a read?
+Still with 4 pixel like in Gouraud shading,
+it might be interesting to fetch the texture using the GPU.
+GPU master is 64 bit. DRAM is 64 bit.
+eat dupAlicated phrase access, 
+load
+write into blitter
+phrase mode
+Still: A second code path? Lots of GPU cycles on short spans???
+At least need to combine a short and a long span for this.
+Oh, registers get crowded.
+Or should I use the blitter to load the texture into GPU RAM?
+Then use GPU to fill the phrase at the end of the line and blitter pixel mode for the 8 px spans.
+No. Avoid all the storage.
+Copy target has 2^n width.
+GPU:
+	2 add, 2 adc, move, shift, or, load, add light (saturate?unpack or high word + carry)   8 (4)
+	(fraction."sign" xor destination.bit0) and shif 16 => shift_px and or  5
+	saturated light is what makes the blitter the winner.
+Gouraud is similar: needs <=4 GPU pixel. If saturation? Be sure to start on non-saturated side or from the middle.
+	
+
+To avoid divisions for short spans I thought about a lookup table.
+Span length, subspan or 1/x lookup and MUL. MUL is faster of course. Oh my. Also less code.
+Edges are expensive. So hide some of the calculation in a span?
+
+If packing on GPU would not be so slow,
+Then even the UV need the 16 bit shift.
+
+n-gons help with long spans. Like Descent: If same skin and some tolerances (z, same face) are met.
+I could even do scanline render for concave.
