@@ -82,3 +82,16 @@ Usually shaders are expensive to load, but either way: Draw convex leaf of BeamT
 Caching of transformed vertices is possible ( read: We don't need to have a transformed buffer as big as the original buffer ) because we use a bounding mesh hierarchy.
 Those meshes can overlap and edges can reach into vertices in the next node. So the "current node" where we cache  is really a tree growing in the global tree.
 Also this tree as links to from the beam tree. Already without the precision thing we would cache those.
+
+
+It seems that lazy precision ( precision on demand ) needs BSP for 3d and bottom up beam tree. All vertices and documented beam tree decisions need to exists in memory in order to pull in more precision.
+Also the camera position is pulled in lazily. So small movements don't trigger much changes .. if two BSP subtrees are close to each other and the camera far away.
+The beam tree gives us convex polygons as leafs. Edges and vertices can have their own data. Because we don't round, they match. It just makes the nominator and denominator smaller.
+Clipping is applied like in floating point .. only that the interface is now implemented by the infinite precision fraction class ( still wonder if I may need infinite precision floats ).
+
+While the beam tree is constructed bottom up, of course child nodes are detected top down when their bonding box leaks. Likewise view frustum culling exposes new nodes. Invisible nodes are garbage.
+I may need to look up this cache agnostic algorithms, but basically if the garbage is not in the way of defragmentation, I want to keep it as long as possible. The target systems are single threaded 
+(okay, the Jag has two CPUs .. but assume that we have music) . Now a reappearing object may need deep inspection and a lot of repairs .. maybe decide based on relative camera movement.
+
+So I don't see much way to back paddel to single frame images. Even the camera rotation, projection on scanlines, and Bresenham may want to pull in more digits.
+I could back grow some tricks. Like when all leafs are sufficient convex, just round for the camera. But I don't see how this test is cheaper.
