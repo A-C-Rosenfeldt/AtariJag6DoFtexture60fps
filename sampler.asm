@@ -135,6 +135,122 @@ call ./bilinear.asm  ( UV_flip_mirror, buffer)
 
 
 
+;Software SRCSHADE Gouraud + texture
+twoCRY two CRY px in one register. Rotated so that on Y is in the high byte
+Intensity
+Delta
+
+; 16 cycles for two px
+ADD Delta,Intensity ; shift one behind and put in branch delay slot?
+AND Intensity, IntensityMasked0 ; refresh from mask in some branch delay state / busy waiting
+ADD IntensityMasked,twoCRY
+Jump if no carry, noCarry0
+and/or mask, twoCRY   ; Saturate  self modify code depending on the sign of intensity ( split the polygon )
+noCarry0:
+ror 16,twoCRY ; rotate other Y in position
+ADD Delta,Intensity
+AND Intensity, IntensityMasked1
+ADD IntensityMasked,twoCRY
+Jump if no carry, noCarry1     
+and/or mask, twoCRY   ; Saturate  self modify code depending on the sign of intensity ( split the polygon )
+noCarry1:
+ror 8,twoCRY           
+store twoCRY, [blitter] 
+addq 4,blitter  ; for the whole phrase
+
+No-branch version, which saturates into both directions
+move twoCRY,copy0   ; either have to regenerate Mask, or place a MOVEFA here
+move twoCRY,copy1
+and colorsOnly, twoCRY
+SHRQ 16,copy1
+and mask, copy1
+and mask, copy0
+add intensity, copy0
+ADC intensity on the other thread 
+add intensity, copy1
+SAT8 copy0
+SAT8 copy1
+SHLQ 16,copy1
+or copy0,twoCRY
+or copy1,twoCRY
+
+
+
+
+
+;15 cycle for one px
+;Texture coordinates ( for small cache. LowPrecision ). No tricks
+ADD u,U
+ADD v,V
+and U,Umasked
+and V,Vmasked ( or copy?)
+ROR Umasked  ; get rid of the fraction
+ROR Vmasked  ; move to correct postion
+OR Umasked, Vmasked ;  R14 or R15
+Or/Add baseAddress, Vmasked ; F03000 - F03FFF local RAM
+load [Vmasked], texels
+BTST lowestIntegerIn,U
+branch if zero , little
+SHRQ 16,texels
+little:
+And MaskLowWord, texels
+
+;Texture coordinates with one fraction in different reg
+ADD delta, fraction
+ADC uV,uV
+AND uV, Umasked
+mov uV, low
+shrq 16, low .. too much shift for base address? F030 00 00 .. byte maybe?
+OR low, uMasked
+and U, oddEven ( 16=2^4 .. doesn't fit anything)
+shlq 12,oddEven
+load [uMasked]->texels
+ror oddEven, texels
+
+;;;;;;;;;;; OddEven really hurts if I just want to fill a horizontal phrase in the blitter.
+;; Skip address synth and load if no carry happens. Put odd even in fraction. Change of fraction => ror . Try to flip texture on load so that we read it in forward direction
+
+; Chain of ordinates. Every previous register has the fraction of the next in its high word
+; two px at once ( matching Gouraud above)
+; chain breaks here
+ADC  ; Jump if carry  to the code path which generates an address ( otherwise we fall through to code which reuses values)
+ADC	 ; do it for a whole phrase? Mark .. Doesn't look like ADC chain and on demand address generation go together well 
+ADC  ; 
+ADC
+; chain breaks here. Maybe increase up to phrase? so that I would have two chains here and do not need to interlace with other code?. 8 ordinates + 8 delta = 16 . Intensity also?
+  ;Use F02100.14 regpage?
+	movetae  so that I don't trash the mask
+AND UV, mask .. low byte is in correct position.  one mask for U and V  kinda hmm
+MOV mask, copy   
+SHRQ 16, copy   ; pack
+or copy, mask  
+and base,mask
+load [mask],value
+
+; I mean, I sure could interleave the chain with store to blitter .. 2 commands .
+
+
+;On Demand address generation for integer parts=0
+ADD fraction_U
+jump if carry, addressGeneration0
+
+ADD fraction_V
+jump if carry, addressGeneration1
+
+reuse value
+continue
+
+
+addressGeneration0
+ADD highBit,UV                 ; nonbranch vesion would be:  ADC 0, flagInReg ; SHLQ 16, flagInReg
+
+ADD fraction_V
+addressGeneration1:
+ADC 0, UV
+
+load [UV contains base address]value
+
+
 
 ;About all the branches:
 
