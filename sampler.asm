@@ -251,6 +251,55 @@ ADC 0, UV
 load [UV contains base address]value
 
 
+; noBranch, Base in UV, noWrap
+add u,U
+adc uv, UV
+rorq 16,UV
+add v,V  ; also ror to save a register?
+adc 0, UV   ; 0 or subtract uv from rotated uv and save a register
+rorQ 16,UV
+
+; for wrap the integer part would need to sit on the msb
+add
+add   no problem with flags .. alternat chain or both this way?
+-- swap register page
+movfa
+movfa
+shrq
+shrq v
+shlq u
+or u, v
+or base , v 
+load [v],value
+
+; intensity would also be just this
+add 
+--swap page
+MOVEFA
+shrq
+moveta value
+and mask,value
+add value, intensity
+sat 8
+
+one pixel:
+movefa value
+rem not mask  -> color Mask
+or mask, value  .. 
+xor intensity, value   ; rem works with all color bits not .. okay, is a hack. Rather use two masks! Or maybe sub intensity, Y ?
+
+other pixel:
+movefea
+shr  
+sat
+shl
+
+two pixel:
+movefa value   -- or swap page? When doing 4px
+and double_colorMask, value
+or intensity, value
+or intensity1, value
+
 
 ;About all the branches:
 
