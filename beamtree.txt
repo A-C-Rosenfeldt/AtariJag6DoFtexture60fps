@@ -70,3 +70,19 @@ So I could create a random tree with convex leafs ( asteroid field) and just agg
 The bounding volume is composed of all the faces which don't see the siblings and then
 the closest two vertices of from different siblings are connected, then the next, until the volume in between is triangulized.
 Inflate until nothing sticks out and the shape is convex. Simplify small faces and angles.
+
+Splitting
+Sort by longest, prefer who does not split others. I would guess that there is a natural order comming from our trees.
+So we look down the tree and do a red-black tree kind of rotation to promote better splits. It is a bit like a chess game: pertube all the splits.
+Thus it may make sense to run these on Jerry: Like in a chess game it tries multiple splits and then procedes with the tree.
+If according to some heuristics, too many splits happen, Jerry rotates the top tree and again tries to build a BSP. 
+Meanwhile, Tom goes into the depth of the tree.
+The tree naturally has leaf nodes, but we may want to rasterize before we get there if the area of a node is small enough .. max width small and number of edges per scanline small.
+Then we go by scanline and use the tree to pull the active nodes and sort the edges by x.
+Like the floor in Doom this allows us to run the texture over all splits.
+It even makes sense to instead use 8px regular splits on those spans for perspective corretion.
+Feels like we should be greedy to find the complete uninterrupted span of the polygon and walk the tree for this, if necessary.
+So we go down the nodes in the BSP tree and when the number of edges per scanline fits into the registers, we switch to scanline.
+And we could try to add nodes (siblings or their children) into those scanline where we don't reach the limit.
+Yeah maybe an extra code path for short subspans is useful: Every pixel is perspective correct and we use the blitter only to StoreP.
+To have a simple shader state, texture caching makes sense. All visible mipmap levels are decompressed (multi-texture) and lit on demand.
