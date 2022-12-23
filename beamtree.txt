@@ -86,3 +86,32 @@ So we go down the nodes in the BSP tree and when the number of edges per scanlin
 And we could try to add nodes (siblings or their children) into those scanline where we don't reach the limit.
 Yeah maybe an extra code path for short subspans is useful: Every pixel is perspective correct and we use the blitter only to StoreP.
 To have a simple shader state, texture caching makes sense. All visible mipmap levels are decompressed (multi-texture) and lit on demand.
+
+transition to pixels
+
+ensure a blitter span stays clear
+	of
+		real edges on screen
+		seams in the texture atlas
+
+For concave node on screen I could rasterize all edges using a spanline renderer.
+For a concave leaf I need to sort vertics by y anyway.
+maybe I can check if edges cross between vertex.y ? Hmm.
+I don't want unecessary splits of the blitter run ( perspective wants them, but hey ), thus split by scanline and then the edges are only used to check
+if the current span is still on top. Kinda like the merge of Doom floors.
+
+The other way may be that the beam tree is too lazy to check for high precision in case no pixel is nearby. This may cut down on the real expensive MUL, the tail.
+
+The typical problem will be that we have a beam tree with vertice which are no real vertices, but crossings.
+Now we could check between which scanlines these cross.
+If the crossing is far away from the lines, I can detect that ("worst case"(+some if you don't trust your code)).
+It is still statistical. Makes not sense to do infi precision here?
+Breadth first search? Try to isolate cases 3 edges and 2 edge+scanline whoever comes clear first?
+I miss the synergy with rasterization. I mean, I need to isolate scanlines relative to real vertices, yeah but also for crossings.
+Otherwise I need to raytrace. Rays to crossing ?? Rays can only shot left or right around an edge.
+Rays can be rounded. Hence for small polygons raytracing on CPU may win.
+Blitter spans don't follow naturally.
+About synergy: if I start rasterizing corners of a polygon ( node ),
+These scanline become the beam tree splits. Further down trees are spli into upper and lower part.
+Make sure that there are not so may nodes below this ( small subtrees ) to avoid exessive splits.
+Also frame to frame coherence only works with a beam tree.
