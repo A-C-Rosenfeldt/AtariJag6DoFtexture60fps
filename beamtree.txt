@@ -115,3 +115,17 @@ About synergy: if I start rasterizing corners of a polygon ( node ),
 These scanline become the beam tree splits. Further down trees are spli into upper and lower part.
 Make sure that there are not so may nodes below this ( small subtrees ) to avoid exessive splits.
 Also frame to frame coherence only works with a beam tree.
+
+When there is a group of faces all facing the camera then there is no occlusion.
+I want a unified approach for LoD and perspective correction and lightning which recognizes the importance of the normal of a face.
+Almost faces, aka organic, smooth surface should profit from this also.
+Linear inter polation in the blitter still has to recognize the boundaries.
+So I have a given beam tree from another node in the BSP which may contain occludions for this node.
+But I don't use this node to split internally.
+
+Maybe I can use this group apporach for all meshes. When I know that max 16 polygons overlap on a single scan line,
+I can use scanline rendering to solve occlusion.
+Rounding is allowed as long as I don't touch real boundaries of the BSP.
+Of course, with gaps, I have a problem. So I need a "watertight" flag, which still depends on a normal or portals. I guess I can have portals in a BSP-tree.
+Overall, this feels like it needs more code and not like common sense to allow rounding.
+May still be interesting for dead end caves behind a simple portal (interface of a parent BSP node), just to show that there is no road-block.
