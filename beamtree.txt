@@ -129,3 +129,19 @@ Rounding is allowed as long as I don't touch real boundaries of the BSP.
 Of course, with gaps, I have a problem. So I need a "watertight" flag, which still depends on a normal or portals. I guess I can have portals in a BSP-tree.
 Overall, this feels like it needs more code and not like common sense to allow rounding.
 May still be interesting for dead end caves behind a simple portal (interface of a parent BSP node), just to show that there is no road-block.
+
+Another way would be to do raytracing on a low number of polygons. The ray position can be rounded to world space.
+This may be needed for some cases: Enemies far away . Plants. When I don't want to do LoD.
+
+
+##rasterization and fusion of spans for the blitter
+
+I need to find the relevant scanlines.
+for each scan line I try to set a blitter line on the screen ( longest possible span and I may even be allowed to round the ray directions in world space),
+but also in the projected space on the texture atlas with the given rounding in the blitter registers.
+Anyway, I need 2 paases:
+1) create beam tree from BSP
+2) go over all touched polygons (to undo any splits due to BSP or beamtree)
+
+3) subspan perspective correction with dynamic width because loop unrolling has no advange with the blitter.
+		Sadly, the blitter isn't suited for 8x8 tiles. 
