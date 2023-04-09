@@ -1,3 +1,23 @@
+Triangle strips work well with beam trees because we will insert the shared edge into the beamtree.
+Then at least we don't cut the next triangle.
+I should sort strips front to back ( closest point of each strip ).
+Backface culling cuts the strips => more to sort.
+Even with a BSP tree I could go front to back and in each leaf sector I can try
+to continue with the edge of the last sector and then go around.
+For Z-Sort a hierachy of spheres would be great.
+I still could try to go over edges ( the longest? ).
+In a connected mesh .. ah so maybe I will forget some faces.
+When I pop out of the hierachy I may need to clean up some leaf nodes 3 levels down.
+Likewise the mesh walk is allowed to see into spheres escalating 3 levels up.
+I think that objects will not be that big. Levels?
+
+For optimization I take the longest edge. I may allow backtrack if I cut two many triangles?
+In a prototype I should stick to greedy.
+
+Why do I use spheres? Because noncompact polygons don't work well for sorting.
+But pruning works the same: If edges of the BSP tree don't cut the sphere: Ignore!
+If the cut, but no vertex is inside: ignore.
+
 
 Clipping to viewport and portals and to merge BSP needs a division.
 On the Jag with fast MUL we might want to use fraction also for compare.
