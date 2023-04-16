@@ -95,6 +95,9 @@ void sort(){
 		while(vertex.y =this.y){
 			active_triangles.Where( index= edge.index[0 or 1] ){remove from list}
 			triangles.Where( index= edge.index[0 or 1] && Triangle.xspan.overlap_with(this.XSpan )){add to list} // vertices need an index to edges
+			// I read that for a mesh, the edges should point to the faces and the vertices. I need bi-directional links, but can still go over the edge
+			// This structure helps to avoid lists of list. I think each edge has one pointer to the next edge around the face and one pointer to the next edge around a vertex
+			// Each vertex and face has one pointer to an edge
 			vertex.next();
 		}
 	}
