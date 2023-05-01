@@ -150,6 +150,14 @@ Of course, with gaps, I have a problem. So I need a "watertight" flag, which sti
 Overall, this feels like it needs more code and not like common sense to allow rounding.
 May still be interesting for dead end caves behind a simple portal (interface of a parent BSP node), just to show that there is no road-block.
 
+I cannot unify trees with portals. I want a dongeon, so like with descent the level will have a portal base. A graph.
+The bounding volume hierachy lives on top of this.
+Unlike a pure portal renderer like descent, the portals only live in really portal like places. Just like all other games do it, I guess. Like Quake on PSX.
+Thin structures like columns or spikes don't lend themselves to efficient portals.
+Texture with transparent pixels is not what I want due to the fill rate problem on the Jaguar ( Jaguar does not count background pixels for me).
+It is a slippery slope. Let's allow overdraw here and there ...
+The better way a correct demo running with zero-overdraw and than I profile it and may relax this constraint to speed up the slowest frames. 
+
 Another way would be to do raytracing on a low number of polygons. The ray position can be rounded to world space.
 This may be needed for some cases: Enemies far away . Plants. When I don't want to do LoD.
 

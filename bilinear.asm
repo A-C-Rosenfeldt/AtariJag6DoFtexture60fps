@@ -136,6 +136,27 @@ JUMP , pixelCounterLow
 
 
 
+;; Bilinear is already slow, lets slow it down even more with antialiased nearest pixel
+; U V crossings of polygon border. Get slope
+; get a bresemham line of new texels which are touched by the new scanline
+; use UV slopes to calculated x positions of cuts with scanline ceiling and floor
+; we are so slow, I could even use DIV to project all newly loaded texel vertices
+; Sort all points along x. For each span, calculate signed area by taking the average of left and right vertex
+; A scrap that. We use the precalculated slope to get the cuts with the column borders.
+; Thanks to the sign, we can calculate the area independently for each clipped edge within the pixel ( we don't really have fragments ).
+; aggregate all RGB values. Now this takes a lot of MUL. We can also just mul some more for alpha and lightning?
+; Pack as RGBA .
+
+; The algorithm should blend to flood fill like for "Fight for Live" when we zoom in. So fps stays roughly constant.
+; We only have speed for a small texture. We need lots of SRAM for the slopes. But of course we should also cache the colors of the current two lines.
+; We should only use 4kB on DSP to let audio have its FIFOs. So it is the same as in the GPU.
+; It all needs to fit into 4kB. It would be nice to emply symmetric multiprocessing. Also I hope that the emulators correct the bank switch interrupt thingy.
+
+; With a mesh, the polygon below may just continue with the subpixel data. We are so slow that it would not hurt much to stream out the full edge information to DRAM:
+;  one phrase per row , with a counter in the high word to check if data (alpha) was lost. Could even redraw, recalculate.
+; Is not much data anyway. I store color in RGB (maybe high definition in the remaining byte), and the edge is shared anyway.
+
+
 
 ;;;;;;;;;;;;;;;;; Old stuff
 
