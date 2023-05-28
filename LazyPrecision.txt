@@ -1,3 +1,31 @@
+1000 vertices max per scene, so that I can store a whole dependency graph in memory.
+All the calculations outweight the memory access penalty slightly ( on JRISC ).
+Maybe I should create this graph only per frame. No need to pull the rest of the dungeon into this.
+Floating point is a bit more costly than fixed point. MAC does not support floats.
+But some calculations are so long that I don't know if I use the Multiplier to its full extend ( 15x15 because no carry or all data goes to Jerry ).
+Floats can also employ variable precision and I have a strict error range in my adds and muls.
+Fraction comes as last step always ( sometimes I only grab the sign of nominator and denominator).
+Fraction error range can be checked by multiplication of the result.
+So for example we have U=3.487 , then we multiply 2 * denominator and another value with two more denominator and check if those are outside of the nominator range. Then we know the resul: 3 .
+Ah, this feels so weird the moment I think about texture interpolation or edge antialias.
+With a beam tree we know the slope of our edges. So we should use our compute power for this instead of mislead pixel perfection.
+The border pixels of a span in JRSIC need to be calculated by JRISC for aligned access anyway.
+It hurts a bit that I would need to pull the information about the neighbour.
+I may need to render a whole tree into a pixel with lots of crossings.
+32 bit complete solves "scrolling" through a dungeon. I can live with EyeOfTheBeholder like dungeons at the start. Level can be 256 times larger than viewing distance.
+Realistically, 32 bit fixed point with antialias and interpolation will look best. Antialias needs a smaller buffer, and is isotropic, in contrast to anisotropic pixels ( which the Jaguar can do).
+Smaller framebuffer is need because the blitter has a low fill rate. 
+Maybe it is as fast to edge antialias textures? Or range covers two or four texels, then blend.
+So when precision of 16bit gets to its limit, the texture does not (only) jump, but blurrs.
+Of course, it may make sense to base the blurr on the projection. This would work for small affine triangles. This again is an argument to feed texture projection through the vertices. Two code paths?
+When I split up a large polygon for correction, the fragments are still affine and done by the blitter. So they have one blurr. So the blitter does the non-blur 16x16 bi-linear blocks, and JRISC does the edge filling triangles?
+That sure will look ugly. I'd say, blurr fades out from 1:1 zoom to 1:2 zoom. Ah, feels like, I just have to try this. I don't want to show my edge phrase trick.
+The blitter interpolates without perfect precision and without blurr. I guess, I should care less. Why waste perfect endpoints on a slope calculation which is rounded to fixed point?
+Texture mapping runs in pixel mode. We rather want it to run long spans. Edge phrased by JRISC are just too slow. JRISC is only for the top and bottom corner, where the set-up time ob the blitter would be as bad. So we really have vertex-phrases.
+Large polygons need to interleave a lot of calculations into their 16x16 bi-linear blocks. The edge triangles and the vertex phrases their vertices. 
+Zoommed in textures need fill rate, and we let the blitter do that, while we concentrate on the edges. So in SRAM a buffer of edge phrases to fire, once the blitter has done another bulk renderer.
+
+
 Explanation on the web needs typescript like the CPU-simulator.
 Fun demos can run on the Jag which has limited precision for factors. So we can show off lazy added precision.
 Similarly, 8 bit CPUs could try to calculate large runs on 8 bit.

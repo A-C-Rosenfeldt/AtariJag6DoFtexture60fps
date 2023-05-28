@@ -1,3 +1,40 @@
+For a beam tree I need to check how three edges cross after projection. Two of these edges may already form a vertex in a beam tree, another comes from a polygon , for example.
+Back projection into 3d creates 3 planes which pass through the camera. We get each normal from a cross-product.
+We want to know if the edges run (counter-) clockwise.
+For this we need the "sign" of the enclosed volume.
+But the sign of the volume spanned by the 3 normals is the same.
+
+Texture mapping also likes an 3d approach. We ask how the camere hovers over the (infinite) texture and ray cast the texture.
+Using sub-pixel precision edges, the edge-texture alignment is no worse than if we go indirectly over the edges, but we can reuse more information across parts or have less rounding due to a more direct calculation.
+Also ray casting has no problem with clipping.
+But on the other hand, we would need to match the texture infinite plane to the triangle plane in the static geometry .. so the indirection stays the same?
+Regarding the screen borders, I could project them into world space,
+or I could use some integer factor of screen resolution in camera space,
+or I used normalized device cooridinates, skeewed so that I can have two axis aligned planes and two diagonale planes, both of which don't need multiplication and thus no rounding.
+Do I want a special case in a portal renderer gone wild ( aka beam tree ) ?
+With variable precsion the last multiplication has high cost.
+
+Clipping happens in 3d because one vertex of an edge may be behind the camera. The typical projection matrix in openGl still allows a 3d interpretation if we don't matrix multiply with camera &* world Matrix .
+To check if an edge passes inside of a corner, we calculate the volume spanned by this edge, the corner ray, and distance vector between camera and a vertex.
+We can thus check one edge against all corners. But we can also check one corner against all edges of a convex polygon. So cache the bits of our mesh? We have this dependency graph for this.
+
+Normalized device cooridinates give us integer z values for a z-buffer, but beam tree does not use a buffer. Instead in each leaf we need to sort by z or even find a cutting edge for example for a ship floating in water.
+Back-projected cuts between two edges of the beam tree result in a vertex and a ray to trace through the two polygons which we want to sort by z.
+If all 3 rays agree on the sign, we are done. We get the vertices as cross product. The z depth of the ray can go over texture base system, with a cosine factor for comparison,
+or we just formulate it as algebra based on polygon vertices: Invert a matrix using cross products. We get a value out of this, or two.
+Of course there is some 3 volume sign interpretation to this. We have the beam and look at a segment from one polygon to the other. We have the cut between both planes. This tetraeder has a volume.
+We sure need a base vertex of each polygon and the surface normals. The cross product of the normals give use the cut edge direction. We don't know the length.
+Ah, this does not work out. Just do it algebraic, and the addition of fractions, and then look at the sign.
+
+I think that I will allow cuts only for transparent objects like water. When cuts go through a leaf, I let the pixel shader decide about 7. Not much transparency allowed in my low performance scene anyway. Jaguar needs JRISC for transparency.
+Otherwise I could probably find the cut of a cut on an edge of the beam tree by a long and tedious calculation.
+
+I want to stop to think about tree optimization. To show the principle, I use simple geometry. I once thought that 3d looks good above 1k triangles.
+Even here a totally degenerated tree does not take much time. I can keep everything in DRAM memory to pull in more precision later.
+For real first generation 3d games, the count is even lower: Virtua fighter without 3d hair, stunt car racer 3d, elite.
+I want to do descent. So a level where we see 100 polygons and one enemy with 20 polygons.
+Or need for speed: One other car with 20 polygons and a street section with 5x20 polygons.
+
 Triangle strips work well with beam trees because we will insert the shared edge into the beamtree.
 Then at least we don't cut the next triangle.
 I should sort strips front to back ( closest point of each strip ).

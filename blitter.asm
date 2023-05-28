@@ -1,3 +1,6 @@
+It is a bit weird that the Jaguar can only flat shade textured polygons. So lightning is static and shade is used to convey the 3 dimensions. No deep-cueing. Sectors for hard shadows like in Doom?
+
+
 ;Block move for the cache. So always request new data in advance? Double buffer for U and V!
 ;Params( 1,2,3,4,5,6
 ;)
