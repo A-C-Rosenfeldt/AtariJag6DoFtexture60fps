@@ -1,0 +1,3 @@
+var clippling = ;
+class Controller {
+}
