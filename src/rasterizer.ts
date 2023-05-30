@@ -32,6 +32,12 @@ class Mapper{
 	span(){
 			// Maybe start with "The hidden below": Do end points exaclty and then span. Then add Quake subspans?
 	}
+	constZ()[ //On Jaguar due to pixel mode this seems to be fastest. Longest blitter runs. Lowest CPU burden. Fits into the Doom minimize overdraw and blitter command theme
+		// this would need calculations above this for the horizon
+		// also check if Jaguar can really draw diagonals.
+		// to minimize splits, they better are only introduced when needed. For example tiles (2d vectors and decals) need splits anyway. Decals (examples: 5* , hexagon) need a beam tree
+		// so we have the real const z which governs split (2^n spans). The approx const z ( horiztontal, vertical, diagonal ) for the blitter
+	]
 	subsivison(screen:Point_Tex2[]){ // guess I have to abuse the type system to mark the basis ( marker interface , attribute  :-(  )
 		screen.sort(s=>s.point[1])
 		let blocks=[(screen[1].point[0]-screen[0].point[0])>>3 ]

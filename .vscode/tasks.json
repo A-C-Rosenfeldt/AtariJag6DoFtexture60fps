@@ -1,0 +1,70 @@
+{
+    // See https://go.microsoft.com/fwlink/?LinkId=733558 
+    // for the documentation about the tasks.json format
+    "version": "2.0.0",
+    "tasks": [
+        {
+            "type": "typescript",
+            "tsconfig": "src/tsconfig.test.json",
+            "problemMatcher": [
+                "$tsc"
+            ],
+            "group": "build",
+            "label": "tsc for node"
+        },
+        {
+            "type": "typescript",
+            "tsconfig": "src/tsconfig.json",
+            "problemMatcher": [
+                "$tsc"
+            ],
+            "group": "build",
+            "label": "tsc for edge"
+        },
+        {
+            "type": "typescript",
+            "tsconfig": "src/tsconfig.json",
+            "option": "watch",
+            "problemMatcher": [
+                "$tsc-watch"
+            ],
+            "group": {
+                "kind": "build",
+                "isDefault": true
+            },
+            "label": "tsc for edge and watch"
+        },
+        {
+            "type": "typescript",
+            "tsconfig": "src/tsconfig.test.json",
+            "option": "watch",
+            "problemMatcher": [
+                "$tsc-watch"
+            ],
+            "group": "build",
+            "label": "tsc for node and watch"
+        },
+        {
+            "type": "typescript",
+            "tsconfig": "test/tsconfig.json",
+            "option": "watch",
+            "problemMatcher": [
+                "$tsc-watch"
+            ],
+            "group": "build",
+            "label": "tsc for node and watch test"
+        },        
+        {
+            "label": "[Mocha] Run Tests (relative to Workspace-Folder)",
+            "type": "shell",
+            "command": ".\\node_modules\\.bin\\mocha --recursive",
+            "group": "test",
+            "presentation": {
+                "echo": true,
+                "reveal": "always",
+                "focus": false,
+                "panel": "dedicated"
+            }
+        }
+    ]
+}

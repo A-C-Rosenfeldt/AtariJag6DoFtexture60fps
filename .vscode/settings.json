@@ -1,0 +1,5 @@
+{
+	"mochaExplorer.configFile": ".mocharc.js",
+	"mochaExplorer.mochaPath": "node_modules/mocha",
+	"mochaExplorer.logpanel":true,
+}
