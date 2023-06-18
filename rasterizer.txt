@@ -9,6 +9,21 @@ So when the scanline is really long, divide the rest in 16px or 8px spans.
 In between, switch on perspective correction on the edges.
 The top and bottom tip can stay affine.
 
+Set up changes the least from line to line for affine mapping with subpixel correction ( we don't recalculate delta per scanline).
+
+Color Ram can be used as texture cache because I don't plan to use palette in my artstyle anyway, but I need all GPU RAM for vertices. Or whatever, anyway,
+Skyhammer showed that the small cache is best used when we draw quads.
+The blitter can efficiently copy a rectangle from DRAM to color RAM. I mean, yeah: 2 cycle read, 1 cycle turn around,  4 cycles for write. But for a Jag this is fast, especially when we zoom in, or reuse tiles.
+Again, the 8x8 quads on the output are beat. Just like on N64 the way to go is to split up a large polygon into a grid of quads. But similar to 3do we rely on this also for perspective correction.
+I guess that recalculation of the gradient per scanline is faster than drawing two triangles. Maybe we can draw the top and bottom of the quad as triangles.
+
+Also: Drawing direction can be choosen, for longer runs! And we can use rectangles for longer runs. Regarding the beam tree: Maybe we don't fuse leaf nodes if this busts the cache.
+Quads don't dominate our geometry. We can still have Doom Mesas. We load rectangles based on the rays casted from the BeamTree leafs.
+For small quads skinned onto a model it makes sense to to store them in a page. Though one page flip per 16px .. just read how many cycles each pixel needs right now. Ah, the blitter eats one cycle per line change and the page flip would eat two more.
+This hardly justifies another code path. We don't cache on scale down!
+Or at least we would only cache the output. But it does not help much as we have page misses all the time anyway.
+The Jag has enough RAM so that we don't need tiles.
+
 Squares are so attractive because they don't need the edge calculation.
 The spans can be shorter and the GPU is still faster than the blitter.
 Squares only make sense for large triangles.
