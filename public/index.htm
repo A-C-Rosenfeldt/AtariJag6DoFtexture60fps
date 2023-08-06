@@ -13,5 +13,79 @@
 <p>
 Set up local node to be able to test. Compile to public for github pages to show off.
 </p>
+
+<h2> General: Perspective approximate tasterizer modes with cache</h2>
+<h3>compact</h3>
+<p>
+	We have small triangles, where the whole texture fits into the cache and where perspective is not really relevant.
+	Even if the texture acces is not compact, we can store all addresses, load them in a burst, and then render also into a cache.
+</p>
+<h3>slithers</h3>
+<p>
+	Slithers may have a direction, so we may want to render them allong S-N, or SO-NW .
+	Input and output could both live in a cache of key-value pairs.
+	Perspective may be relevant if -- along the axis -- z changes a lot.
+	I'd say: Subdivide triangle into pieces along the line.
+</p>
+<h3>Getting larger</h3>
+<p>
+	Calculating the endpoints along each scanline. Caching scanlines of texture.
+	If we scale up the texture, really a whole line can be cached.
+	If we scale down, we need key-value pairs.
+	Maybe try constant-z if random output is fast.
+</p>
+<h3>Really large</h3>
+<p>
+	To ultilize the texture cache we can either split the bulk into blocks on screen and render these.
+	Or we split the texture into blocks ( if we scale up ). Mini Quads can be rendered. Skyhammer shows how fast this is.
+	Skyhammer mostly lacks good occlusion culling and a fast renderer for the high detail ships.
+	Border texels can be cached when we go along a strip.
+</p>
+<p>
+	Either way, we will need to fill the margin to the real polygon edge using one of our know ways.
+	Now, with the quad split, small triangles come to mind. Will also work with the blocks.
+	But with the blocks, can we utilize the alignment on screen for spans?
+	The problem is anyway, that edges take up more calculation time, while the bulk takes up fillrate.
+	Can we trade? We would need twice the cache.
+	Indeed for medium large polygons, subspan rendering wins. Maybe with zigzag.
+	These few cache misses are probably less bad than all the overhead with the stitching.
+</p>
+<p>
+	It might be interesting to use some integer magic to try and only calculate on real pixel positions like for the blocks.
+	Of course tha Jaguar blitter wants linear interpolation.
+	Probalby, it is the only one, who thrives on constant-z ( 8 render directions).
+	But let's just think of a general software renderer.
+	How expensive is correction per pixel really? Z in floats should be fast. We only need an approximation.
+	There is so much overhead at the edge. Maybe even the 18 cycle div of jaguar is okay.
+	Then I need to multiply with 16 bit values. Probably needs a shift before that.
+	Perspective pixels sure are expensive, but also balanced.
+</p>
+<p>
+	I really want to avoid extrapolation. Hence I need to calculate all edge pixels perfectly.
+	Or, how expensive is it to finde concave pixels. So probably at the vertices, 3 px are convex.
+	Bresenham tells me if a pixel is extra, but at the same time I want a regular cadence,
+	ideally on the lines of the blocks. Blocks are probably aligned to something in the frame buffer:
+	Phrase form horizontal blocks. Pages may encompas 4 lines.
+	Now these lines will probably not be good vertices for edge subdivision.
+	There does not seem to be a way.
+	So calculate on the edge? I could have a 1/x table for small integers.
+	Still, brute force full correct calculation is attractive.
+	So Warnock's subdivision? In bulk we may want to meander for the cache (of perspective correction), but with 8x8 blocks we are already 90% there.
+	So sure Warnock at the edge is no problem.
+	Still, what is the idea: Only meander over nodes fully within the polygon. Interpolate.
+	With partial blocks, change the order ( rotate? ) if a pixel of an inside block touches.
+</p>
+<p>
+	This thing would need to run on software on the Jaguar. For competitive framerate only a limited number of pixels may be processed in this way.
+	I think that a fast hardware solution would have been possible.
+	The blitter and JRISC would have to share DIV and MUL.
+</p>
+<p>
+	I guess that I cannot cache for 8x8 blocks for the Jaguar. The blitter does not tell me,
+	unlike PSX where the blitter goes through the hardware cache.
+	I just write this to say what would have been needed.
+	Maybe even Doom could render walls 4 at a time ( so 80 columns low res with 4 sub colunns). Should be fast.
+	On the Jag I cannot wrap around a texture cache, so sweep is too slow anyways.
+</p>
 </body>
 </html>
