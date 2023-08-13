@@ -39,7 +39,9 @@ Set up local node to be able to test. Compile to public for github pages to show
 	To ultilize the texture cache we can either split the bulk into blocks on screen and render these.
 	Or we split the texture into blocks ( if we scale up ). Mini Quads can be rendered. Skyhammer shows how fast this is.
 	Skyhammer mostly lacks good occlusion culling and a fast renderer for the high detail ships.
-	Border texels can be cached when we go along a strip.
+	Border texels can be cached when we go along a strip. Just the Jaguar cannot cache very well.
+	To avoid short spans, use hexagons. Split the top edge of the quad in the middle, so that one piece is horizontal.
+	The next row of quad is shifted by half a quad to create this hexagon pattern.
 </p>
 <p>
 	Either way, we will need to fill the margin to the real polygon edge using one of our know ways.
