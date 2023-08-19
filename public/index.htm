@@ -89,5 +89,12 @@ Set up local node to be able to test. Compile to public for github pages to show
 	Maybe even Doom could render walls 4 at a time ( so 80 columns low res with 4 sub colunns). Should be fast.
 	On the Jag I cannot wrap around a texture cache, so sweep is too slow anyways.
 </p>
+<p>To showcase I want zero overdraw. I better not have transparency and hence no billboards and hence no Doom or Sega Rally with the trees ( at least in the prototpye ).
+	Low poly vector enemies exist, just no bipeds. So cars, or space-ships ( Elite, Descent, Wing Commander III ).
+	So basically, I would do Skyhammer and try to improve the frame rate both for corridor and enemies on screen. Less explosions ( later: Object Processor plugin ?).
+	Doom is the reason for this because I feel that the second pass for transparency is very taxing on memory access on the Jaguar.
+	I cannot showcase Doom anyway because the const-z renderer over huge polygons don't give much speed benefit on Jaguar.
+	Rather I'd like to impress with 6DoF. Maybe I write a loader for Descent? The first level is just beautiful.
+</p>
 </body>
 </html>
