@@ -96,5 +96,20 @@ Set up local node to be able to test. Compile to public for github pages to show
 	I cannot showcase Doom anyway because the const-z renderer over huge polygons don't give much speed benefit on Jaguar.
 	Rather I'd like to impress with 6DoF. Maybe I write a loader for Descent? The first level is just beautiful.
 </p>
+<h2>Vertex cache</h2>
+<p>Often in the code in the SDK you will see a comment how much memory is free for data. Now with caching or Dooms loading of whole slices of code this becomes a little questionable.
+	But let's assume that it is difficult to fill all 1k words with a slice of code and yeah also a lot of comment state something like 100 words free for data ( + the 64 in the registers ).
+	We could cache scanlines in CRAM. I want the Doom artstyle, which does not use palettes. So I guess that technically we could have a zbuffer and shaded texture?
+	Or we use the Doom double page fault memory to memory techique. So even the most complex shader only needs a vertex which has x,y,z,u,v, and illumination ( uv into an atlas, or pack it with some pointer).
+	6 words per vertex. We could cache 10 vertices. With the low number of polygons per frame, a vertex pointer is a single byte anyway. The whole polygon fits into a word.
+	Only for caching the mesh would be optimized to reuse the last 10 vertices if possible. With rotatin and back-face culling and occlusion culling by the beam tree,
+	a life circuit might use a greedy algorithm which keeps a list of all polygons which we have all vertices for, then for which one is missing.
+	With DRAM to DRAM rendering there is no speedup from clustering two triangles into a quad.
+</p>
+<p>I feel like I need to keep almost all vertices of a mesh in cache for the beamtree ( self occlusion).
+	The tree dictates the drawing order. Since the Jaguar cannot wrap around a texture, I could just as well skin a lot of objects and shade those. Uh memory is low.
+	Blitter ADDDSEL can do this, but it cannot interpolate light intensity. Also CRY has no gamma correction and ADD is not MUL anyway.
+	Only thing Jaguar CRY does for us is to keep the color.
+ </p>
 </body>
 </html>

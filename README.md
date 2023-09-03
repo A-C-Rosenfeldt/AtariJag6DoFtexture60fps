@@ -204,6 +204,23 @@ LoD. Abstract polyhedrons. Computer Solid Geometry : Unions
 So I want to copy rectangles using phrase mode. I want to copy object/structs using phrase mode.
 I hope to load balance both CPUs. So I start with freeing DRAM as much as possible and later may outsource some code or data.
 
+If I could turn back time, the Jaguar should have been able to only activate some bytes of the 64 bits.
+The memory controller would keep the pages for all 8 bytes.
+Then memory could be configured to only place texture information into 8 or 16 bits of each phrase.
+Place z-buffer and frame buffer in the other bytes.
+This would probaby look a bit akwarked to the CPU while it loads the texture, but maybe the blitter can to the expansion.
+Textures are great to reduce the need for popping geometry LOD. Mippmapping feel too complicated and popping for Jaguar.
+So it would have needed cheap random access to single texels. Maybe neighboring texels at least reside in the same page, but even one fetch every 4 cycles would be okay if there was an internal queue
+to bridge the line breaks. Framebuffer needs 16 bit and zbuffer needs it and video read out access them and hence they get more bytes.
+SNES mode-7 would need 3 independent buffers, but timing on Jaguar only allows to interleave 2 banks before wait cycles kick in.
+A GPU access could trash both pages, but luckily everyone else works on 16 bit and would only trash the page of one of the bank.
+Yeah, one could dream.
+
+These weird banks feel like a drakonian measure. Probably, mipmaps and a cache of the last 16 phrases would be better. And an output cache of the same size.
+Developers could tune the switch points for speed. Switching would be along phrase boundaries ( for speed ).
+This also works for the popular 16 color textures (4x4 texels in a phrase).
+To speed up sky boxes made of bulky polygons, we need and infill of 4x4 boxes which utilize bilinear interpolation.
+
 ## Linebuffer -- 60 fps
 
 So the Jag has this cool line buffer. I hope to make my scene graph code flexible enough,
