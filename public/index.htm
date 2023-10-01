@@ -13,8 +13,44 @@
 <p>
 Set up local node to be able to test. Compile to public for github pages to show off.
 </p>
-
+<h2>Beam tree and large integers</h2>
+<p>Pure beam tree has the smallest code size (important for the cache in Tom) and a low number of comparisons (large integers to maintain).
+	Later I may have a tree with overlapping children. So like every node has 16 children. Then when I go into one of it, I only keep those with overlap.
+	On any merge the overlap between all children on each side needs to be checked using, yeah, a BSP? Or not? So only pair-wise? Sounds silly. So a price to pay for avoided splits. But the 3d level also is not supposed to be pure BSP.
+	Still BPS is the boundary volume hierarchy. There is no AABB nor a sphere ( though I learned that collision better uses a sphere and not the drawn geometry, which might get stuck too easily ).
+</p>
+<p>MMULT seems to be a way to calculate large integer multiplication fast. For this we go diagonally through the 12 bit parts. It is important to cache many factor segments on register page 1 .
+Maybe again, exception handling is slower than just MOV,ROR,OR,MOVETA (interleave to do two at the same time) and STORE everything
+and then run all the MMMULT over it and finally NOP ADDC NOP STORE ADC NOP STORE ADC NOP STORE these.
+At least this looks very much like a single stage exception. The moment 16x16 is not enough, we switch.
+I feel like the factor in memory should stay 16 bit, but in the register (packed) I introduce 0000 and reduce them to 12 bit.
+So 32 bit in. MOV. AND 0FFF. ROR 8. MOV. AND 0FFF 0000. OR . The same with the hi-word. Kinda, and then we AND together the bits which cross the border to the hi word.   
+</p>
+<p>
+	Division is already 32 bit. So in case that the reminder is below the denominators in absolute value, we will have to decide the last bit (may need to inc or dec).
+	I use division only to get integer pixel coordinates, so like 9 bit. And for slopes, which become horizontal lines above 9 bit + sign. For texture coordinates.
+	Ah, I see. The Blitter wants a binary fraction. I guess I should set the fixedPoint bit before division.
+	The transformation matrix has fixed point components (not individually rounden, but as intended) so that we can have this PoV without loss of precision. 
+</p>
+<p>I can use LoadP;Load;Load and Store;StoreP;Store for bus friendly large integers (96=6*16=8*12 bits) in main memory.
+I may have written this elsewhere, but for the beam tree decisions I need at least the sign of a volume ( 3 factors ).
+But additionally, I want to know the rotation of 3 edges on screen. Edges which share no vertex because, uh, thats what happen when for example a robot, a room, and part of the stuff behind a portal overlap.
+So we ask? Do the overlap completely, or do they leave a hole? We let the edges form planes with the camera position ( cross product each => normals, 2 factors each ). We then have to break symmetry.
+Two planes create a cut ( cross product in turn of the factors ( 2+2=4)).  Then we need to check the sign this edge creates with the third plane. So 6 factors in total.
+</p><p>
+	I just read that people have trouble to stabilize CAD. They also wonder why Doom BSP is stable. Also Doom BSP showed tears on PC. I feel like for exception, 6 times the number of bits might be okay.
+	Most comparison only compare vertex to edge, so ... I am curious about the statistics.
+</p><p>
+The UV cooridnates on texture also introduce additional factors. If the texture is aligned on both edges, we only get scaling .. so 5 factors?
+Like we have the camera vector to one vertex of the polygon. Then we have the view vector and U and V.
+For some reason the most simple way to get Z (of the view vector), U and V is by Matrix inversion. So 3 factors for the denominator.
+U and V now go from 0 to 1 along the edge. So to hit a spcific UV on the other vertex, I just need to do multiplication with a matrix => 3 factors also in the nominator. 
+</p>
 <h2> General: Perspective approximate tasterizer modes with cache</h2>
+<p>A lot of CPU time will be spent on drawing small textures, partly occluded textures, and textures where wrapping needs to be calculated on Tom.
+	Here the end points are calculated on Tom and then only a small span is interpolated. Long spans with some threshold x*z are an exception.
+	With Texture wrapping and subspans there is a shared pixel (with wrapping: Y needs to be (inc/dec). I think, it wraps around in lines like text)
+</p>
 <h3>compact</h3>
 <p>
 	We have small triangles, where the whole texture fits into the cache and where perspective is not really relevant.
