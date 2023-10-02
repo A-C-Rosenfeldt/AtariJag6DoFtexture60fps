@@ -14,7 +14,10 @@
 Set up local node to be able to test. Compile to public for github pages to show off.
 </p>
 <h2>Beam tree and large integers</h2>
-<p>Pure beam tree has the smallest code size (important for the cache in Tom) and a low number of comparisons (large integers to maintain).
+<p>The beam tree is motivation alone. Start with a low number of polygons in a soup. Add BSP and portals to render roughly front to back and to terminate rendering in a dungeon ( yeah, old 90s look ).</p>
+<p>Pure beam tree has the smallest code size (important for the cache in Tom) and a low number of comparison. Probalby neither large integers nor float will fit into the cache.
+	All case which need exceptional precsion would require a code swap or a queue.
+	I keep the mesh in memory. This may even be an application for the DSP. On the other hand the high bit count code is low on branches and could run in main or interleaved.
 	Later I may have a tree with overlapping children. So like every node has 16 children. Then when I go into one of it, I only keep those with overlap.
 	On any merge the overlap between all children on each side needs to be checked using, yeah, a BSP? Or not? So only pair-wise? Sounds silly. So a price to pay for avoided splits. But the 3d level also is not supposed to be pure BSP.
 	Still BPS is the boundary volume hierarchy. There is no AABB nor a sphere ( though I learned that collision better uses a sphere and not the drawn geometry, which might get stuck too easily ).
@@ -146,6 +149,26 @@ U and V now go from 0 to 1 along the edge. So to hit a spcific UV on the other v
 	The tree dictates the drawing order. Since the Jaguar cannot wrap around a texture, I could just as well skin a lot of objects and shade those. Uh memory is low.
 	Blitter ADDDSEL can do this, but it cannot interpolate light intensity. Also CRY has no gamma correction and ADD is not MUL anyway.
 	Only thing Jaguar CRY does for us is to keep the color.
+ </p>
+ <h2>Float on JRISC with MAC</h2>
+ <p>
+	Stored vectors and matrix share a single exponent. Multiplication is easier for floats than Add.
+	We use the exponent to treat precision. Basically, it should be relative precision, where every operation along the path eats one tick. So like the last 2 bits are epsilon (in worst case).
+	With floats we may be able to shift up everything a little and get our of epsilon ( just by chance because there are less zeros overall).
+	It is a bit unfortunate that we need to keep the norm of the vector %lt; 1 and not max value ..  so that the inner product cannot overflow.
+	But how does the code look like? Max has a lot of branches in JRISC. I wonder if norm is faster because we only need one source register per cycle. But needs a shift prior because MAC has not carry flag 
+	(maybe add Branch On Zero to catch 1 ? ).
+	Also we norm right after the last multiplication we can reuse. Not much. Then bscan, compare and shift ( 1/sqrt for the exponent) ( and store while we are at it?) .
+	The problem here is that (positive?) integers with all their bits cannot carry over (11*11=1001), but if we shift in fractions, a carry may be translated?
+	Would be a pity to need to CMP.
+	Don't norm up. I mean, like the camere position and rotation has full 16 bit, but the the edge directions of texture wrapping may not.
+ </p>
+ <p>
+	Precision is actually the more interesting part. We have the irrational camera. We lose bits on normalization ( or basically on multiplication because they are shifted out towards the right).
+	epsilon is based on worst case rounding in MAC. So the last bit of MAC is it? Or half of it.
+	If we normalize throughout, we start with length &lt; 1. So we would only shift left compared to fixed point. Ah, this blows up the epsilon (SHL) from previous calculations.
+	The good thing is, that the later calculations are not critical anymore ( their ticks).
+	Ulitmately the camera position (beam tree) and direction (frustum clipping and texture ray cast) may become critical.
  </p>
 </body>
 </html>
