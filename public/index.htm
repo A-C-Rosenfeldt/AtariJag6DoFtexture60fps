@@ -162,13 +162,28 @@ U and V now go from 0 to 1 along the edge. So to hit a spcific UV on the other v
 	The problem here is that (positive?) integers with all their bits cannot carry over (11*11=1001), but if we shift in fractions, a carry may be translated?
 	Would be a pity to need to CMP.
 	Don't norm up. I mean, like the camere position and rotation has full 16 bit, but the the edge directions of texture wrapping may not.
+	Or do it? But keep the exponent. For texture mapping we multiply the camera postion in almost at the beginning. Would be a pity to throw away some of the 32 bit results bits.
+	Then I don't want to feel bad about arbitrary texture wrapping around a mesh .. so more bits. Even if I stick to 8 bit texture cooridnates .. I don't want to feel bad that I even have to add these
+	; compared to forward projection as done on PSX.
+	So exponent is not only for epsilon, but also for Division.
+	Division better fills all 32 bit in the nominator and then we shift the denominator based on the exponent.
+	If we fill up the denominator, we get quotents around 1. Textures are not huge in Jaguar, but something up to 256 may be needed and can happen thanks to an 8 in the exponent.
+	Only for these large textures the precision of DIV 16.16 becomes limting. To be period correct I want to stick to 64 texel large Doom textures anyway.
+	Feels weird to have 16 bit fraction increments per pixel. Maybe I should not make this my fault. So 256 textures are okay. Even with fixed precision nothing will jump around the screen.
  </p>
+ <p>Can full precision reuse the exponent? Full precision sounds like I did not understand irrational numbers. Maybe try MMULT just to add 12 ls bits at a time (DSP).
+ADC and StoreW only in case. I feel like LoadW;iMul;add;adc;LoadW .. wins thanks to the slow bus.	
+</p>
  <p>
 	Precision is actually the more interesting part. We have the irrational camera. We lose bits on normalization ( or basically on multiplication because they are shifted out towards the right).
 	epsilon is based on worst case rounding in MAC. So the last bit of MAC is it? Or half of it.
 	If we normalize throughout, we start with length &lt; 1. So we would only shift left compared to fixed point. Ah, this blows up the epsilon (SHL) from previous calculations.
 	The good thing is, that the later calculations are not critical anymore ( their ticks).
 	Ulitmately the camera position (beam tree) and direction (frustum clipping and texture ray cast) may become critical.
+ </p>
+ <h2> useless beam tree cuts</h2>
+ <p> If a polygon is cut, but all cuts are visible, draw it as one. Better apply subspan perspective correcton than to rely on cuts. This could be done per half ( upper lower of the middle vertex ).
+	This may be interesting for portals or where BSP node bounding box. Cuts without vertex or crossing.
  </p>
 </body>
 </html>
