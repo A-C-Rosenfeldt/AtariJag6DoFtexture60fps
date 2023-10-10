@@ -1,3 +1,3 @@
-var clippling = ;
+import "clippling";
 class Controller {
 }

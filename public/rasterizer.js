@@ -24,7 +24,13 @@ class Mapper {
     span() {
         // Maybe start with "The hidden below": Do end points exaclty and then span. Then add Quake subspans?
     }
-    constZ() { }
+    constZ() {
+        // this would need calculations above this for the horizon
+        // also check if Jaguar can really draw diagonals.
+        // to minimize splits, they better are only introduced when needed. For example tiles (2d vectors and decals) need splits anyway. Decals (examples: 5* , hexagon) need a beam tree
+        // so we have the real const z which governs split (2^n spans). The approx const z ( horiztontal, vertical, diagonal ) for the blitter
+        // even if diagonal does not work, the other two are more important anyway
+    }
     subsivison(screen) {
         screen.sort(s => s.point[1]);
         let blocks = [(screen[1].point[0] - screen[0].point[0]) >> 3];
@@ -38,6 +44,7 @@ class Mapper {
             // center grid on the bounding box
             blocks[1] = 3; // todo find x min max
             // slope -> array of xs -> all corners as control point candidate -> fraction histogram  (in 2d)
+            // merge leafs before blocks
         }
     }
 }

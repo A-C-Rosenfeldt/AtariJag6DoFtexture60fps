@@ -1,5 +1,5 @@
-import clippling
+import "clippling"
 
 class Controller{
-	// input device => position 
+	camera:number[] // input device => position 
 }

@@ -112,43 +112,45 @@ class Z_order{
 		// v=direction+reach[0]+reach[1]
 		// inverse 
 		// transpose
-		let r0=v.innerProduct(direction.crossProduct(reach[1])) / spat
+		//let r0=v.innerProduct(direction.crossProduct(reach[1])) / spat
 	}
 }
 
 class Edge{
-	constructor( anchor:vec3, direction:vec3){
+	constructor( anchor:Vec3, direction:Vec3){
 
 	}
 }
 
 interface Split{
-	get_rotation(edges:vec3[]):number
+	get_rotation(edges:Vec3[]):number
 }
 
-class AroundVertex extends Split{
-	get_rotation(edge:vec3, vertex:vec3):number{
+class AroundVertex { //implements Split{
+	get_rotation(edge:Vec3, vertex:Vec3):number{
 		return edge.innerProduct(vertex)
 		// the normal of the edge may point in any direction
 		// gather information on all coners of the screen and look for changes of sign.
 	}
 }
 
-class Edges extends Split{
-	get_rotation(edges:vec3[]):number{
+class Edges implements Split{
+	get_rotation(edges:Vec3[]):number{
 		return edges[0].crossProduct(edges[1]).innerProduct(edges[2])
 	}
 }
 
-class Position{ // Location is reserved by JS TS
-	position:number[]
+class Player{ // Location is reserved by JS TS // also used for collision // I don't want to call it "Object" // Atari 2800!
+	position:Vec3
+	rotation:Matrix // this needs to be matrix. I tried to appreciate jagged arrays once and used vectors. It did not work out. Think of two dimensional array here ( C, C++, C#, JRISC) 
+	// for our retro systems, position is already relative to camera (thanks to scene graph .. rotation comes later)
+	// we already clipped ( backwards renderer as opposed to forward rasterizer? )
 	get_Position(){
-		return this.position[0]-this.camera
+		return this.position[0];//-this.camera
 	}
 }
 
-class Vec3_frac extends vec3{
-	
+class Vec3_frac extends Vec3{	
 	d:number
 }
 
@@ -157,29 +159,83 @@ class Vec3_frac extends vec3{
 // I had a fear that rounding leads to gaps at vertices, but with beam trees I feel a little more safe.
 // Beam trees may crash due to rounding .. no matter if forward or backward. I think even texture mapping in beam tree may lead to 1/0 due to rouding. Forward just cannot help anymore
 // Simple solution is to saturate values after we rounded to polygon-height and span width/px.
-class Projector extends Position{ // camera
+class Camera extends Player{ // camera
 
-	rotation:vec3[] // this needs to be matrix. I tried to appreciate jagged arrays once and used vectors. It did not work out. Think of two dimensional array here ( C, C++, C#, JRISC) 
-	// for our retro systems, position is already relative to camera (thanks to scene graph .. rotation comes later)
-	// we already clipped ( backwards renderer as opposed to forward rasterizer? )
+	/*
+	OpenGl has this projection Matrix.
+	But in a Beam-Tree (with infinite integers) we have separate code for position, rotation, Fov-clipping, and pixel projection
+
+
+	*/
+
+
+	const screen=[320,240]
+	scale:number[]
+
+	constructor(){
+		super()
+		this.scale=[]
+	}
+
+
+	inverse:Matrix
+
+	rotate(){
+		this.inverse=this.
+
+		
+	}
+
+	// pre multiply matrix or not? 
+	pixel_projection_texel(pixel:number[]){
+		var backwards_ray=new Vec3( [[ this.fov,pixel[0]-screen[0]+.5  , pixel[1]-screen[0]+.5 ]] )
+		this.rotation.mul([backwards_ray])
+	}
+
+	const fov=256 // It hurts me that magic values help with float. OpenGL runs on float hardware and combines this into one Matrix
+	// I need a start pixel of the polygon for the rasterizer
+	// I know that it feels weird that edges and texture are then projected backwards
+	vertex_projection_pixel(forward_ray:Vec3){
+		let m=new Matrix()
+		m.nominator=[forward_ray]
+		let fr=m.mul(this.rotation) ; // Todo: Right-Mul?  Vec.Mul() ?
+
+		let pixel=[ Math.floor(fr[1]*this.fov/fr[0]), Math.floor(fr[2]*this.fov/fr[0]) ]
+	}
+
+	vertex_projection_clip(forward_ray:Vec3){
+		for(let side=0;side<2;side++){
+			var pyramid_normal=new Vec3([[ -160, this.fov,0]]) //-160, -220 )
+			let nr=this.rotation.mul([pyramid_normal])
+			forward_ray.innerProduct(nr)
+		}
+	}
+
+	edge_projection_clip(origin){
+		for(let x=0;x<2;x++){
+			for(let y=0;y<2;y++){
+			}			
+		}
+	}
+
 	c:CanvasCaptureMediaStreamTrack;
-	transform_ray_backwards(vec:vec3):vec3{
+	transform_ray_backwards(vec:Vec3):Vec3{
 		for(let i=0;i<3;i++){
 
 		}
 	}
 
-	mul(b:number[][],v:vec3):vec3 {
+	mul(b:number[][],v:Vec3):Vec3 {
 		for(let i=0;i<3;i++){
 			inner
 		}
 	}
 
-	inverse:vec3[]
+	inverse:Vec3[]
 	denominator:number
-	set_rotation(r:vec3[]){
+	set_rotation(r:Vec3[]){
 		this.rotation=r
-		this.inverse=new Array<vec3>(3)
+		this.inverse=new Array<Vec3>(3)
 
 		for(let i=0;i<3;i++){
 			var t=r[(i+1)%3].crossProduct(r[(i+2)%3])
@@ -202,7 +258,7 @@ class Projector extends Position{ // camera
 
 	// todo: some weird OOP pattern to shift direction of transformation. Mix with a custom number type which can be fixed, float, variablePrecision
 
-	y_at_intersection(e:vec3[]):Frac{
+	y_at_intersection(e:Vec3[]):Frac{
 		if (e[0].id==border_top) {y=border_top;return} // portal renderer  or  even BSP with coverage-buffer wants this
 
 		let beam=e[0].crossProduct(e[1]) // edges are planes with a normal in a beam tree
