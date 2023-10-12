@@ -62,13 +62,51 @@ class Matrix{
 	inverse(m:Vec[]):Matrix_frac{ // see applications. May need to pull back here for unit tests
 		return null;
 	}
-	mul(trans:Vec[]):Matrix{		
+	// Matrix with vector shoud usually use the inner product for fast implementation in JRISC MMULT and for nice mathematical notation ( as opposed to the SUM sign Sigma)
+	// So here the right Matrix is seen as a collection of vectors. Somehow this works great to interpolate, but badly for rotation.
+	// Thinking of column major for the vector. We store along columns, we mmult along columns
+	// But obviously here, Matrix is row major, and the vector is considered trans.
+	mul_left(trans:Vec[]):Matrix{		
 		let res=new Matrix()
 		for(let i=0;i++;i<this.nominator.length){
-			res[i]=this.nominator[0].innerProductM(trans,i)  // base would want vector add, while JRISC wants inner product
+			res[i]=this.nominator[i].innerProductM(trans,i)  // base would want vector add, while JRISC wants inner product
 		}
 		return res
 	}
+
+	// On the other hand, matrix multiplications is symmetric with respect to its operands. Vector.Inner_product feeld weird
+	// This fits the A * A.inv() of SO3 very well
+	// A * T(A) = 1
+	// A*W_col -> C_col   ; T(A)*C_col -> W   <=> T(C_col)*A -> T(W) 
+	// <=>
+	// T(A*W_col) -> T(C_col)   ; T(A)*C_col -> W   <=> T(T(C_col)*A) -> W 
+	// So I would store vectors in World space or Vectros in Camera space in different orientation? 
+	// What if I never multiply two Matrices? ( I keep the division of the projection separated)?
+	// I lose the symmetry. My code will be full of Transpose(). Ah no, Transpose is only for rotation .. nothing else. JRISC loves transpose. For others I could let the setter maintain the transpose.
+	// BeamTree has only vector products. Texture mapping has inverse. Texture mapping is a beast: I need the product of the full projection matrix, the vertex interpolation, and the texture wrapping.
+	// it goes like: Texel coordinate * texture rotation/scale * vertex position * rotation * projection .. and then inverse.
+	// Inverse is slow. There is not point in swapping loops from inner to outer. No Transpose.
+	// So weird that the unfied Vec4 approach of OpenGL has nothing on this
+	// OpenGL goes forward over the vertices and then inverts on screen. They mix they near and far plane into this for the reason that linear interpolation without artefacts does not like large z dynamic.
+	// So we do full precision z on the edge and then affine ( style of 1993 ). For sub spans, ah I get it. Interpolation is naturally an integer thing. We want to use the full machine integer range for this.
+	// So both, texture subspans and z buffer, want the viewing frustum. It feels weird to keep dependencies for spans, like I would run along the span, and then suddenly will have to MUL to up the precision at one point,
+	// or generally pull in more precision on a lot of.. But hey, grazing incidence is not suited to subspans. So I would fall back to full software and full precision, anyway.
+	static mul(A:Vec[][]):Matrix{		
+		let res=new Matrix()
+		for(let j=0;j++;j<A[0].length){
+		for(let i=0;i++;i<A[0].length){
+			res[i][j]=0
+			for(let k=0;k++;k<A[1].length){
+				res[i][j]+=A[0][i][k]*A[1][k][j]  // base would want vector add, while JRISC wants inner product
+				// for Vector Add, we want the last index select the component
+				// So no matter what picture you have in your head ( row or column, left or right multiply),
+				// Like in OpenGL Vectors would need to live in the right factor ( the inner loop ) as input
+				// Output uses the other index
+			}
+		}
+	}
+		return res
+	}	
 }
 
 class Matrix_frac extends Matrix{
@@ -183,13 +221,13 @@ class Camera extends Player{ // camera
 	rotate(){
 		this.inverse=this.
 
-		
+		// Either I make world 
 	}
 
 	// pre multiply matrix or not? 
 	pixel_projection_texel(pixel:number[]){
 		var backwards_ray=new Vec3( [[ this.fov,pixel[0]-screen[0]+.5  , pixel[1]-screen[0]+.5 ]] )
-		this.rotation.mul([backwards_ray])
+		this.rotation.mul([backwards_ray])  // I support both directions of rotations nativeley because that is how I think of them, generally (when solving equations, or physcs, or synergy with HBV). SO3 just does not have a common denominator in neither direction.
 	}
 
 	const fov=256 // It hurts me that magic values help with float. OpenGL runs on float hardware and combines this into one Matrix
