@@ -54,6 +54,7 @@ class Frac{
 	}
 }
 
+
 class Matrix{
 	nominator:Vec[]
 	static inverse(spanning2d: Vec[]) {
@@ -80,7 +81,7 @@ class Matrix{
 	// A*W_col -> C_col   ; T(A)*C_col -> W   <=> T(C_col)*A -> T(W) 
 	// <=>
 	// T(A*W_col) -> T(C_col)   ; T(A)*C_col -> W   <=> T(T(C_col)*A) -> W 
-	// So I would store vectors in World space or Vectros in Camera space in different orientation? 
+	// So I would store vectors in World space or Vectors in Camera space in different orientation? 
 	// What if I never multiply two Matrices? ( I keep the division of the projection separated)?
 	// I lose the symmetry. My code will be full of Transpose(). Ah no, Transpose is only for rotation .. nothing else. JRISC loves transpose. For others I could let the setter maintain the transpose.
 	// BeamTree has only vector products. Texture mapping has inverse. Texture mapping is a beast: I need the product of the full projection matrix, the vertex interpolation, and the texture wrapping.
@@ -108,6 +109,33 @@ class Matrix{
 		return res
 	}	
 }
+
+class Matrix_Rotation extends Matrix{
+	// for rotation matrices this is the same as multiplying with inverse
+	// First version only uses vectors because beam tree has a lot of rays to trace which are not projected
+	// I want to leak the implementation because I count the bits. It is research code!
+	// transpose only confuses me with other Matrices
+	// Looks like Quaternions and Rotation Matrix belong together, while other Matrices don't
+	MUL_left_transposed(v:Vec):Vec{
+		let res=new Vec([[0,0,0]])
+		for(let i=0;i++;i<this.nominator.length){
+			for(let k=0;k++;k<this.nominator.length){			
+				res[i]=this.nominator[k][i] //.innerProductM(trans,i)  // base would want vector add, while JRISC wants inner product
+			}
+		}
+		return res
+	}
+
+	// Controls rotate from left. Forward ray = transposed. After the original rotation. 
+	// It only affects two oridinates
+	// Only these need to be modified, but all be read
+	// Only reason for this is here is this rotation!
+	Rotate_along_axis_Orthonormalize(axis:number, sine:number[]){
+		// rotate an normalize
+		// orthogonal: 3 products. Correction is shared 50:50
+	}
+}
+
 
 class Matrix_frac extends Matrix{
 	denominator:number
@@ -179,8 +207,8 @@ class Edges implements Split{
 }
 
 class Player{ // Location is reserved by JS TS // also used for collision // I don't want to call it "Object" // Atari 2800!
-	position:Vec3
-	rotation:Matrix // this needs to be matrix. I tried to appreciate jagged arrays once and used vectors. It did not work out. Think of two dimensional array here ( C, C++, C#, JRISC) 
+	position:number[] //Vec3
+	rotation:Matrix_Rotation // this needs to be matrix. I tried to appreciate jagged arrays once and used vectors. It did not work out. Think of two dimensional array here ( C, C++, C#, JRISC) 
 	// for our retro systems, position is already relative to camera (thanks to scene graph .. rotation comes later)
 	// we already clipped ( backwards renderer as opposed to forward rasterizer? )
 	get_Position(){
@@ -216,28 +244,21 @@ class Camera extends Player{ // camera
 	}
 
 
-	inverse:Matrix
 
-	rotate(){
-		this.inverse=this.
-
-		// Either I make world 
-	}
 
 	// pre multiply matrix or not? 
 	pixel_projection_texel(pixel:number[]){
 		var backwards_ray=new Vec3( [[ this.fov,pixel[0]-screen[0]+.5  , pixel[1]-screen[0]+.5 ]] )
-		this.rotation.mul([backwards_ray])  // I support both directions of rotations nativeley because that is how I think of them, generally (when solving equations, or physcs, or synergy with HBV). SO3 just does not have a common denominator in neither direction.
+		this.rotation.mul_left([backwards_ray])  // I support both directions of rotations nativeley because that is how I think of them, generally (when solving equations, or physcs, or synergy with HBV). SO3 just does not have a common denominator in neither direction.
+		// something position?
 	}
 
 	const fov=256 // It hurts me that magic values help with float. OpenGL runs on float hardware and combines this into one Matrix
 	// I need a start pixel of the polygon for the rasterizer
 	// I know that it feels weird that edges and texture are then projected backwards
-	vertex_projection_pixel(forward_ray:Vec3){
-		let m=new Matrix()
-		m.nominator=[forward_ray]
-		let fr=m.mul(this.rotation) ; // Todo: Right-Mul?  Vec.Mul() ?
-
+	vertex_projection_pixel(vertex:number[]){
+		let forward_ray=new Vec3([vertex,this.position])
+		let fr=this.rotation.MUL_left_transposed(forward_ray)
 		let pixel=[ Math.floor(fr[1]*this.fov/fr[0]), Math.floor(fr[2]*this.fov/fr[0]) ]
 	}
 
