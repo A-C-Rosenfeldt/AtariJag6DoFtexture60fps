@@ -1,0 +1,159 @@
+OpenGL-like Matrix-approach and Guard-Bands to transform vertices precisely to screen coordinates
+
+So I browses the sources agian, but now thanks to the training I can read it better.
+It has a lot of boilerplate code. It uses NORMI to get max precise clipping.
+It uses MMULT for rotation and translation ( puts 1 into the packed registers).
+Vertices are 16 bit in world coordinates. I guess 68k usually writes them at load. Probably we should generate specific matrices for ships and cars. For bipeds I would go 32 bit.
+
+So cycle and space consumption by boilerplate code is so huge that even extreme MMUL application is better.
+So the code does many linear transformations to the vertices, but not combine the matrices. I guess that they worry about precision.
+We can split the bits of the matrix entries over different matrices and later SAR and ADD the results (the SDK also uses SAR).
+Even 3 or 4 matrices are still quite fast. Then I won't care about precision lost due to 32 bit camera position on a large race track anymore.
+Also sniper field of view is no problem. All the nice things 32 bit gave on PC then also work on Jaguar.
+
+DIV does unsigned 16.16 division. We use it as last instruction to get our also unsigned (see address generator) pixel positions.
+For this we need to clip negative vertices and those where the x nominator is more than 512 the denominator.
+You know, mul can only do 16 bit, but SHLq can do 32 bit and is single cycle. CMP is 32 bit.
+I would even say: Let's set up the address generator to use addresses centerred between 0 and 1024. Then with the OP we pick only this center.
+We manipulate buffer start and overlap front and back buffer to still use all memory.
+This creates guard bands. This means that for many polygons, even if they are clipped, we have their transformed vertices available.
+MMULt goes VRROOM, code is small. Anyone tried the carry flag after MMULT? Is there proper sign extension? I could use it like JMP CC ; ADDT bitPosition, next significant word .
+
+So even the SDK uses NORMI for max precision. So what if we want subpixel correction, and generally fill the 16.16 Address generator and Z-Buffer register with their full precision?
+One bit of the z buffer is used to mark even and uneven frames in indoor levels so that we don't need to clean it. Indoor levels on the other hand need occlusion culling. You decide.
+We can use normI to SHR nominator and denominator before DIV. So at least the nominator will have full 32 bit precision ( we pull that from the lower precision Matrix).
+For the ration to range from 0 to 1023, the denominator needs to be smaller by 10 bits. So we lose some precision here.
+Actually, we could make it smaller by 8 bit, and then shift the ratio up by two bits. So we use the same 8 bit twice so to say.
+There is even a reminder which can be used to create a 32 bit ratio. DIV is slow, but it runs in parallel.
+I think that it has no conflict with MMULT. We may be able to reuse the output from MMUL directly to save a load from register file.
+Notice how MMUL is in conflict with the real load from memory. We need to issue those beforehand.
+Also we only divide only once, because we need a high precicsion 1/Z for the z-buffer and perspective correction of subspans.
+So again multiplication is the most limiting. x * 1/z . Here the x segments from the matrix product can be used. We need to split z, but can then use it for x,y,Gouraud, and texture coordinates.
+
+For texture mapping we need to take the vertices on the screen as a 2d matrix and invert them. Importantly, we divide by the determinant.
+The sign of this determinant tells us which face we see. So here we can apply cheap back-face culling.
+This methods prevents me form drawing any other polygon than triangles.
+So again multiplication and division happens ( per polygon ). I propose to do this also at high ( variable ) precision.
+Either we use subroutines (two jumps only cost two cycles and we save SRAM, no stack because like in the SDK we stick to one level of call depth),
+or some fancy macro assembler, or some loader similar to the LRU cache loader. This way we can play with precision.
+
+Subpixel correction means that we move from the real vertex postion to a pixel position. We need to multiply this pixel fraction with our delta values.
+Good thing is that these fractions are already 16 bit and we can just use IMULT. No big deal. Only once per polygon. No excuse for PSX-wobble.
+IMULT needs two inputs. Mabe we can interleave like movefa; movefa; IMULT; IMLUT  to also not have a problem with register usage?
+A bit more interesting is screen space clipping. So draw from top to bottom. So we check if y is visible. Then either out or jump to upper border.
+For each scanline we do the same checks for x ( maybe swap registers and resuse code?). Jumps cost us multiplication.
+There is a special case ( oh no, more code ): If we clipped the left x in the previous scanline, we just move downwards. We have those delta values.
+Indeed for edges, we need to calculate a delta. Either we take it from the inverse matrix ( for some esotheric rounding dogma maybe), or we go from the source and calculate delta along the edge.
+Now with each scanline advance we move integer pixels. So we still need to mix in the subpixel correction to give us delta values along y++, x+=integer screen vectors.
+But corrections only need 16 bit -- happy!
+
+There seem to be trapezoid renderers in of largly different code size. FYB is too large. I need texdraw1.inc . In my book we y++, loop over left and right edge and x+= . We delta all values. Then we check if our pixel ray is outside the edge ( Bresenham ).
+In this case we x++ on the GPU, and only then inform the blitter. For a super fast y loop we could have have pre calculated deltas for all the values.
+Or uh, with many values it may make sense to round to nearest. So we could also accept to be one pixel too much inside. But in more than half of the cases (slopes) we would be correct.
+We need one more Branch for this ( is branch after branch okay? Like if the second branch cannot be taken if the first was? > = < ?).
+And then some SUB . Okay, why is there QT, but no T alone? We don't care here. Just be happy about ADD, SUB symmetry.
+In pixel mode We could also start drawing from clipped sides and the side with the most integer slope. Branches, code size. Need to test.
+Sorting edges by Y and sorting slopes should not take much code. Maybe we need a subroutine to swap a set of registers?
+
+So now we have 32 bit values which can be used by the blitter. Vertical increments are done by the GPU, which also happens to use 32 bit.
+Registers in the blitter are interleaved for some strange reason. It may be possible to mimic this in JRISC and keep words in a swapped position.
+So the low word is actually a high word, which never carries over. The high word is the low word whose carry we ADD ( not ADDT), ADC .
+I think Gouraud has detangled the registers.
+
+Subspan Perspective correction does DIV and two MUL per span. Span length is typically tuned to the hardware.
+You measure how long JRISC needs, and then set the span length to the nearest power of two ( could even be done in level load code).
+I had a hard time to understand precision and the name "correction". I feel like, we are supposed to do affine transformation at max precision, and then have a z correction factor close to 1.
+Like billboards (Object Processor) always have this correction exactly 1. It deviates more the more oblique our viewing angle becomes.
+So for division we could try to deal only with the small deviation up to a certain angle? At least it looks like we should stick to affine for minimum jitter for a lot of polygons!
+DIV does not help us much here, but still we can use most of its bits. But then comes the correction part: We implement the multiplication of the 1 bit ourselves. We just use ADD (32 bit).
+So NORMI Z , DIV, SHL, ADD. Subspans give OP time to load the linebuffer.
+
+And also we don't really use Z, but W. OpenGL introduces near and far clipping planes, to make best use of the integer precision in the blitter.
+Like in OutRun for example we don't want to see an individual truck pixel scaled up to the whole screen. Also there is a viewing distance.
+The Matrix does this for us. The nice property "1/W is linear in screen space" stays intact. Jaguar SDK for some reason does not have these planes.
+Only a fiew polygons will hit near and far plane. So clipping is no performance problem.
+
+The JRSIC code in the SDK, F4L, and Doom has very long stretches of instructions without flags or branches.
+So it should be possible to interleave (using a tool) transformation and rasterizer.
+The cases where the blitter is busy at the next instruction should go down.
+With all those memory constraints there may not be much leeway to decide when to transform. Going from one polygon to the next can change up to 3 vertices.
+We may also want to set-up the next triangle in the background.
+So we have a range for the queue filling. We have a span length and line count. We may try to evenly mix blitter commands with the GPU work.
+Anyway, the code will not be interleaved. We calculate edges just before the blitter instruction, and we do all the other calculations 0 to n times after that.
+MMULT is necessary to get by with the registers. Interrupts would make this even worse because I could not manage temporary registers.
+Now I just block interrutps and get to use the stack pointer as ultima ratio. Ah, I could always do that.
+So would there also be a queue for polygon set-up? 
+
+The SDK uses normi. With the matrix on larger levels, maybe the world vertices better come as float? Not normalized with a common exponent which just stays outside of all the matrix stuff.
+We have to shift the 1 in the W component upfront. Upon divison the exponents cancels itself. Translation and packing X and Y is like:
+LOADP;LOAD;SUB;SUB;SHR 16;SHR 16;SHL 16; or; moveta .
+
+As a big fan of CRY colors I don't need much color RAM. Still maybe some will like to have GPU RAM available for this as in the SDK.
+More importantly, free GPU RAM allows us to cache more transformed vertices. It may even be feasible to transform the next object or chunk, while the previous one is rasterized.
+Now that I see all the instructions the poor GPU needs to execute, I feel like it should never have to wait on the blitter.
+So each scanline, one of the next vertices is transformed. Maybe even use a sliding window for the vertices as in LZ compression.
+We transform one new vertex. The polygons refer to any vertex in the window. High precison vertices with lots of attributes are large.
+So it may makes sense to give compile their last usage into the model to free the cache.
+
+I tried to read the F4L code again, but it is just too lengthy. No MMULT no normi . Looks like a lot of micro-optimizations. I may steal the blitter code though.
+The way the SDK does every transformation step explicitly is compatible with a beam tree, so I will have to stick with that.
+I mean, the code has to be loaded in a second pass to render all the polygons which span the guard band.
+So the guard band is an optimization for speed just like the beam tree. It costs code size.
+
+The openGL render pipeline really profits form a z-buffer and good 3d also really needs shading ( I miss it in F4L).
+So we probably need to render in two passes going through colorRAM. (why even use gpuRAM with this alignment problem?).
+I want CRY color. Maybe reserve 16 palette entries for stuff, dunno.
+The sliding window with compiled objects and chunks and the triangles only ( no quads ) don't really let us render multiple small spans at once.
+So KISS it is. One triangle at a time.
+When we clip Gouraud per polygon, I would not need to saturate per pixel in software. Same for z. So the software rasterizer is quite simple a lot of adds ( as seen in the SDK and thanks to 
+the alternative access to those registers at F0227C--F02298 ).
+We don't need to back calculate Z or I values because we re-start within the span. Yeah, another wait for the blitter, but we have two edges to trace anyway. And only the blitter can draw 3px of a phrase in one go (and Z and I).
+The engine should tune itself on the title screen with DSP, OP, and 68k load, but it looks like px-mode wins for any span below 16px and phrase mode above that. Subspans at least share one z-buffer slope.
+
+Caching a shaded textures in colorRAM sounds great espcially when zooming in, but z-buffer then works in px-mode which makes slow because: read, compare and write happens per pixel.
+You may use it for a skybox and then clear the z-buffer globally in the one vertical retrace which falls into (or adjacent to) the skybox drawing (which is so stupidly slow on Jaguar and eats a whole frame ).
+
+And for sound I found FS02_50.DAS:
+;____________________start of I2S interrupt service routine__________________
+;______________________________________________________________________________
+
+; Sample Rate interrupt
+
+i2s_isr:
+
+; Put the Flags register away for safe keeping!!!
+
+	move	r20,r30			; get flags ptr
+
+	load	(r30),r12		 ;load flags
+
+; Now we need to actually store the data to the DACs here
+	move	r21,r28			; get output counter
+	shlq	#3,r28
+	movei	#buffstart,r29		; r29 will be read location
+	add	r28,r29
+	move	r9,r28			; get address of DAC
+	load 	(r29),r30
+	store	r30,(r28)
+	addq	#4,r29
+	addq	#4,r28
+	load 	(r29),r30
+	store	r30,(r28)
+; And finally increment the OC (Output Counter)
+	addq	#1,r21
+	bclr	#3,r21
+		
+; The following code is the magic to do an rte
+; Assuming that the Flags are in r12
+
+	move	r20,r30			; get flags ptr
+
+	bclr	#3,r12			; clear IMASK
+	load	(r31),r28		; get last instruction address
+	bset	#10,r12			; clear I2S interrupt
+	addq	#2,r28			; point at next to be executed
+	addq	#4,r31			; update the stack pointer
+	jump	(r28)			; and return
+	store	r12,(r30)		; restore flags
+	nop				; NEEDS TWO NOPS TO PROTECT AGAINST 
+	nop				; EXTERNAL LOADINGS
