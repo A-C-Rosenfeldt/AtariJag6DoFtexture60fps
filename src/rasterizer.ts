@@ -20,7 +20,18 @@ class Polygon {
 	vertex_to_vertex(){}
 	vertex_to_clip(up:boolean){}
 	clip_to_clip(){}
+	sort_y(a,b,c){ // no life sort. Only program pointer. Struct will be sorted in branch
+		if (a>b){
+			if (c > a);
+			else;
+				fill a
+				if (c<b);
+				else;
+		}else{
 
+		}
+	}
+	sort_slope(){}
 
 }
 

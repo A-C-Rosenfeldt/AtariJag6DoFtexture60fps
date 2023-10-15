@@ -1,6 +1,6 @@
 OpenGL-like Matrix-approach and Guard-Bands to transform vertices precisely to screen coordinates
 
-So I browses the sources agian, but now thanks to the training I can read it better.
+So I browsed the source again, and now thanks to the training I can read it better.
 It has a lot of boilerplate code. It uses NORMI to get max precise clipping.
 It uses MMULT for rotation and translation ( puts 1 into the packed registers).
 Vertices are 16 bit in world coordinates. I guess 68k usually writes them at load. Probably we should generate specific matrices for ships and cars. For bipeds I would go 32 bit.
@@ -47,7 +47,9 @@ Indeed for edges, we need to calculate a delta. Either we take it from the inver
 Now with each scanline advance we move integer pixels. So we still need to mix in the subpixel correction to give us delta values along y++, x+=integer screen vectors.
 But corrections only need 16 bit -- happy!
 
-There seem to be trapezoid renderers in of largly different code size. FYB is too large. I need texdraw1.inc . In my book we y++, loop over left and right edge and x+= . We delta all values. Then we check if our pixel ray is outside the edge ( Bresenham ).
+There seem to be trapezoid renderers in of largly different code size. FYB is too larg, but uses good addressing modes ah, and has swap.
+FYB needs to swap so many registers. Maybe try to switch bank and then use movefa instead? Interrupt runs in bank0. So try to load, store and div in 0. Check with MMULT.
+I need texdraw1.inc . In my book we y++, loop over left and right edge and x+= . We delta all values. Then we check if our pixel ray is outside the edge ( Bresenham ).
 In this case we x++ on the GPU, and only then inform the blitter. For a super fast y loop we could have have pre calculated deltas for all the values.
 Or uh, with many values it may make sense to round to nearest. So we could also accept to be one pixel too much inside. But in more than half of the cases (slopes) we would be correct.
 We need one more Branch for this ( is branch after branch okay? Like if the second branch cannot be taken if the first was? > = < ?).

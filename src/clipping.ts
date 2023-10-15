@@ -133,6 +133,37 @@ class Matrix_Rotation extends Matrix{
 	Rotate_along_axis_Orthonormalize(axis:number, sine:number[]){
 		// rotate an normalize
 		// orthogonal: 3 products. Correction is shared 50:50
+		//let cosine=Math.sqrt(1-sine*sine)
+		let n:number[][]
+		for(let i=0;i<3;i++){ // left transpose = right normal? I do row major as normal. So second index [i] just goes through. Right index mates.
+			let k=(axis+1)%3,l=(k+1)%3, n:number[], sqs=Math.pow(this.nominator[axis][i],2)
+			for(let j=0;j<2;j++){ // Maybe I should have both versions available
+				n[k][i]+=sine[0]*this.nominator[k][i]+sine[1]*this.nominator[l][i]
+				k=l,l=(k+1)%3;sine[1]=-1*sine[1]
+				sqs+=Math.pow(n[k],2)
+			}
+			let rsq=1/Math.sqrt(sqs) // see Quake for Taylor series
+			n[k][i]*=rsq
+			n[axis][i]=this.nominator[k][i]
+		}
+		let sums:number[]=[]	// So do I need a transpose?	
+		for(let i=0;i<3;i++){
+			let sum=0,j=(i+1)%3
+			for(let k=0;k<3;){
+				sum+=n[k][i]*n[k][j]
+			}
+			sums[i]=sum
+		}
+		for(let i=0;i<3;i++){
+			let sum=0,j=(i+1)%3,l=(j+1)%3
+			for(let k=0;k<3;k++){
+				this.nominator[k][i]=n[k][j]
+				if (k!=axis){
+					this.nominator[k][i]-=sums[i]*n[k][j]/2
+					this.nominator[k][i]-=sums[l]*n[k][l]/2
+				}
+			}
+		}
 	}
 }
 
@@ -262,48 +293,73 @@ class Camera extends Player{ // camera
 		let pixel=[ Math.floor(fr[1]*this.fov/fr[0]), Math.floor(fr[2]*this.fov/fr[0]) ]
 	}
 
+	// very similar to Jaguar SDK. Guard band clipping only bloats the code.
+	// actually, JRISC only has unsigned DIV. So we are forced to clip the near plane beforehand (no divide by zero). We are also forced to skew and make two sides of the screen axis aligned. Then again: clip using the sign.
+	// Also to use full precision of DIV ( which sets no flags ), in fixedPoint mode, I need to make sure that the result does not overflow fixedPoint.
+	// like 100 / .01 expands the envelope!
+	// Actually we have no x much larger than z after rotation. The large part is shift before DIV.
+	// To clip both other screen borders before the shift, we only MUL with 5 ( for 5*64=320 ) and 15 ( 16*15=240 ). So ADD/SUB SHL ADD. Ah oh just go ahead with MULT
+	// short refresher: After transformation we don't store 1/z, but we subtract the near plane to use the whole scale.
+	// this gives us a far plane. I see how 1/z still has to be linear after this substraction, but does it work for texture mapping? Or do we need W for this?
+	// lines are still lines. But I want perspective correction with a factor close to 1 in normal cases.
 	vertex_projection_clip(forward_ray:Vec3){
-		for(let side=0;side<2;side++){
-			var pyramid_normal=new Vec3([[ -160, this.fov,0]]) //-160, -220 )
-			let nr=this.rotation.mul([pyramid_normal])
-			forward_ray.innerProduct(nr)
+		var clipcode:number[]=[]
+		for(let side=0;side<4;side++){
+			var pyramid_normal:Vec3
+			if (side&1){
+				pyramid_normal=new Vec3([[ side&2?-160:160 ,0, this.fov]]) //-160, -220 )
+			}else{
+				pyramid_normal=new Vec3([[ 0,side&2?-120:120, this.fov]])
+			}
+			let nr=this.rotation.mul_left([pyramid_normal]) // forward or backwards? I dunno
+			clipcode[side]=forward_ray.innerProduct(nr[0])
 		}
+		var plane:number[]=[] // near and far
+		clipcode[5]=forward_ray[0]-plane[0]
 	}
 
-	edge_projection_clip(origin){
+	// Todo: Find my text about this. I only use rotation matrix to be able to debug this
+	// BeamTree language. Precision is no problem
+	edge_clip(origin){
+		// planes form a BSP, which breaks symmmetry
+		// we go down the BSP. As long as both vertices fall into the same child, no problem
+		// and edge is split each time we go down a node
+		// we use the backwards vectors in the corners of the screen ( and near an far) and one base of the edge and the edge itself
+		// to determin in which child of the BSP the cut ends up
 		for(let x=0;x<2;x++){
 			for(let y=0;y<2;y++){
 			}			
 		}
 	}
 
-	c:CanvasCaptureMediaStreamTrack;
-	transform_ray_backwards(vec:Vec3):Vec3{
-		for(let i=0;i<3;i++){
-
-		}
+	triangle_clip(){
+		// BSP again
+		// all vertices .. okay
+		// edge cuts .. okay
+		// we now only care for the frustum, no other child in the BSP
+		// when we cut in a new plane in the BSP, now the roles are reversed. The inner-BSP edges can stick through the triangle
+		// actually it would make more sense to have the triangle-cut edge within a BSP tree
+		// when a new plane goes it, its cut within the concave sector may cut with the other cut
+		// it is a 2d problem. Cut happens when seen from each edge, the other has vertices on both sides.
+		// Ah I see, how I avoided the fractions in the past
+		// the 3d way is to form volumes with all edges in clockwise rotation. All positive: we are in.
+		// Though at this point we need this decision only for triangles which cut of a 3d (rear) corner of the frustum.
+		// With more viewing distance than level loading, pure topological arguments suffice. I thinkt that is what I write in some text somewhere in this project.
 	}
 
-	mul(b:number[][],v:Vec3):Vec3 {
-		for(let i=0;i<3;i++){
-			inner
-		}
-	}
-
-	inverse:Vec3[]
 	denominator:number
-	set_rotation(r:Vec3[]){
-		this.rotation=r
-		this.inverse=new Array<Vec3>(3)
+	// set_rotation(r:Vec3[]){
+	// 	this.rotation=r
+	// 	this.inverse=new Array<Vec3>(3)
 
-		for(let i=0;i<3;i++){
-			var t=r[(i+1)%3].crossProduct(r[(i+2)%3])
-			for(let k=0;k<3;k++){
-				this.inverse[k].v[i]=t[k]
-			}
-		}
-		this.denominator=r[2].innerProduct(t)  // For rounding and FoV / aspect ratio (no normalized device coordinates)
-	}
+	// 	for(let i=0;i<3;i++){
+	// 		var t=r[(i+1)%3].crossProduct(r[(i+2)%3])
+	// 		for(let k=0;k<3;k++){
+	// 			this.inverse[k].v[i]=t[k]
+	// 		}
+	// 	}
+	// 	this.denominator=r[2].innerProduct(t)  // For rounding and FoV / aspect ratio (no normalized device coordinates)
+	// }
 
 	// top left rule  helps us: We don't change rounding mode. Ceil, Floor, 0.5 is all okay. Only 1-complement cut off ( towards 0 ) is not allowed. So be careful with floats!
 	transform_vertex_forwards(ver:number[]):Vec3_frac{
