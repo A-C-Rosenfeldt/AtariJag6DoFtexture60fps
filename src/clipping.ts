@@ -299,9 +299,12 @@ class Camera extends Player{ // camera
 	// like 100 / .01 expands the envelope!
 	// Actually we have no x much larger than z after rotation. The large part is shift before DIV.
 	// To clip both other screen borders before the shift, we only MUL with 5 ( for 5*64=320 ) and 15 ( 16*15=240 ). So ADD/SUB SHL ADD. Ah oh just go ahead with MULT
-	// short refresher: After transformation we don't store 1/z, but we subtract the near plane to use the whole scale.
-	// this gives us a far plane. I see how 1/z still has to be linear after this substraction, but does it work for texture mapping? Or do we need W for this?
-	// lines are still lines. But I want perspective correction with a factor close to 1 in normal cases.
+	// OpenGL thinks that clipping is so very important and MMULT in such a way that it can clip at diagonals ( but no clipping to portals? )
+	// using simple CMP or ADC, and move.
+	// Transformation to screen space uses those small factors (1+4 and 16-1) and the SHL; DIV. 
+	// short refresher: After transformation we don't store 1/z, but we subtract the far plane to use the whole scale (and that is the only reason: Memory is expensive!).
+	// this gives us a far plane. I see how 1/z still has to be linear after this substraction
+	// Perspective correction works by using W also for UV just as for the other coordinates. W is the unbiased Z and U and V have not been transformed.
 	vertex_projection_clip(forward_ray:Vec3){
 		var clipcode:number[]=[]
 		for(let side=0;side<4;side++){
