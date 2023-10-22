@@ -110,6 +110,18 @@ class Matrix{
 	}	
 }
 
+// So some engines don't seem to care, but I care about rounding
+// Now for Doom or portal renderers I need infinite precision to avoid glitches.
+// clipping to screen borders makes more sense after rotation ( even without normalized device coordinates .. because I clip a lot against portals and beam tree, Screen borders are nothing special)
+// Quake PVS is also in world space. I now understand modern raytracing: Polygons in camera spacen, pixels in world space
+// real ray-tracing would be if I round rays to world coordinates, but this will kill Bresenham
+// linerp in the blitter does not even care.
+// Beam tree is so PVS like. I want it as graph and independent of rotation.
+// How do I display this? With rotation I can draw the BSP on screen
+// I should not care about the precision. I can switch the code later on, to use time coherence .. or even build bounding volumes for the camera
+// All the math is 3d with some non-normalized vectors. But the edges can still be drawn on screen.
+// So uh, okay fantasy world without rounding
+
 class Matrix_Rotation extends Matrix{
 	// for rotation matrices this is the same as multiplying with inverse
 	// First version only uses vectors because beam tree has a lot of rays to trace which are not projected
