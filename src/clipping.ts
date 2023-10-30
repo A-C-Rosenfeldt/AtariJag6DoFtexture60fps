@@ -8,7 +8,11 @@
  */
 
 /*
-World space occlusion culling, really only makes fun with frustrum rotating in world space. No vehicles . Bookkeeping is not thaaat bad.
+World space occlusion culling, really only makes fun with frustrum rotating in world space. No vehicles (not even polygon monsters) . Bookkeeping is not thaaat bad.
+If I precalculate world space occlusion data structures like BSP or portals, I cannot allow rounding errors.
+Though a loose bounding volume hierachy can specify padding which is good enough until the far plane.
+This yields false positives but, would do something in camera space about this overlaps.
+On the other hand it would be cool if vehicles -- even if we cannot enter them -- would solve self occlusion ( shadows ) internally first.
 */
 
 
