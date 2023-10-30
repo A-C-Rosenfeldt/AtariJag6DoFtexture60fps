@@ -5,6 +5,13 @@
  * Without more precision I cannot subpixel decide on the circular order of cuts. Everything will have to be rounded first.
  * We only care about the rays, not the space between. These BSP unsuited areas become child nodes in the tree.
  * I still seek a general Theory where a profiler changes from tree, to scanlines with spans, to z-buffer ( at a small enough are, this will be fastest. Though it costs code size.
+ * 
+ * Realy, with normalized deviced coordinates we only need DIV 16,16 . Only the vertices of the edge are 16 bit. Frustum is "1 bit". So we get the cutting position along the edge by 16/16 .
+ * Then to get the position along the frustum we multiply with 16. (16*16)/16 is possible in most ISAs . It feels weird because we only want 8 bit .. ah for subpixel correction the OpenGL way, we want 16 bit.
+ * This does not work with edge to edge. So even if we don't compare 3 edges for the hole they make, we run out of precision on some ISAs.
+ * 
+ * Multiply from normalized to screen is cheap on JRISC. Funny. With special FoV it can be done with some Adds in other ISAs.
+ * The original values are clipped at exactly 1000 ( some 0 ). So multiply with FoV will not need rounding. All non clipped vertices are rounded, but never draw over the frustum.
  */
 
 /*
