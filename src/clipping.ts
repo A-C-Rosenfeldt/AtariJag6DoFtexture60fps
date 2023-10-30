@@ -1,3 +1,17 @@
+/**
+ * Regarding occlusion culling I seem to have two alternatives. After clipping to frustum in screen space even older hardware can give me 16 bit per ordinate, so 8.8 fixed point.
+ * Yeah, 8 bit hardware may really need to stick to adaptive precision integers. So if I dual release plus4 and Jag?
+ * It is not really a beam tree then anymore. Just a 2d tree. Binary area subdivision.
+ * Without more precision I cannot subpixel decide on the circular order of cuts. Everything will have to be rounded first.
+ * We only care about the rays, not the space between. These BSP unsuited areas become child nodes in the tree.
+ * I still seek a general Theory where a profiler changes from tree, to scanlines with spans, to z-buffer ( at a small enough are, this will be fastest. Though it costs code size.
+ */
+
+/*
+World space occlusion culling, really only makes fun with frustrum rotating in world space. No vehicles . Bookkeeping is not thaaat bad.
+*/
+
+
 // no native vectors in JS. Buffers are for large data (also called vectors)
 // I need vec3 and only two products
 // I don't want external dependencies of fat because I later need to compile to JRISC
