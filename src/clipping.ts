@@ -9,6 +9,12 @@
  * Realy, with normalized deviced coordinates we only need DIV 16,16 . Only the vertices of the edge are 16 bit. Frustum is "1 bit". So we get the cutting position along the edge by 16/16 .
  * Then to get the position along the frustum we multiply with 16. (16*16)/16 is possible in most ISAs . It feels weird because we only want 8 bit .. ah for subpixel correction the OpenGL way, we want 16 bit.
  * This does not work with edge to edge. So even if we don't compare 3 edges for the hole they make, we run out of precision on some ISAs.
+ * Edge to edge still have < 1px rounding error. So cut out a 2x2px quad. Quad is just a BSP. Bigger sectors become parents, small become children. 2x2 is quite small.
+ * Within a quad for each pixel all edges are calculated. Z precision is less of a problem .. see z-sort.
+ * Fall back and extra code? Infinite integers lead to the same code. So what is the advantage? With infinite precision I can use frame-to-frame coherence, which I find faszinating.
+ * 1 cycle ( 2 cycles thanks to register file) MUL on JRISC makes scaling to pixels cheap. Ah, need a third cycle for SHR . For both cooridinates. So 6 cycles.
+ * Maybe there is some synergy with the strange register layout of the address generator. It may be possible to keep values in the rotated position. Can still sort by integer y, right. For the triangle I mean.
+ * Though, we should make sure to utilize AddQ.
  * 
  * Multiply from normalized to screen is cheap on JRISC. Funny. With special FoV it can be done with some Adds in other ISAs.
  * The original values are clipped at exactly 1000 ( some 0 ). So multiply with FoV will not need rounding. All non clipped vertices are rounded, but never draw over the frustum.
