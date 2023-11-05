@@ -1,3 +1,10 @@
+The blitter can have saturation on Gouraud disabled (  To  Top Byte   To Top Nibble ). Then it saturates on the full 16 bit. This should be a rare occurance ( frame rate drop? ).
+For anything else this allows us to backdate the phrase values for less blitter calls. F02238.
+Of course I then need to clip all color channels in software on the other side.
+
+There is not similar configuration for z buffer. But then again we have so many z buffer bits and planes far away that only a few polygons are affected ( framrate drop?).
+
+
 It is a bit weird that the Jaguar can only flat shade textured polygons. So lightning is static and shade is used to convey the 3 dimensions. No deep-cueing. Sectors for hard shadows like in Doom?
 
 
