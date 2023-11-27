@@ -1,3 +1,19 @@
+# Motivation
+One motivation is to check if a beam tree rans smoothly. It is actually not that interesting to build a hybrid which switches to traditional ways for speed.
+Also I could not find clear documentation about the z-buffer and saturation and phrase alignment. And I have no GPU ticks to spare for the Atari two pass texture mapping.
+So in the end the code will not be very specific to the Jaguar. I only use the stupid blitter. Maybe add render-parts to linebuffer like in AtariKart later.
+
+The other motivation was to check if rounding crashes the renderer. I guess that a few glitches here and there are hardly and argument, so uh infinite precsion hmm .. for 8 bits?
+My head tells me that the renderer will not crash and that glitches are random and low in number even if I went with 16x16=32 MUL.
+Visible glitches in Jaguar games (and even vanilla PC Doom) seem to stem from arbitrary rounding to integer, while the registers still had free bits.
+Even for textures and PVS it seems like an epsilon avoids all glitches. For a texture this means that we add a little safety space in an atlas at incompatible seams. Ah, I want bilinear!!
+Small jaggies on edges in a beam tree will probably also be hard to notice.
+With fixed point I feel the need to run a static manitissa calculation through the code.
+With floats the GPU has higher precision than the blitter. And that is my aim. Shared exponent in Vec3, though the more complex calculations in a beam tree seem to like real floats and really hate fixed point.
+This will be more important when I clip to portals instead of the frustum because then I will really use Vec3 instead of Vec2. Uh, I need a portal heavy level and maybe even vehicles with doors.
+I am very interested in the speed difference, but I don't like the doubled memory requirements. Why can't the Jaguar not just have 32x32 MUL also?
+Okay, don't dwell on it. I start with fixed point in a KISS way: MUL;SHR 8  and DIV with the fixed point flag.
+
 # Scrap that. Racing the beam does not work on this system
 The fastest methods on the Jag (64bit fast-page) are clearing the buffers ( frame and z)
 and reading the buffer to display it on screen.
