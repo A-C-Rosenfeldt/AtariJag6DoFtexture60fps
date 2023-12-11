@@ -14,6 +14,18 @@ This will be more important when I clip to portals instead of the frustum becaus
 I am very interested in the speed difference, but I don't like the doubled memory requirements. Why can't the Jaguar not just have 32x32 MUL also?
 Okay, don't dwell on it. I start with fixed point in a KISS way: MUL;SHR 8  and DIV with the fixed point flag.
 
+# Single Responsibility 
+It seems like I need a special routine to merge a (convex) polygon into a tree. So with two polygons stuff gets a little arbitrary. Maybe I need to allow polygons in leaf nodes, like when there are only two
+convext polygons and they don't collide. Just finde a "separating axis" on one of them and be done. I thinkt that this fits with the float-epsilon direction I want to change to.
+Single responsibility lets me write the BSP code ( with this polygons) independent from the implementation which could either use already clipped normalized coordinates (this clipping works well on Jaguar),
+or really 3d beams (when we assume that we have high detail and mosty polygons are clipped by other polygons and if it only is the cockpit).
+
+
+# Math
+JRISC instruction really seem to like floats. I tried to come up with signed fixed point as needed for vectors and it is not really faster, but 32 bit give higher quality.
+Still there are so many places where I want a compiler or self-modifying code to float stuff. But then the MUL instruction is fixated on the lower 16 bit and so I guess that I can help it.
+Ah no, just check the rotation matrix. Sine / cosine ideally use 8 integer bits. I don't want to hard code this. I want a compiler, maybe even running at boot time.
+
 # Scrap that. Racing the beam does not work on this system
 The fastest methods on the Jag (64bit fast-page) are clearing the buffers ( frame and z)
 and reading the buffer to display it on screen.
