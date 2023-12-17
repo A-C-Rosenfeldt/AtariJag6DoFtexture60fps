@@ -19,7 +19,185 @@ SUB 0,4
 SUB 1,5
 SUB 2,6
 
-;;;;;;;;;; NORM
+;;;;;;;;;; NORM ??
+
+;Floating point. To cater to the 16 bit MUL, the format is not IEEE 754 and also the rounding will not be like it because JRISC is stupid and I rather accept a larger epsilon
+;I did wonder how much more precision slows JRISC down .. even if we don't MMULT . MMULT is more for fixed point math. I like 32 bit fixed point.
+;At first I could not believe my calcuations, but fixed point with 32 or more bits reduces the glitch count so much that a tester will have a hard time to finde those single bad pixels.
+;Whereas with 16 bit mantissa in floats I am not so sure. My demo is not supposed to feature an extraordinary dynamic range
+;So, here a version without MMULT
+
+;A * B = C   Inner product
+;One word contains signs separated by 0 and exponents seprated by 0
+CPY A.signs, C.signs   
+ADD B.sgins, C.signs   
+AND mask, C.signs     ; restore the 0
+
+; find largest exp. Looks like I really should hold a copy of one value to keep data aligned to bytes
+cpy C.exp_sign, C.exp
+AND mask00, C.exp          ; signs to 0
+cpy c.exp, r.exp
+SHR 20, r.exp 
+cpy c.exp, s.exp
+SHL 10, s.exp
+OR s.exp, r.exp  ; rotate as if word is 30 bits long 
+SUB c.exp, r.exp  ; compare
+AND Mask_rel, r.exp ; only the signs  .. is this useful yet?
+CPY r.exp, rb.exp
+SHR 20, r.exp 
+cpy c.exp, s.exp
+SHL 10, s.exp
+OR s.exp, r.exp  ; rotate as if word is 30 bits long 
+AND rb.exp, r.exp
+NORMI r.exp, shift_count 
+; Alternative: Rotate through 3 states, extract 1 for max, imac 
+Copy byte
+ForEach
+ROR 8,
+CPY ,this_value
+AND mantissa,this_value
+CPY ,t
+AND 1,t
+XOR t,last   ;  SUB last is one step before this. the t already look over two values. Two ts look over all stuff . 
+mul last,this_value  ; altenative: SH 0 vs 32
+OR this_value,chosen
+copy t,last
+
+;shift mantissa in all. Some more than others, but leave space to avoid overflow
+register shift <= 0
+CPY A,C
+IMUL B,C  ; 16 bit mantissa works with sign. So not in the exponent
+CPY C,C1
+SHA shift,C
+add 32,shift
+SHA shift,C1
+ADD C1,CA1
+ADC C ,CA
+
+;finnally normalize
+NORMI   ; 
+
+;or after each ADC
+cpy CA,t
+ROL 1,t
+AND 1,t
+add t,exp 
+NEG t
+CPY CA,carry
+SHL carry,31
+SAR t,CA
+SAR t,CA1
+OR CA1,carry
+
+;ForEach  ( 3 for inner product, 2 for cross product)
+;32 bit mantissa without sign
+;shift mantissa in all. Some more than others, but leave space to avoid overflow
+register shift <= 0
+CPY A,C
+MUL B,C
+CPY C,C1     ; names are flipped?
+SH shift,C1
+Add 32,shift
+SH shift,C
+
+Sub 16,shift
+CPY A2,C2
+MUL B2,C2
+CPY C2,C3
+SH shift,C3
+SUB 32,shift
+SH shift,C2
+
+;non branching version refering to twos-complement ( looks like a hack ). Still better than to correct iMUL or to precompensate for it. I mean, MMULT is iMUL, so no choice. Similar code then actually. See below
+cpy sign
+ror to position 0
+subq 1,complement1
+xor complement1,C 
+add complement1,complement1 ; sets carry for SUB .. similar to 6502 SBC
+addc C,CA 
+
+;branching version
+btest sign
+branch zero
+Add C2,C
+adc C3,C1
+branch always
+sub C2,C
+sbc C3,C1
+branch end
+
+AND sign_maks,C
+ROR
+OR
+ABS C
+ABS C1
+NORMI
+SUBQ
+add ,shift
+
+
+; For imul . Convert i16:u16 to i16:i16
+CPY A,B
+AND sign_of_lower_word, B
+SHL 1, B
+ADD B,A 
+
+IMUL A
+IMAC
+CPY
+SHA   fixedPoint uses Q. Floats also work. Ah floats don't like MAC
+
+RORQ 16,A  select the other word.
+;repeat 
+
+;Splitting into 3 parts needs AND
+CPY 
+ROQQ 12,
+AND 
+; So it actually may be better to not IMAC.
+;How do I sign extend before accumulation?
+CPY summand,X
+SHL sign,counter
+ADD summand,sum
+ADC 0, sum0
+SUB counter, sum0 
+
+;With bytes I can iMAC over same significiance. Okay, I see no advantage. Slightly more symmetric code? One AND for both? But 4 iterations for 32 bit instead of 3 for 33 bit.
+CPY A,A1
+SH 8,A1
+AND mask,A1
+AND mask, A
+;same for B
+imul A,B
+SHL ,A
+SHR ,B
+imac A,B
+imac A1,B1
+SHL ,A
+SHR ,B
+imac A1,B1
+resmac C
+CPY C,C0
+SAR 8,C0
+imul 1,C0
+; next significiant byte 
+
+
+;32 bit mantissa with sign split into 12 bit parts based on exponent. Shift before MUL is nonsense
+CPY
+SH shift
+AND mask,
+ADDQ 12,shift
+
+CPY
+SH shift
+AND mask,
+ADDQ 12,shift
+
+; convert to signed
+; see previous
+
+
 
 ;float with a common exponent .. I plan to use a smart z-buffer .. I mean, I want to use full precision for W interpolation (exponent of far vertex), and only SH just before CMP; For the packaging maybe even switch sign.
 ;32bit float has unsigned 8bit exponent  ... Typical interpretation into real world units applies a bias of 127. Not that integer would not need that bias

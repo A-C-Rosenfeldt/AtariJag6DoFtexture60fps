@@ -1,3 +1,11 @@
+It seems that the brushes of quake really make sense. Convex bodies don't need a tree to resolve internal collisions.
+So I should not build a tree. This is true for 2 and 3d. With two convex bodies separated by an axis, one edge of one of the bodies is the only splitter in a small tree.
+But the moment they collide after projection, I need to catch up with my tree building? I can try to cut in a way which isolates the overlapping area.
+Also I don't want real 3d collision in my demo / WIP (no dipping into water). So no cutes between polygons will lead to new edges for a tree. For z sort I can just use any pixel where polygons overlap,
+or I can resolve this in 3d using an ad hoc BSP ( one of the polygons will have camera and other polygon on different sides). If this is indifferent, these polygons will not overlap after projection.  
+
+When drawing a triangle strip, the first time faces flip, visibility needs to be started to be resolved.
+
 For a beam tree I need to check how three edges cross after projection. Two of these edges may already form a vertex in a beam tree, another comes from a polygon , for example.
 Back projection into 3d creates 3 planes which pass through the camera. We get each normal from a cross-product.
 We want to know if the edges run (counter-) clockwise.

@@ -20,13 +20,16 @@ convext polygons and they don't collide. Just finde a "separating axis" on one o
 Single responsibility lets me write the BSP code ( with this polygons) independent from the implementation which could either use already clipped normalized coordinates (this clipping works well on Jaguar),
 or really 3d beams (when we assume that we have high detail and mosty polygons are clipped by other polygons and if it only is the cockpit).
 
-
 # Math
 JRISC instruction really seem to like floats. I tried to come up with signed fixed point as needed for vectors and it is not really faster, but 32 bit give higher quality.
 Still there are so many places where I want a compiler or self-modifying code to float stuff. But then the MUL instruction is fixated on the lower 16 bit and so I guess that I can help it.
 Ah no, just check the rotation matrix. Sine / cosine ideally use 8 integer bits. I don't want to hard code this. I want a compiler, maybe even running at boot time.
 
-# Scrap that. Racing the beam does not work on this system
+# Interleaving transformation and blitter
+I want to resovle visibility before rotation to have it done as fast as possible. Then transformaton and shading (and walking the edge) can happen in parallel to blitting.
+I still feel like this resolution will take a lot of time, but ranges also cost a lot of compute.
+
+# Scrap this Racing the beam does not work on this system
 The fastest methods on the Jag (64bit fast-page) are clearing the buffers ( frame and z)
 and reading the buffer to display it on screen.
 Memory is not an issue. Google found me on Atriage.com the Doom code
