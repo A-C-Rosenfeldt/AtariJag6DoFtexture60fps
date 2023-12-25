@@ -1,3 +1,42 @@
+Portal rendering. The beam tree leaves are convex polygons .. so portals.
+I want to improve on Sky Hammer in the scenes where there is an enemy covering a lot of the screen or when I peek around a corner.
+In both cases, portals help. Mostly I don't get the artwork in Skyhammer. All grey and almost no direction. I will need to generate some CRY textures with caching for shading.
+When I find the overlap of two convex polygons, using a BSP tree is not the fastest way, although it may result in the smallest code size.
+So we check the vertices of one polygon relative to the edges of the others. The order of the edges defines a BSP .. uh, but we don't split edges?
+So what is the result: For each other vertex I see if they are inside of these edges. So it is a bit pattern. Does this help me? Some assembly trick? Did not work well last time.
+What if I have both views?
+Find cuts:  Number of cuts.
+0 one inside one other ( all vertices inside all edges . Check from both sides.). Non-overlapping: Early out. Overlapping feels like collsion simulation and it is true. But I only deal with polygons with up to 4 vertices. 16 compares hurt, but I don't want to pull in separating axis theorem or CJK iterations and am not interested in contact points here. Maybe recheck later.
+1 one.vertices, cut, other.vertices, cut
+
+Crossing two vertices on the other side.
+Does this work for the whole cone ? Check that camera is above polygon surface. Vertices of the polygon surface may be behind the camera. The latter test is the naive way to solve this. But it would need to chain divisions or at least rationals.
+homogenous coordinates?
+Other.Edge through face (vertices on both sides). Other.Edge . Volume = camera-Other.vertex  x   Other.edge x this edge  .. sign changes.
+Early out vs collect signs first (branch free, optimized JRISC can be fast) and divide later. Okay, is probably not fast due to floats, but uh..
+So on each polygon we get signs per vertex, and changes per edges. And we get links between edges. We get links because we check each edge with each other edge.
+To justify this, in the outer loop we go over the polygon and calculate camera x edge. Then in the inner loop we inner product this with the corner rays from the camera.
+
+The result is again a convex polygon. Calculate z. Sort. Ranges. Slope if deltaZ>2. X Ranges. Affine Slope for delta(round(X))>1.
+The remaining space in the portal is not convex. But we now only need to cosider the visible edges and vertices.
+The newly drawn polygon gets its central (longest) edge extended. Repeat recusively.
+When drawing a triangle stripe/fan, the shared edge is extended. I don't want to pursue any heuristics into the third polygon.
+
+How is the counting if we have a fully-in or fully-out early out? Like two convex polygons are fully inside the screen? I could try to profit from the code: Find the ovrerlap. Check z.
+So we would allow up to two convex polygons in a leaf. When then another arrives, the old ones need to be converted into a BSP. Lazy BSP. If one polygon is fully inside leaf, but next is not: BSP!
+Do I want 3 polygon inside checks? Maybe the new polygon is occluded? But I only get a probalistic answer. The new polygon may be fully inside the already drawn polygon, but behind.
+So I want 3 inside relations? Or rather 6?
+
+To allow a fast implementation of Elite, I should probably use the shiloutte of the ships as rough splitters, and then draw the polygon faces.
+The nice thing compared to an indoor level is, that I can just sort by z on screen. Or maybe mix in apararent screen size ( space station, planet). Simple rule, easy to tune.
+
+As a tree this would be kinda like a B-tree? So not binary. Each node divides the convex parent into one or two convex children, plus the rest.
+Tree merge needs 4x4 comparisons. I really want this to happen while the blitter is occupied, but I don't see how.
+How do I rasterize a half moon? It can have two spans per scanline. So I need to find the splitting vertex.
+The floor line merging in Doom is a bit suspicous. I would understand mergin in DukeNukem3d with all the portals, but the Doom BSP has less splits, I think?
+Anyway, in a true 6DoF I feel like "half moon" covered polygons happen a lot and the coordinate independent split feels weird. 90% of the speed of a full merged solution.
+A complex polygon renderer can run parallel with the blitter. So we want complex leafs. Then we can calculate the next leaf (sort y), while we rasterize the current one.
+
 Setting up the blitter is quite expensive.
 So we want to draw as long lines as possible.
 People don't complain about squares scrolling through.

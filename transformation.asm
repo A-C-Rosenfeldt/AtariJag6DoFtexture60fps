@@ -33,6 +33,17 @@ CPY A.signs, C.signs
 ADD B.sgins, C.signs   
 AND mask, C.signs     ; restore the 0
 
+;find the largest value of two registers (no vectors)
+copy a,c
+copy a,d
+sub b,c
+add b,d
+abs c      ;vectorize here? But that would mean copy ror or .. not good
+add d,c
+nop
+shr 1,c
+
+
 ; find largest exp. Looks like I really should hold a copy of one value to keep data aligned to bytes
 cpy C.exp_sign, C.exp
 AND mask00, C.exp          ; signs to 0
@@ -59,7 +70,7 @@ AND mantissa,this_value
 CPY ,t
 AND 1,t
 XOR t,last   ;  SUB last is one step before this. the t already look over two values. Two ts look over all stuff . 
-mul last,this_value  ; altenative: SH 0 vs 32
+mul last,this_value  ; altenative: SH 0 vs 32   or   SAR spreads a single bit: the sign bit  and then END
 OR this_value,chosen
 copy t,last
 

@@ -1,3 +1,27 @@
+// The rasterizer needs to projected points from the beam tree. The tree is the start, and the polygon only lives in the leaf
+// I think that most polygons in a dense mesh are split by their neighbours. I would need extra code to check for back faces. This does neither fit into the MVP nor the cache
+// So I guess that I can go full tree. Still need to switch cases per vertex: Projected, vs cut of two edges, though do I, both are rationals. Ah, but with one x and y share w. Even this is the same for both.
+// A scanline oriented rasterizer first only wants the y range.
+// It is weird to use a box and check each pixel independently, but it is not so weird to use a whole scanline and then find the edges without delta values from previous scanline (MVP).
+// So I enter Y, then some MUL and DIV and gives me two x. Their integer part may be different. So a while loop (additional branch in JRISC .. basically jump to the end of the loop first ).
+// Now yeah indeed for the following lines I can use delta for the MUL part and even the DIV part. If I have more than one line, no division by zero happens here. I only use slopes for more than 2 lines per trapez.
+// Same for X: I calculate the first and last pixel. Ah, the blitter wants slope already with two pixels. So it is different. Though the slope is ridicoulous
+// I could write JRISC to .. ah I don't have space in the cache. Yeah, so slope starting with two pixels it is.
+// For subspan perspective correction, DIV is just fast enough. No need for LUT or shift cases (and not space in cache).
+
+// Polygon first would mean to sort y of all fragments of a polygon split into the leafs. Then I need a list of x values. Sort again. When I do this in registers or even within the cache,
+// there is a limit. So add fragment, check for overflow, roll back. So I should probably start from the leafs.
+// Even if I use a 2d tree, the int(cut.y) is the result of a division.
+// So the viewing frustum starts the tree
+// cutting has to happen in 3d here, even if we use a 2d tree. At least the near plane needs to be processed in 3d.
+// The Jaguar SDK code cuts the polygon to the frustum like the frustum was a tree.
+// Can I use the fast track to avoid cuts which are themself cut off? We can on the frustum because we know that we broke the symmetry ..ah no we can do in convex, but we cannot on arbitrary trees. 
+// But even then we don't gain to much. Cuts along the edge need divisions or a lot of mul before we can sort them. At least we can wait with U and V?
+// Like maybe I should not cut UV along any edge. Just ray trace the pixels like in Thief or Mode-7 .
+// we should not double cut for UV. So even with cutting, wait for the final cut. For each cut refer to the original vertices. Throw away the preliminar results.
+// Do we care if where an edge passes the vertex (corner) of a clipping polygon? This sign tells where to cut. Have to check with the camera position.
+// On the back mirror of the frustum the signs change.
+
 // checks for overdraw
 // rasterizes into canvas
 // May include a z check or later even some antialias, interpolation
