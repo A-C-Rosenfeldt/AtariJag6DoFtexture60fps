@@ -26,6 +26,57 @@ Clipping happens in 3d because one vertex of an edge may be behind the camera. T
 To check if an edge passes inside of a corner, we calculate the volume spanned by this edge, the corner ray, and distance vector between camera and a vertex.
 We can thus check one edge against all corners. But we can also check one corner against all edges of a convex polygon. So cache the bits of our mesh? We have this dependency graph for this.
 
+The viewing frustum is special compared to other portals. Two sides only cut each other at the camera. General portals may be skewed.
+The code can be sped up a little because there are only 9 "fields" where a vertex could land. But with skew this is more complicated.
+Boolean CSG creates the shortest code, but cannot take advantage of the frustum properties. So lets stress portals! I would even accept a near plane. No need to die on this hill.
+The cuts give us t, the cut position within the edge. Later we can use this for textures and shaders if we don't want to use the matrix inversion method.
+To compare cuts, I use fractions ( aka homogenous cooridnates). The calcuation then should look like a cut between two portal faces. Then an edge either passes below or above this corner ray.
+This is cross product and inner procuct. And some 45° rotation done using ADDs. Distribute everything and check if it is the same.
+The niche thing with the cut is that I could store temporary values and reuse them for the texture, transformation or another comparison.
+In vector languar the cut is: inner product of portal face normal with edge start position and with edge vector. Gives us nominator and denominator.
+The corner is the cross product of two portal face normals. I don't see a similarity.
+
+Cutting works on vertices, edges, and polygons. If I want to do this after transformation, yeah, I need to transform all vertices or check the graph. Matrix mul is slow on JRISC.
+With cutting as first step I only transform visible vertices ( or their cuts ).
+With all occlusion done by the beam tree and portals, I don't need to respect any order. Just follow the visibility-marks in the BSP-tree or portal graph.
+Now applying cuts (in 3d for the vertex, delta (UV) along edge times t for texture) and transformation can run in parallel to the blitter.
+Now certainly the blitter is not the bottleneck anymore. I feel like I cannot fit this into scratchpad RAM. I don't want to pull in Jerry in my prototype.
+The complicated edge calcuation does not allow to call short and long spans in a trapez.
+Anyway, long spans would undergo subdivision so we keep being limited by the GPU.
+The nice thing about transformation is the simple nature of the matrix multiplication for rotation.
+I could just let this run through a small queue for the next triangles. If the buffer is full, use the blitter to write out. No problem.
+Though meshes could start from strips and triangles and then use 5bit relative indices like jumps. So I should probably not transform more than 32 vertices. This is alreaday taxing on the memory size.
+Can I use LoadP with some clever structure? Maybe simply fill out this struct with x,y and u,v and intensity and call it a day. In other words: I could not load the full 16.16 fixed point values for the blitter.
+This would already be two phrases! Some packing: 9.16 , 9.16 , 6.16 , 6.16, 8.8 . Still two phrases.
+Looks like ( I got this from N64) it is really worth to transform for the next triangle and have markers in the mesh-stream which double phrase to delete from the cache and which to write back.
+Notice how StoreP is buggy as you never know when store has finished. So double phrase write is impossible. Also the high register is shared with reads.
+Even Read after Write is critical because the write value has its own register in the bridge to the system bus.
+From the manual:(one internal load/store or two external loads/stores can be pending without holding up instruction flow).
+Markers in the mesh should of course keep values which are used again after a short time.
+Values which will be used later need to be written out as early as possible.
+Now apparently we need to make sure that 2 more values are written out before this value is read back.
+Regarding the high register, we could set the GPU to bus hog and Store, StoreP, check blitter, start blitter, check blitter.
+What about DRAM refresh? I cannot guarantee anything. Seems like I need to stick to Store or use the blitter for batches.
+So for each mesh transform all vertices which are accessed from triangles far apart in a batch. Copy to DRAM using the blitter.
+Then while going over the faces, use a cache in SRAM and occasionally LoadP, Load, use (probably unpack), LoadP.
+This is for the enemies in "Descent" or "Sky Hammer". The level would be a tree with markers. I can only cache like 8 vertices as I walk through the tree. I guess 50% cache misses.
+
+JRISC is not good and jumping. And linking even costs more cycles and registers. Maybe I need cross product and inner product only once per overlay? Then the blitter loads new code, but keeps the vector routines.
+The vector routines return to an address stored in a register. Or just use macros and more overlays..
+
+I know that "Descent" checks for flatness of poylgons .. but Doom does not. I don't want to. I think with enough precision here again one glitch per hour is realistic. I don't think that the rasterizer crashes.
+For edge interpolation I need to invert a 2x2 matrix. Every polygon is split into cuts with the frustum and other edges which only change one of the screen cooridinates.
+The other edges between are paird. The side with spiky angles starts. The other side needs to chose either adjacent edge as partner.
+On the other hand sub-pixel correction per line is not that expensive. fraction * all the deltas. Fraction sure is 16 bit. And as a correction this does not need more precision anyway.
+Span interpolation already needs to divide by span length every scanline. No new division! Same quality as 2d deltas.
+
+For perspective correction we calculate first and last vector and again need interpolation with its division. With span interpolation we may be tempted to do the perspective correction on the edge.
+Accuracy is no problem because for longer spans I switch to subspans anyway. Ah, then I need code to calculate on the pixels. Seems like on the pixel is the way to fit code into memory.
+Interestingly, with subspans on pixels, I would have two sides which need division anyway. I could get rid of this weird 1/2, 1/3, 1/4.
+On good hardware I would align to phrases. Thanks to the bugs I could just try some adapative stuff. Near side a bit longer and far side shorter.
+The repeated bulk span is given by the speed of the DIV instruction vs the speed of the blitter (and all the JRISC code).
+I feel like JRISC is so slow that this results in 32px spans. So adaption is key here also. Revival of the 4 directions rasterizer! 
+
 Normalized device cooridinates give us integer z values for a z-buffer, but beam tree does not use a buffer. Instead in each leaf we need to sort by z or even find a cutting edge for example for a ship floating in water.
 Back-projected cuts between two edges of the beam tree result in a vertex and a ray to trace through the two polygons which we want to sort by z.
 If all 3 rays agree on the sign, we are done. We get the vertices as cross product. The z depth of the ray can go over texture base system, with a cosine factor for comparison,

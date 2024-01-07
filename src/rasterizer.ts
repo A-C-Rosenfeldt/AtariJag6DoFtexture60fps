@@ -59,6 +59,45 @@ class Polygon {
 
 }
 
+// looks like I use homogenous coordinates for vertices, even if I do not like the name. I like rational numbers
+class Vertex_Q{
+	is_cut: boolean
+	ordinate:Array<number> 
+}
+
+// to cater to the blitter, I need to pick the low-hanging fruits. Doom has a lot of quads. Portals often have more than three vertices. Clipping gives me even more. I want to allow clipping of a convex polygon into another.
+class Polygon_clipped_by_portal extends Polygon {
+	vertices:Vertex_Q[]
+	y_segment: number  // why again does TypeScript not have integers? This really complicates compiling to JRISC. Now I have to mark the vector class for really using float?
+	branch:boolean // 2023-12-26 as a muse I play around with the idea of rendering polygon cut by other polygon. This is geared towards the original Elite with ships with convex shape in front of each other. I don't expand this towards a ridge in front of another polygon. At some point, the tree becomes faster. 
+	rasterize():void{
+		let pv:Array<Array<number>>=this.vertices.map((v,i)=>{
+			//let z=1/v.ordinate[0]  // this works for cuts and for projection just as normal floats do
+			//return [v.ordinate[1]*z,v.ordinate[2]*z]  // so these are floats because they share z. Sadly, in conflict with my concept 
+			return [Math.floor(v.ordinate[2]/v.ordinate[0]),i]  // this agrees with  rasterizer.txt
+		})
+		pv.sort(v=>v[0])
+		// I use the good old algorithm: Scanline rendering
+		let activeEdgeList=[[]]
+		pv.forEach(v=>{   // JRISC can only run the blitter in parallel to it. Theire is no internal paralle operation.
+			activeEdgeList.forEach(ae=>{
+				if (Math.abs(v[1]-ae[0][1])==1 ) shift_active_vertices
+			})
+			this.vertices[v[1]]  // pointer instead? At least, that would be typed. I can also type indices I guess .. in TypeScript or my own language
+
+			return v
+		})
+
+	}
+
+	// To merge trees. This is not part of the rasterizer. At the moment it is a comment, how the data structure comes into life
+	// Also I want to defer as much logic as possible into the rasterizer to keep the blitter busy without adding latency.
+	// So this should sit in the same class sharing the same data ( which will be queued out to DRAM once).
+	clip(other:Polygon_clipped_by_portal){
+
+	}
+}
+
 
 class Mapper{
 	affine(){
