@@ -1,3 +1,45 @@
+; So after all transformation and occlusion culling using vector multiplication is not too fast
+; I need to reload code and data. Vectors need 3 times the data. Rounding compromisses everywhere
+; I think that I understand one thing about sky-hammer: Subtract only a 16 bits of the camera from the level so that everything in view distance is on 16 bit coordinates without rounding
+; then rotate -> 32 bit. Then add the lower 16 bit of the camera. I don't have snipers, only this wide Doom and Descent FoV. 16 bit rotation is enough
+; No that transformation is fast, a 16 bit beam tree becomes interesting. Only one multiplication and then divide to get a scanline.
+; This way we can compare different cuts by y position. We don't care about cut order if the both happen between two scanlines
+; Then same thing with x.
+; Instead of some arbitrary error metric, we here have hard exceptions, or do we? If we round on 16 bit screen coordinates, MUL, MUL, ADD ( not transparent ). Branch on carry ( carry is sing ).
+; actually
+
+MUL 1,2
+MUL 1,3
+shr #16,2
+add 3,2
+branch on c=1
+
+
+; since we use the full 16 bit on screen ( or almost , like up to a factor of 2 horizontally, ). Ah yeah, no normalized device coordinates. I need fixed point especially for x.
+; In y I could use 32 bit Bresenham to trace the scanline y.
+; Since we have 16 bit, I can only cut edges on the final frustum edge.
+; Fractions do work: I have the normal of the portal edge ( withoud normalized coordinates, I have to pay for multiplication here, but frusum is still 16 bit, so not that expensive).
+; normal | one vertex and the other vertex. Sign different? There is a cut. Measured from v0:  t= v0 / (v0+v1) ( possible)
+; How and when do I compare two ts? So this is an exceptions! A corner ray is a cross product. This vector can still be 16 bit.
+; Problem is that I don't grasp all the cases. The vertices and the camera span up a plane with a normal and the corner ray can be above or below.
+; I the normal x and y components are within 90° the edge has exactly one hidden cut with these edges. Otherwise cuts are both visible or both hidden.
+
+; Now add this shortcut, that a vertex below the frustum cannot be above ( and similar for left and right ) we save some more mul.
+; Probably, checking for a vertex behind the camera is so cheap that I need to do this upfront? This branch pays back in the aforementioned cases.
+; Ah, this would need me to calcuation a new point on z=0 for yeah, a series of cuts.
+; Seems like this optimization does not work. I don't know if a vertex below is not also above.
+; Rather have the near plane clipping as exception: Any vertex too close for DIV? Cut those edges. Log it?
+; With z-Buffer and the overflow problem (is it real?) I could have mutliple z planes. out of view, far pixel mode, medium phrase mode, near pixel mode, cuts into camera.
+; Vertex and edge results need to be reused. Load and Store is still cheaper than all the MUL. The Screen read out gets lower priority. Blitter runs after transformation.
+; We use meshes and not per triangle series of cuts!
+; I don't know if all code fits into scratchpad. It may actually be faster to process chunks and use the blitter for memory access .. at least write.
+; LOADP ( in contrast to StoreP ) works. So and Edge can pull in vertices . Polygons can pull in edges. LoadP; Load; LoadP even runs at burst speed. So hard code for two vertices and max 5 edges?
+
+; With z-buffer we are done here. Left as an exercise to the reader . With beam tree I feel like I need to write out the tree ( like Doom does ), occlude, and then again walk the tree to render.
+; Again, scratchpad memory will be full by (perspective correct) rendering alone. GPU is busy with subpixel correction and vertical deltas in texture and shading.
+; Some compromise about the direction of pixel mode between perspective and Gouraud is taken. Subspans get their own SRCshade.
+; Still better than full quad blending as in SkyHammer or OpenLara on 3do.
+
 ; DMA on DSP is quite different from Blitter on GPU
 ; So the render code has to run on GPU exclusively
 ; Like in other programs, the DSP only helps with transformations
