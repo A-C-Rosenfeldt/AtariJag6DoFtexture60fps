@@ -14,6 +14,10 @@ shr #16,2
 add 3,2
 branch on c=1
 
+; With enemies on screen like in Descent or SkyHammer or any racing game, two rotations need to be combined: Our angle and that of the other object.
+; Combine these 16 bit rotation matrices before we touch any highly dynamic vertices! We can even use Quaternions for the one multiplication, but then already need to convert to a 3x3 Matrix.
+; After rotation the object is shifted using a 32 bit relative position. Ah, I need 32bit multiplication for the center of the object.
+; Then convert to floats and then divide. So the vehicle may not be too large (like if we land on a carrier) or we notics the 16bit of the vehicle rotation. 
 
 ; since we use the full 16 bit on screen ( or almost , like up to a factor of 2 horizontally, ). Ah yeah, no normalized device coordinates. I need fixed point especially for x.
 ; In y I could use 32 bit Bresenham to trace the scanline y.

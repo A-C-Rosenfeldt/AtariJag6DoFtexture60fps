@@ -1,3 +1,28 @@
+Beam tree favors occlusion culling over view frustum culling. We do this because existing games slow down when the enemy almost fills the screen.
+Here the level ( background ) behind the one enemy is more culled by occlusion.
+A dongeon has a lot of portals.
+Ah still, with the low detail on the Jaguar, view frustum culling is more important.
+This leads to a 2d beam tree (near plane is clipped). No need for floats thanks to the simple range. The cost of 32 bit multiplication make any short-cut attractive.
+In 2d the shortest cut is only check occl on scanlines and pixels. 
+There does not seem to be a cut-over from tree to list. At least it is not here. Actually, elsewhere I consider fat nodes in the tree
+to optimize the generation of the BSP when combining multiple convex polygons.
+I feel like this just fits into cache memory.
+I could even accept the hardware z-buffer for small polygons.
+Like everyone covering a small tirangle area renders a solid color ( a byte = ID of the polygon). For each small triangle I read the frame buffer into GPU cache.
+Deferred texture mapping. Hmm, JRISC would extract spans, calculate the perspective correction for the texture and send it all to the blitter.
+Hmm, quake software renderer only uses spans. Consicering the blitter, this makes sense.
+But JRISC could extract spans in all 4 directions for const-z shenigans.
+So it goes like 
+
+LOAD
+XOR with own ID in every byte
+JZ "phrase mode"
+cpy mask,r1
+and IDs, r1
+JNZ or so
+
+This feels weird. I really should render high detail areas using the z-buffer. Even 4 cycles per loaded texel is faster than all that JRISC stuff I plan.
+
 It seems that the brushes of quake really make sense. Convex bodies don't need a tree to resolve internal collisions.
 So I should not build a tree. This is true for 2 and 3d. With two convex bodies separated by an axis, one edge of one of the bodies is the only splitter in a small tree.
 But the moment they collide after projection, I need to catch up with my tree building? I can try to cut in a way which isolates the overlapping area.
