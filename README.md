@@ -14,6 +14,14 @@ This will be more important when I clip to portals instead of the frustum becaus
 I am very interested in the speed difference, but I don't like the doubled memory requirements. Why can't the Jaguar not just have 32x32 MUL also?
 Okay, don't dwell on it. I start with fixed point in a KISS way: MUL;SHR 8  and DIV with the fixed point flag.
 
+# Memory limit
+So it seems like I stress myself out about caching and parallel excution. At first I need code going. So sequentiel operation. Lots of 32bit data access to DRAM from the GPU. Just get some performance numbers.
+BeamTree equations in normalised device coordinates look as complicated as in real 3d and need almost as much bits. But in 3d ( thats why it is called Beam ) the expression make sense as Vec3 expressions with cross and inner product. My main motivation is to avoid the slow down when we face an enemy in "sky hammer". The enemy occludes a lot of area of the level.
+So I have the level -- maybe even a hybrid tree made of BSP and convex shapes for the portals -- and then use the enemy ship to occlude a lot of this.
+In thise scene the frustum plays a minor role. Of course I still clip against the frustum prior to this to easy debugging, but I have nice equations and code.
+Texture mapping matches this approach by using the looking glass thief way ( and basically the Doom way ): map textures in 3d with an explicit normal and use Matrix inversion (in 3d).
+Jaguar has a problem to combine shading and mapping. Like Skyhammer maybe I start with constant shade per polygon.
+
 # Single Responsibility 
 It seems like I need a special routine to merge a (convex) polygon into a tree. So with two polygons stuff gets a little arbitrary. Maybe I need to allow polygons in leaf nodes, like when there are only two
 convext polygons and they don't collide. Just finde a "separating axis" on one of them and be done. I thinkt that this fits with the float-epsilon direction I want to change to.
