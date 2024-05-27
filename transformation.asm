@@ -1,3 +1,8 @@
+;NDC has a cost. The final multiplication for each (X and Y)
+MUL x,const_x  ; 2 cycles  .. uh, not sooo expensive
+shift x ; this is always needed to get the integer part for the one address generator in the blitter and the fraction for the other
+
+
 ; So after all transformation and occlusion culling using vector multiplication is not too fast
 ; I need to reload code and data. Vectors need 3 times the data. Rounding compromisses everywhere
 ; I think that I understand one thing about sky-hammer: Subtract only a 16 bits of the camera from the level so that everything in view distance is on 16 bit coordinates without rounding

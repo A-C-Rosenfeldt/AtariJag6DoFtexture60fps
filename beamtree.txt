@@ -1,3 +1,8 @@
+Thinking about "fight for life", each fighter could fill a beam tree and then we could note inside the leafs with which other leafs the overlap (double link, or links[4]).
+Can I still obscure a portal? Break it down into one player, then on the other as if it was behind. Gets nasty when Z sort is not clear.
+
+
+
 Beam tree favors occlusion culling over view frustum culling. We do this because existing games slow down when the enemy almost fills the screen.
 Here the level ( background ) behind the one enemy is more culled by occlusion.
 A dongeon has a lot of portals.
