@@ -2,6 +2,30 @@ Thinking about "fight for life", each fighter could fill a beam tree and then we
 Can I still obscure a portal? Break it down into one player, then on the other as if it was behind. Gets nasty when Z sort is not clear.
 
 
+Deferred beam tree
+
+So there would be a scene graph with bounding volume hierachy. For figter bipeds this volumes will be polyhedrons, but maybe the head gets a sphere?
+In front of a portal sorting by screen space area, I go down the scene graph. This splits up the portal into regions which can be covered by none, both, or one of the scene nodes.
+Of course, an uncovered region opens the portal. Checking for occlusion is still the tedious beam tree process, but without the extreme randomness of splits.
+I add all leafs to the beam tree of their parent ( again sorted by scree area). This gets repeated up the scene graph.
+With overlaps from two nodes of the scene graph, again the larger area wins.
+So this has the effect that small details are not split by far away triangles. Frame to frame coherence is possible. Area also has frame to frame coherence.
+This is the best BSP-tree heuristics I found.
+Going up the scene graph, the "near and far field" of the boundary volume may make z values unimportant. Leafs in a tree just become holes or occluders. Tow leafs of the same kind merge.
+Espcially, sorting by area may in some cases ( not bipeds ) place a large polygon behind a lot of small ones. So if other objects are far enough away, and the high detail head does not stick out,
+we get a simple occluder.
+
+Maybe I should emphasize slithers: circumfence times sqrt(area) ? How would I emphasize z ? Do I want to? Portals are demanding. Count overlap in scene graph.
+Being in front gives factor 1+count/4 ? What if they stick in each other? Ah, partial count relative to combined depth.
+
+I really think that this heuristics looks good on screen. I add more and more triangles, and then move them closer together.
+Far a way the bounding cubes will protect my "battle sphere" space ships from cutting each other (no rouge siccors).
+This is more impotant than fast math. For low enough detail, I will win against brute force.
+It may be difficult to push to high polygon counts. My feeling says: Fight for life should be possible ( without the fence ).
+I could indeed happen that high precision maths is slow. So it may make sense to use the DSP for this, while the GPU already paints .. yeah what does it paint?
+There will be a "discovery" phase, where nothing can be painted. With frame coherence, this could be shorter.
+Almost feels like both JRISC cores could better do parallel processing of non-overlapping scene nodes.
+
 
 Beam tree favors occlusion culling over view frustum culling. We do this because existing games slow down when the enemy almost fills the screen.
 Here the level ( background ) behind the one enemy is more culled by occlusion.
