@@ -1,3 +1,39 @@
+To get this running, I want fight4life and a simple room. I go to the leaves of the sce graph and compose towards the root.
+Merge two trees. Alternating, start with larger area. Or try who doesn' split other polygons.
+Split need to be cheap like doom floors. There on the path back to the front all column buffers are merged, but for the columns where ranges don't merge (for original Doom limtis (floor - ceiling)).
+
+Visi planes
+So the splits by the tree and by the perspective correction and the wraps probably don't match each other well and need to be managed. Also think about flat triangles and UV maps (with the wrap tucked away)!
+For Doom floors the information to keep drawing on on the line ( scanline, but also works for other const-z ), better be provided on the edge.
+A lot of polygons could sit on the other side, so there needs to be a list of links.
+For construction I need double links.
+ArrayList is okay because there will never be that much polygons on the other side. We already have a tree structure to take care of scale.
+When a polygon is split the first time, the double link is created over that edge.
+So when a polygon fragment is split again, the links are rewritten to keep order. For example the split could result in 4 fragments with 4 1:1 links. Or the split could end, and there
+would be an ordered Array of links in the unsplit half.
+
+Drawing could propagate through the beam tree. We hit a polygon and then follow all links. So for later we need to mark those leaves, or basically just delete them.
+Alternatively, drawing could walk along the scene graph. The first polygon maintains a double link to this. Exactly one fragment needs to inherit this link.
+This would also allow to sort by texture .. although it is pretty useless on Jaguar.
+So how does floodfill work? I want to merge spans outside of the inner loop. So we draw a polygon. Then we reach the first scanline of the "open" edge. Then we trace the scanline through double links until we hit a real edge.
+Here we encounter some vertices, which will tell us how many scanlines we can stick to the current edges as ultimate borders.
+Disjunct fragments need to stay in the beam tree. Now we have a new data structure: Fragments with only partially processed scanlines. It may be enough to update the vertices, but it could happen that we split them
+by a drawn band (DMZ). Floodfill uses a stack, which is a compact data structure. Splitting in the tree might be expensive.
+
+Generally, a growing tree needs good memory managment. This is not like those quasi trees as in sorting algorithms, but we have real growth (and shrinkage, but dont care).
+Since cache is too small anyway .. but is it? If we don't use a cache, the tree could simply alloc objects in an array and use pointers.
+Our tree will never have more than 64k nodes. So we can use 16 bit pointers ( shift, offset ). So those array lists would have space for 3 links, and then one to an overflow object.
+A handful of tuning parameters are enough. Like, we could use larger capacity for the array list.
+Also my grow-from-both sides trick could work here.
+The BSP has only one plane per node. So we don't need a vertex list per leaf. Visiplane floodfill may need multiple stacks to walk down the beam tree at multiple places. This is even worse for scene graph propagation.
+
+B-tree code may fit into cache and the data cache also. Although the beam-tree algorithm is already quite big.
+We don't delete, so code is rather simple. One thing would be that anytime not the last node gets children, but an "inner" one, we mirror the distance to the border to free memory, and throw the children into free water.
+So this would lead to fragmented free space and needs a linked list? This sounds worse than a tree as in a b-tree.
+So rather we have a B-tree and all its nodes are filled from left to right. Some heuristics lets "inner item" jump into a child block the fuller a block get. Not how child blocks in a b-tree really sit far away. So a long jump.
+
+The "both sides" method would fill blocks in two directions with wrap around. We cannot copy nodes with growing double link list because I don't want to implement this b-tree code.
+
 Thinking about "fight for life", each fighter could fill a beam tree and then we could note inside the leafs with which other leafs the overlap (double link, or links[4]).
 Can I still obscure a portal? Break it down into one player, then on the other as if it was behind. Gets nasty when Z sort is not clear.
 
