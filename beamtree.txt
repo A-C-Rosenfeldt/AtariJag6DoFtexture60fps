@@ -5,6 +5,13 @@ Split need to be cheap like doom floors. There on the path back to the front all
 Visi planes
 So the splits by the tree and by the perspective correction and the wraps probably don't match each other well and need to be managed. Also think about flat triangles and UV maps (with the wrap tucked away)!
 For Doom floors the information to keep drawing on on the line ( scanline, but also works for other const-z ), better be provided on the edge.
+
+For Visiplanes I want to use the most simple method. Beamtree nodes point into max 8 scene graph nodes for polygons.
+I draw the scene graph in the second pass and follow all 8 (potential) children.
+Then scanline algorithm: Sort by y. Sort by x. Draw spans.
+
+Use cases:
+
 A lot of polygons could sit on the other side, so there needs to be a list of links.
 For construction I need double links.
 ArrayList is okay because there will never be that much polygons on the other side. We already have a tree structure to take care of scale.
@@ -39,6 +46,18 @@ Can I still obscure a portal? Break it down into one player, then on the other a
 
 
 Deferred beam tree
+
+Processing goes like:
+Going from the root to the leafs roughly front to back. Again, inspired by the octree 8 nodes are sorted by z.
+Then each leaf creates its beam tree from the edges (sorted by length).
+Going up the tree I merge these trees. This is important to avoid spurious cuts (erarly on). Rather we chose the child which separates itself form the sibling the best.
+Now going down another node in the scene graph, we may check the bounding volume against the already processed geometry. Not how we don't have an occluder here. This should be very similar to portals.
+Portals have one convex polgaon as portal, our beam tree has many.
+So the final polygons are not checked against the global beam tree, or are they? Maybe do this if the bounding volume was not cut. So as global cuts wander through the scenen, the details dive under it like under a breaking wave.
+Move up the tree and merge by some simple heurist ( best sepration of children, balanced cut of parent).
+
+It may be possible to declare parts of the scene graph as safe. Any overlapping boundary volume has be processed. So with compact enough code, the blitter could start.
+Otherwise blitting happens when the scene graph is done. This is also easier with the visi planes.
 
 So there would be a scene graph with bounding volume hierachy. For figter bipeds this volumes will be polyhedrons, but maybe the head gets a sphere?
 In front of a portal sorting by screen space area, I go down the scene graph. This splits up the portal into regions which can be covered by none, both, or one of the scene nodes.
@@ -359,3 +378,26 @@ Anyway, I need 2 paases:
 
 3) subspan perspective correction with dynamic width because loop unrolling has no advange with the blitter.
 		Sadly, the blitter isn't suited for 8x8 tiles. 
+
+Scanline rendering
+I cannto get rid of the feeling that good old scanline rendering would be as fast with some modifications.
+Like an ideal blitter implementation would render 4 rows or columns at once, some tiles also speed up the scanline rendering of complex shaders.
+So the beauty of the scanline approach is that vertically fast sorting can be used. Some straigt forward tricks with SRAM and registers and Banks and becasue we only have 200 lines (buckets).
+X sort could use bubble sort from line to line or at least a sliding window sort, again: register, SRAM, DRAM.
+Now what do I gain from deferring the actual blit (of the blitter)? I would use UV mapping. Maybe solid shading does not need to change? Delta for affine texture mapping? Persepective correction?
+So every time a polygon ends, this triggers the blitter to go through a linked list.
+
+I read that active edge lists can become quite big. So I assume that I do actually access DRAM. For sorting I would even like to use the blitter copy blocks.
+Maybe here the memory comes into play? Split up the edges into two chunks by an edge in the center. If it is not vertical enough, just use its x position.
+Then proceed with this chunk, but what about edges entering and leaving?
+
+The only thing we can do is bubble sort locally and export each leaving edge to our neighbour . How would memory deal with the bubbles? So x entries at both ends actually need to travel past.
+Can have some thresholds here. After exchange we need to merge the imported x into the legacy x.
+Avoid double hop. Any x at the ulteriour is sorted into the correct block.
+Usually I hate fixed depth trees, but the Jaguar can only show 1000 polygons, and reg, SRAM, DRAM inspires a 3 level hierachy also for this insertion sort it is.
+Import may lead to a split of an already pre processed span.
+
+So the idea is that just as with a beam tree, something like a head, hand or weapon, or a spaceship in front of a planet, is solved locally.
+
+Scanlines don't respect bounding volumes. So I could just start from the leafs of the scene graph and merge sort as I go up the tree. Leaf sorting will be fast.
+Merge sort can still load large chunks through a queue from both source lists using the blitter and spit out the merged list.
