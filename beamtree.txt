@@ -401,3 +401,43 @@ So the idea is that just as with a beam tree, something like a head, hand or wea
 
 Scanlines don't respect bounding volumes. So I could just start from the leafs of the scene graph and merge sort as I go up the tree. Leaf sorting will be fast.
 Merge sort can still load large chunks through a queue from both source lists using the blitter and spit out the merged list.
+
+##Scanline algorithm has a lot in common with the beamtree when you implement cache and spill over for the sorter
+
+Of course, beam tree just prays that all the relevant nodes fit to SRAM. There is not way to limit this, while scanline can degenerate to full DRAM.
+The minimal data is very minimal. End of current span. Some pointers. With the beam tree we may need to fight degeneration which keeps to many overlapping polygons active. Can I prove that using edges as cuts limits memory needs?
+Do I need code to have the tree and all coursers in DRAM? Sector edges may even need dynamic memory as does the scanline algorithm for visi-planes.
+
+4kB SRAM is a tight limit for the GPU. Even for sorting we need to keep the exact edge increments in y and z. And we need the face increments to later compare the current polygon with other edges, but it would be okay to work on rounded values: 16.4 bit for z and 9.4 Bit for x and 8.4 for y. Bresenham. So basically 32 bit per vertex. But we also need a 10 bit ID to — after sorting — link back to the mesh . UV and shading could sit in another lword. Sounds like phrases . So we need a phrase in SRAM and a word with a link to this phrase. Words can be (bubble) sorted in the registers and carry a link to the phrase which in turn links to DRAM.
+
+Let’s sort 4 rows in one go. So we need 4 words for each edge. 1000 words SRAM. 256 for sorting. 64 edges.
+
+In a second pass merge sort the results from the child nodes.
+
+Global Bubble sort loads everything again per scanline, but the blitter is good at this. We don’t care about sub-pixel sort. For bubble all edged which move left than +-4px are considered. Steep edges are quicksorted and then merged with this. Or let’s quicksort 32 edges and bubble the rest. Need a sorted list of abs(slope) so that a starting edge can kick out others. 
+
+What about more passes. For the edges pack x (y0 y1) int delta x , x carry bits for a few lines. Just sorting on screen. Z is a different matter.
+
+Rough to fine and sort blocks. These kinda explode. Merge sort blocks, but only with two blocks overlapping. This gives us about 50% decision on the actual sorter. So that is does not feel useless. Cut off the tails and sort those all using quick sort. We merge them back in because I don’t actually want to deal with CRUD: don’t mange steep slopes using state.
+
+Branches and branchless workarounds are a bit slow in JRISC, so quicksort would probably be also used inside of a block.
+
+This x sorter eats through the x pattern and stores ID lists in DRAM. And it loads new edges from DRAM. So it needs to keep the complete active edge list in SRAM. Just each edge is just a word. That is it. If I swap this data, I don’t know why I don’t go full tree mode.
+
+Oh hey, what about I first sort all edges by their slope. The most vertical edges get their slot in SRAM and I have their list of . Sounds like a waste. Fitting all edges or a fixed part is waste. I need to have the SRAM buffer as full as possible. I think I could just evict random deep slope edges and insert new edges. I don’t even know if I should sort the new slopes. I need to record which edges did miss the processing in which lines. I log denies and evictions in full vertex format in DRAM. Then process them in a second pass. This is similar to sprite limits on a line. There may be a few lines in a few frames where I hit it. So the second pass is short. Main problem: merge with the regulars (space has been reserved in the list of lists .. ah, merge is not in place. On Jaguar and single pass this hurts me.
+
+So a second pass can then “race the beam” and not sort z (Jaguar cannot translucency and I don’t like transparency) but just find min z at ever pixel center. Ah, still there would be a lot of dz/dx . Overflow exception could happen. Maybe we can reuse the code. 
+
+We would ignore some faces and compress the others into RLE of top face. Then merge. Again the faces will be emitted only for some x. So merging only starts there. (And ends early if no polygon covers the rest of the scanline).
+
+The exceptions mean that texture mapping and perspective and warp around happen in another task. Actually I could guess the timing by now and use an overlapping frame buffer and render just in time to at least reduce latency here in. On the other hand I would like to keep the blitter busy and draw the previous line. Maybe sweep the buffer usage?
+
+Y sort can just reuse the code. The scene graph will produce roughly presorted vertices, especially if I sort children by cg (huh extra cost pre). QuickSort would work similarly well because in the later passes the blocks fit into SRAM. So, bucket sort may speed up this. Buckets flow over in a global buffer, which is later merged. So, buckets instead of the previous line splits. 
+
+Passes
+Transform
+Clip
+Sort y
+Sort x
+Texture wrap / decals tiles as grid same pass as
+Perspective correction: clip UV to visible spans
