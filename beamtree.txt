@@ -369,6 +369,25 @@ This may be needed for some cases: Enemies far away . Plants. When I don't want 
 
 ##rasterization and fusion of spans for the blitter
 
+With fusion of the scanlines, optimization of the Beam tree is not that important anymore. We remove funny cuts which shot over from a land far far away.
+Any sorting and heuristics costs time. Espcially, z-sort feels out of place. Indeed ocean sort (as for sprites on C64) might be the best solution even if it does not work for stills:
+In the final frame sort by edge length visible on screen. Dominating edges shoud be promoted in the tree. Mix it with good balance (like when at a node, check that the next edge in question balances the child vertex count).
+Most important for us is to know what is visble. Fusion of the next polygon can happen while we feed the blitter for the current one. I also wager that it will saturate the GPU.
+We don't cache anything because we need scratch pad for code when we do two things at the same time. We don't need z-sort. So Doom like pixel mode DRAM to DRAM.
+Just we should find relief in the fact that fill rate will already not be the bottleneck. Rather setting registers in the blitter all the time + subpixel edges + the span fusion will be.
+How do I avoid interrupts while fusing spans? We don't have JSR. I really hope that interrupts work. Otherwise there will be idle time, just not too many superfluous register updates.
+So I draw individual polygons using the scanline algorithm and an edge list. The BPS part only fuses splits as long as all vertices fit into our scratchpad buffer.
+
+I wonder if subpixel correction and edge calcuation is already enough to keep the GPU busy while the blitter works -- even in pixel mode. Just interpolate U and V . Shading is for the full polygon as in Skyhammer.
+Yeah, or shading for scanlines? But that looks so inconsistent. Here Atari is right. We either have smooth surfaces like faces or arms and legs, or we have flat textured surfaces.
+Smooth surfaces need some optimization where I try to find a large group of them all showing us their front face. So there can be no internal occlusion. So this is a different rendering path loaded in scratchpad RAM later.
+Code would again look ugly if the triangle set-up would be interleaved with the edge calculation of the previous polygon.
+The thing is that persepective correction ( and wrap around as in Doom ) can occupy the GPU even for longer spans. I really need to identify those wide polygon bellies with small delta-z, draw them first and do some other calculations in the background.
+Ah, this really looks like I should first optimize the sequential code, perhaps even go full sub-pixel correct, near z 8 directions, sub span and then record how of the blitter is not finished and how much scratch-pad is left.
+Even interleaving inside a polygon needs to check for so many special cases. Like how many scanlines above the middle vertex, how many below. Additional y due to clipping? And then comes fusion of splits.
+So again: The optimization can only work when I identify huge waists in the beamtree step. Probably, together with long edges, these waist need to bubble up the tree.
+So width first traversal of the tree would first be interlaced, but at a certain depth be self containted, and even further down use the precalculated (triangle set-up?) values from the beginning and only draw affine trianles ( clipping is not allowe do increase the number of edges).
+
 I need to find the relevant scanlines.
 for each scan line I try to set a blitter line on the screen ( longest possible span and I may even be allowed to round the ray directions in world space),
 but also in the projected space on the texture atlas with the given rounding in the blitter registers.
