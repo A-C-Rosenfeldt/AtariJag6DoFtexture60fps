@@ -366,6 +366,22 @@ The better way a correct demo running with zero-overdraw and than I profile it a
 Another way would be to do raytracing on a low number of polygons. The ray position can be rounded to world space.
 This may be needed for some cases: Enemies far away . Plants. When I don't want to do LoD.
 
+For a minimal viable prototype I want to insert polygons into the beam tree as they come ( triangle strips). There is only one tree ( to debug).
+I do not want the scanline renderer to deal with all splits because I want to utilize infinite bit precision (yeah, this is a must have for me aftera all) logic independent of the raster of pixels.
+It is just so nice to solve for a signe of a number. The JRISC code looks kinda okay and maybe I can combine it with the general tree logic (at least before compilation).
+So the edges of the polygon and the vertices are compared to the beam tree at high precision and all beam tree edges outside are discarded.
+Then the beam tree inside the polygon is checked for difference in opacy and culled if not.
+
+2d games can use Ocean-sort for sprites, but I do not see this here. Bounding volume hierachy with roughly front to back rendering is the only heuristics which I can accept. Yeah, maybe version 3 can keep states between frames.
+Anyway, I have the feeling that performance for the simple scenes will already be okay and steady. Descent and Duke need added code for the portals, so they come later. As a kid I loved portals,
+but in this project other stuff comes first. So fight for live of polygon cars on a pseude3d race track would be my examples. And then I suppose that the beam tree only eats 10% of the latency.
+I hope that subpixel correction (a must for me) is also cheap. When I postpone rasterization, this is needed less often.
+I would need one MUL to jump on a scanline, but would then have fixed point x values to compare for the scanline rendering.
+Only texture mapping needs to round to a pixel. At least this shows why I should not look for synergy between beam tree splits and perspective correction splits.
+
+Polygon merging can happen while the blitter already runs even in the beam tree.
+I don't belive that high quality rendering code on the GPU has cycles or bytes to spare, nor that integration is as simple as scanline rendereing,
+but it is nice to have the option.
 
 ##rasterization and fusion of spans for the blitter
 

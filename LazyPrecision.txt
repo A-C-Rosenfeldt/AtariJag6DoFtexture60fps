@@ -123,3 +123,13 @@ I may need to look up this cache agnostic algorithms, but basically if the garba
 
 So I don't see much way to back paddel to single frame images. Even the camera rotation, projection on scanlines, and Bresenham may want to pull in more digits.
 I could back grow some tricks. Like when all leafs are sufficient convex, just round for the camera. But I don't see how this test is cheaper.
+
+Infinite precision and/or floats need more cycles on JRISC. I estimate twice as much because JRSIC is already so cumbersome to use on integer math.
+To make this viable, the precsion part must not dominate the rendering loop. Besically, I need to render simple scenes.
+I guess, for edges I should stick with rounded values. 32/32 bit fractions should be good enough for anyone. In debug mode: Count the ambigious pixels.
+Likewise texture mapping runs on rounded values. Those are based on floats. So the nominator and or denominator uses all availabe bits (32).
+I use the address generator registers to point into a texture atlas. It accepts fraction values in different registers (interleaved x and y).
+So I need some shifting after I fetch the fixed point result from DIV. I wonder if DIV is saturated. I may try to DIV the remainder to get the fractions,
+but then again I onyl expect like 4 bits for the integer part of the delta registers and 6 or 8 bits for the integer base.
+
+My examples: "Fight for Life" and 3d cars on an "Outrun" track don't need textures with GL_REPEAT. So small integer parts are okay.
