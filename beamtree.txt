@@ -383,7 +383,31 @@ Polygon merging can happen while the blitter already runs even in the beam tree.
 I don't belive that high quality rendering code on the GPU has cycles or bytes to spare, nor that integration is as simple as scanline rendereing,
 but it is nice to have the option.
 
+For profiling it would be nice to separate occlusion and rasterization. It is kinda the opposite of blitter integration. And I don't mean mystic system bus performance,
+but quite simple JRISC cycles. The beam tree is still the way to scale. Scanlines and grids all feel even more ugly than a bad BSP (of course profiling allows us to compare these).
+Then we spit out a data structure: PolygonID, Polygons, which overlap and are in front. I could have a second list with polygons sticking (through a water surface).
+I once aimed at 1000 polygons in total, but then there is also fight for live: 2 players, 2 arms, arms and legs, arm is a box of 4. So 5 bits to address any polygon.
+The worst case of visible, but overlapping polygons 1000x1000 does eat up all RAM, while 256 poylgons fit into 64k.
+This worst case show that we need a fall back. But detection is too late and the frame would freeze.
+It is more like in production the beam tree will overlap and just stop at a certain depth. I could restart the frame with pure z-buffer.
+
 ##rasterization and fusion of spans for the blitter
+
+The rasterizer would take all transformed vertices of all occluder polygons and the current poylgon and run the scanline algorithm over them.
+The triangle set-up for a single triangle always looked like a degenerate case. So we allow polygons, but also are happy about good old quicksort (from DRAM for the higher nodes).
+Ah, I always have to think of the average case. In the worst case, the beam tree wins over this occluder approach.
+So anyway, per scanline we sort by x. Then we need to go over this list (even outside of the current polygon) and count up for left edges and down for right edges.
+When we reach zero .. ah wait. Lets invert the edges of the current polygon and start with 1. Then when we reach zero, we start a span. Any next x will end this subspan. We stop at the right edege of the current polygon.
+
+A polygon would only have two edges, which we would keep in the registers. The worst case of occluders is to huge that we need those edges in DRAM. Like LoadP Accumulator, Delta. Store Accumulator.
+I could check for accumulator values close to zero. This exception would summon the infinite precision sub-routine and check the accumualtor and may change delta and accumulator (start value)
+and mark this edge as checked (set deviation to zero). So it is guaranteed that the rounded values draw the excat same line as the infinite values with upper left rule for zero.
+
+If I want to split up a polygon in squares for perspective correction, I could do this after rasterization. Ah no somehow this wrecks havoc on data structures.
+The exception needs to occur in the beam tree when a leaf has a large area. It is very expensive to optimize the grid offset; so rather stick with a fixed grid.
+I guess we got us another pass. Can we have a whole screen buffer? Then rasterize into this. 4 Lines would go into one tile row. First line with full tile set a tile to active.
+Any of the 3 following lines without a full 4 decativate. Stuff needs to sit in a register to be fast. Sadly, JRISC does not have broken bitscan, but we can work around it.
+Or we stick to RORQ which sets a lot of flags! A beam tree would need to work with a BSP. So the tile grid becomes a quadtree and we merge them by node area.
 
 With fusion of the scanlines, optimization of the Beam tree is not that important anymore. We remove funny cuts which shot over from a land far far away.
 Any sorting and heuristics costs time. Espcially, z-sort feels out of place. Indeed ocean sort (as for sprites on C64) might be the best solution even if it does not work for stills:
