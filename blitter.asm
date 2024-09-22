@@ -1,3 +1,24 @@
+Rereading about the registers, loading them already takes so much time.
+So even if I may want to allow some overdraw, I should really avoid drawing invisible lines.
+Beam tree gives visibility values before it gives me visble pixels. Of course then again I would need to check for z-sort. And then blows up code size.
+So I should just rest assured that religiously reducing overdraw even for objects like cars or robots in descent will reduce lines on any interesting background ( not fight4life).
+I have to remember all the time that I use the beam tree for cache coherence.
+With the low number of polygons in my examples, simple sort y of vertices and then x range overlap and then x at same y .. is probably fast. And easier to debug than a tree.
+So I really need to sell the tree on a website. Expand all the lines! Still need the baseline from the nxn comparision on rounded to 10bit coordinates.
+Let's me stuff 3 vertices in a phrase. x gets one bit more.
+Texture may need more precision or even compensation. I don't care because it is independent per polygon. No memory problem.
+So if I accept rounding from the visibility test, I need to follow OpenGL and interpolate in screen space. No "the dark project" thief engine ray casting stuff -- infinite precision integers.
+Frame to frame coherence comes later. It would be really cool for some more 2d like action.
+Bresenham works for overlap checks on screen. When ordinates have on 15 bit, I can calculate determinants fast.
+Cannot have quads anymore. Only triangles, but then need to calculate delta matrix only once per triangle.
+Clipping becomes a bit akward because at least at corners this means raytracing and what if this is not triangle anymore?
+The blitter might not hit the target anyway. I might just have understood guard bands (for perspective correction or VERY tiny affine triangles (span-length parameter)).
+Sounds like many special cases like slithers for example. Not great for small code size.
+Still only use it for the quad case and small quads. Otherwise zigzag along z =>  triangles!
+Or check if the interpolated value from the vertices hits the texture inside the allowed polygon. Only otherwise split. Uh, this sounds like a recepy for jitter.
+On the otherhand quads can become triangles on clipping. Nice! We take them like this.
+
+
 The blitter can have saturation on Gouraud disabled (  To  Top Byte   To Top Nibble ). Then it saturates on the full 16 bit. This should be a rare occurance ( frame rate drop? ).
 For anything else this allows us to backdate the phrase values for less blitter calls. F02238.
 Of course I then need to clip all color channels in software on the other side.
