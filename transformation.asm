@@ -1,3 +1,42 @@
+;A lot of speical case do work with floats
+For an edge, if the closer vertex is within the frustum, the direction to the other can be floats.
+For two vertices within the frustum, if their relative distance is < 4 or some low factor, floats (one EXP per vector) works.
+Texture mapping on polygons with these edges work if they don't include the corner.
+
+It is a relief to solve most visibility problems in screen space with rounded volumes.
+For z resolve: First check for 2d overlap (exact). z overlap (works with float). Then use 32 bit math to calculate the cut between the planes -> transform on screen.
+
+
+;32 bit determinant to check for intersection of frustum corners with polygons.
+Split 32 bit into three using
+CPY
+SHLQ
+SHA
+
+;Correct for sign in lower words
+ADC dummy
+ADC
+ADC
+
+imult
+imac
+resmac
+
+cpy
+sha
+imult ,1
+2 times
+
+;32 bit mul single
+cpy
+shr
+shl
+mul
+mul
+add
+adc
+
+
 ;NDC has a cost. The final multiplication for each (X and Y)
 MUL x,const_x  ; 2 cycles  .. uh, not sooo expensive
 shift x ; this is always needed to get the integer part for the one address generator in the blitter and the fraction for the other

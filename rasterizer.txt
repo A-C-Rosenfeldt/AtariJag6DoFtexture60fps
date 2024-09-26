@@ -1,3 +1,11 @@
+After clipping, affine texture mapping does not work anymore. I guess that the KISS method is to clip perfectly, but then interpolate on the edges.
+I do not like that I need one extra division per scanline to recalculate the delta. Divisions should be used for perspective correction..
+uh but which also needs one delta calcuation per scanline. Triangulation would indeed avoid this. But then again, I have one division free per scanline iteration.
+Guard band for very small affine triangles. A nodge towards perspecitve correction for larger. Maybe have an executable with either code path / or a quality option?
+
+Sorting (by y) is so incredible fast that I want to start with scanline rendering for the visibility determination, but defer the rasterizer due to code cache size.
+Active edge list can be a b-tree with root in internal memory and leafs in external memory.
+
 Portal rendering. The beam tree leaves are convex polygons .. so portals.
 I want to improve on Sky Hammer in the scenes where there is an enemy covering a lot of the screen or when I peek around a corner.
 In both cases, portals help. Mostly I don't get the artwork in Skyhammer. All grey and almost no direction. I will need to generate some CRY textures with caching for shading.
