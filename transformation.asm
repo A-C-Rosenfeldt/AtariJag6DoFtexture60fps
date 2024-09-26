@@ -8,12 +8,19 @@ For z resolve: First check for 2d overlap (exact). z overlap (works with float).
 
 
 ;32 bit determinant to check for intersection of frustum corners with polygons.
+;So this is cros product followed by inner product. The synergy would be to keep the 32 bit value splitted. I stopped caring about rounding errors due to rotation.
+;But if there is some math following a rotation, it might be interesting to have matrix mul with 14:14 bit (with sign)? Full 32 bit are probably too much.
+;I need carry bits / overflow bits within the 32 MAC bits anyway (I think that this is a bug in JRISC), so I can check for overflow like: top two bits are unequal
+;there is not instruction for this. Just add bias to make it unsigned and btest for carry
+
+;Manual says not to split mac instructions, but doesn't this just slow down interrupt, or even not that much: This is a bit unfortunate because now it takes two cycles to pull the source operands
+
 Split 32 bit into three using
 CPY
 SHLQ
 SHA
 
-;Correct for sign in lower words
+;Correct for sign in lower words. Is this worth 3 ticks? I don't even need that sign bit for cross product and inner.
 ADC dummy
 ADC
 ADC
@@ -30,9 +37,16 @@ imult ,1
 ;32 bit mul single
 cpy
 shr
+shr
+mul
+mul
+add
+adc
+;same for the trans
+adc ,0
+cpy
 shl
-mul
-mul
+shr
 add
 adc
 
