@@ -4,7 +4,38 @@ uh but which also needs one delta calcuation per scanline. Triangulation would i
 Guard band for very small affine triangles. A nodge towards perspecitve correction for larger. Maybe have an executable with either code path / or a quality option?
 
 Sorting (by y) is so incredible fast that I want to start with scanline rendering for the visibility determination, but defer the rasterizer due to code cache size.
+Memory managemnt is like: count number of vertices for each y "bucket". Then fill in the vertex IDs. Bucket sort.
+Even packing in internal memory would be possible. load ror add rol (either counter or increment) store.
+Quicksort and Mergesort are also good conentenders, but have weird worst cases when I take internal memory constraints into account.
+Finally, for cockpit view with like 120 lines on screen, bucket sort just plain wins.
+
 Active edge list can be a b-tree with root in internal memory and leafs in external memory.
+
+Z-resolution pulls in float too often. So we reduce its count. First only for xy overlap (perfect). Then check for z exp, then z mantissa, then cut line projected on screen (32 bit probably).
+
+I determine visible surfaces in a separate pass for profiling. But is a bit difficult to destill the clipping information. I seems like I need to repeat the active edge list stuff in the next pass.
+
+Small triangles use the affine rasterizer. I use the guard band to allow (small) triangles to use this fast pass independently from some rather arbitrary clip. Or do I? Whan about occlusion?
+Maybe I should not play tricks. Affine is only for unclipped, unobscured, small area*delta_z triangles.
+Anything larger uses edge interpolatation and then span interpolation. So actually, I want to correct perspective on the edge if I have to interpolate the span anyway.
+For larger triangles add subspans. I know I loved tiles, but subspans fit in so easy when you look at the code. DIV is as fast as 4px subspans. 4x4 tiles make no sense on this hardware.
+So anyways, I want to do the perspecitve correction on real pixel positions -- so not exactly on the edge, but the first and last pixel.
+Edge interpolation is not enough. For triangles I can invert a 2x2 matrix. This is also true for trapezoids if there were no rounding errors.
+So each edge has to pick a pixel on the oposite side. Actually, I feel like if this is the result of clipping on the frustum, there is an obvious way for to get deltas along x or y or even both.
+Then for the other we can save one mul, but still need the DIV. Ah the one common DIV. Anyway: for a trapezoid: pick the longer span ( top or bottom).
+Bresenham on the edges allos me to use diffrent deltas for x U V W. One DIV per edge pales in contrast to the 3 DIVs per span that I need.
+If there is memory left, small integer division could use a jump table. I need this for 1px long spans. For 2px I can use SBC instead of other instructions. For 4px shift. Both are 32 bit.
+So basically only jump (every jump has a condition field) if power of two (2^0). Check: BSCAN, adq, SHL -> zero flag.
+
+Since I only correct visible pixels, I need to do this for all edges of the polygon and those cutting in. Maybe I should select one horizontal delta value.
+Just feels like I should go back for infinit precision raytracing maths for this one (ah, 32bit should be enough). Only triangles would short-cut to screen inverse matrix.
+Should I just log the active edge list? In pass 1 I need to stop on each line with any change, but per polygon I just log changes within. Changes happen at a pixel.
+So from the pixe I go to the left and search for left edges. Then I go to the right and search for right edges. Ah, thanks to clipping I can just choose the shorter side.
+Each edge in this list has a link (8 bit ID, max 12 bit because 4096 polygons are beyond Jaguar Caps) to external memory. There is a link to the current position in the log.
+Memory management needs a lot of linked lists. But the GPU cannot burst read items anyways. Just squeeze everything into 64 bit (reads).
+Writes are queued in internal RAM and copied by the blitter. Changes in the active edge list are real vertices and crossings (some of it with the frustum).
+
+An interesting number to profile would be the time spent on 32bit and float calcs.
 
 Portal rendering. The beam tree leaves are convex polygons .. so portals.
 I want to improve on Sky Hammer in the scenes where there is an enemy covering a lot of the screen or when I peek around a corner.

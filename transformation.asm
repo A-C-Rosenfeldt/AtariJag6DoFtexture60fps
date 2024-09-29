@@ -15,19 +15,25 @@ For z resolve: First check for 2d overlap (exact). z overlap (works with float).
 
 ;Manual says not to split mac instructions, but doesn't this just slow down interrupt, or even not that much: This is a bit unfortunate because now it takes two cycles to pull the source operands
 
-Split 32 bit into three using
+;Split 32 bit into three using. This can easily be interleaved for vector components. Actually, I have 3 component vectors which don't like this interleave so much. 3rd componenent need to be filled in by compiler
 CPY
 SHLQ
 SHA
 
-;Correct for sign in lower words. Is this worth 3 ticks? I don't even need that sign bit for cross product and inner.
+;optional: Correct for sign in lower words. Is this worth 3 ticks? I don't even need that sign bit for cross product and inner.
 ADC dummy
 ADC
 ADC
 
+;Mac avoids many wait states on JRISC
+;have two instructions which provide one of the operands
 imult
 imac
+imac ; cross product imac costs two cycles to fetch both operands
 resmac
+nop 
+ADD lower_bits, result ; can be zero wait state 
+;store result and SHA for higher word
 
 cpy
 sha
@@ -41,7 +47,7 @@ shr
 mul
 mul
 add
-adc
+adc  ; 3 adc in total. LL -> HH . LH -> counter , LH -> counter , two register shift ( cpy shl shr or or -- same as with IMAC, but less turns)
 ;same for the trans
 adc ,0
 cpy
@@ -50,6 +56,15 @@ shr
 add
 adc
 
+Turns mul:
+LHHL
+counter 
+
+turns muln:
+LLH 
+LHH 
+
+Uh, it is the same?
 
 ;NDC has a cost. The final multiplication for each (X and Y)
 MUL x,const_x  ; 2 cycles  .. uh, not sooo expensive
