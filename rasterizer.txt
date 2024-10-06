@@ -1,3 +1,32 @@
+So it seems like there is no hybrid between scanline rendering and painters. At least I get scary worst case (memory scenario).
+Now I am almost sure that I don't have enough code memory to squeeze in scanline rendering (16 bit math, 32 bit math) and texture mapping (texture coordinates at corner, sub-spans, register address)
+at the same time. Maybe I even want shading because Fight4Life looks so flat.
+I can define a happy path. Polygons with max vertices. Like obviously we need at least 3. 4 happens due do clipping (on frustum) or occlusion. 5 can also happen.
+Convex. The rasterize needs to deal with non-convex polygons. Ah wait, that is ugly along the edges. I can only store two edges in the registers.
+So, mostly convex. And where was I : Indices to at least 5 vertices .. make that 8.
+
+So it can happen that we cannot write out the complete polygon. To make the sub-span renderer happy, there needs to be a winner on merge and a default on split.
+So the effect is like this: Many small polygons in front of one large ( biped in front of a wall ), fills up my memory with lots of "virtual" polygons to draw "around" the characters.
+Lets just say I accept as many (additional) virtual polygons as real ones (256+256) and hence have limit for the memory usage.
+
+Z-sort may be a way to avoid this, but is not without hassle. So obviously I have determined which polygons are in front.
+Ah, all the large "background" polygons need to be resolved within. Likewise the small polygons should be resovled within their group because most results are easy to process.
+The BeamTree is looming in the background because the active edges list needs fast inserts, which needs a tree.
+A hybrid solution would be two fold. I check all edges for the next crossing and may skip some lines completely. This is kinda a test from the BeamTree.
+Then when the number of edges gets two big for local memory and brute force memcpy, a visble edge is chosen to split left / right.
+
+Polygons may be split onto both sides. So I later may want to fuse them. By using a real edge instead of vertical (from a vertex) or blocks,
+I at least safe one polygon from a split. Now this edge may even belong to two poylgons, or it is an edge of an object and occludes stuff behing it : So many cases without polygon splits!
+It is still a bit ugly that I want to keep code around to check.
+
+I thought about the span buffer Quake is said to have. It fits the blitter. With a low resolution I might write span starts at pixel positions.
+The blitter can clean this buffer. Even if this solves allocation, I still need pointers to jump over other polygons and to advance into the next scanline, heck, even for overdraw.
+This becomes a deferred renderer: Draw everything flat shaded with z-buffer. Use blitter (pixel mode) to find span length.
+GPU calculates texture coordinates for start and end. Use blitter (pixel mode) to fill span. Interleave this to keep blitter and GPU occupied.
+Like for one blitter action the GPU does the left pixel and for the other the gpu does the right pixel.
+The backbuffer is for the first part. If I don't mind screen tearing, the second pass renders to the 16bpp front buffer. I hope that Grouraud shading code paths also fits into local memory.
+"It normally compares the source data register with the pattern data register," => "The action of the Blitter can be stopped altogether"
+
 After clipping, affine texture mapping does not work anymore. I guess that the KISS method is to clip perfectly, but then interpolate on the edges.
 I do not like that I need one extra division per scanline to recalculate the delta. Divisions should be used for perspective correction..
 uh but which also needs one delta calcuation per scanline. Triangulation would indeed avoid this. But then again, I have one division free per scanline iteration.
