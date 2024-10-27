@@ -1,3 +1,32 @@
+Scanline-Renderer: Cons: I cannot do const-z texture mapping and 8x8 tiles is hard.
+For interpolating values, this is not really so bad because Jaguar has faster MUL than branch.
+So I could hit two edge pixels out of the blue, load a whole matrix to multiply (x,y)&Matrix+Offset -> s,t,lumen. Or uvw . And edge propagation data.
+The nice thing is that shared edges are calculated only once and the branch in Bresenham does not bother me as much (or the cumbersome branchless coding which all relies and ADC).
+Even for individual polygons it seems to be faster to use x_start and x_end in MUL to get UVW. Like, add fixed point. Always keep the UVW start values (uh that costs).
+Hmm, weird. This seems to be worse than ADD->Add 0 carry -> mul  or even Add -> adc -1 -> AND, ADD for 32 bit.
+MUL has no problem with occlusins, while ADD would need new intialisation on every edge cutting in. To use the 32 bits, the initialisation needs slow 32 bit MUL.
+This makes z-sort interesting again. Draw full polygons and only cut out others which don't match the order.
+My problem is that z-sort eats into the processing time for only a small benefit here. I hate the tuning hacks like buckets or Qsort.
+Without buckets, sorting will be almost perfect. I would use occlusion information only to determine the visible scanlines, but still propagate along the edges?
+Maybe I find occluding edges which still keep the edge count at 3 or below? Like The frustum with its free edges.
+Portal rendering accepts 6 edges. I guess that edges created by small debris flying in front of a house can give quite the spikes in render time.
+I cannot render scanlines and then draw all intakt polygons because then the eventless scanline would be wasted.
+Or at least, I could defer rendering, and then on the first occlusion, I render the polygon up to the scanline and switch to scanline rendering there in order not to need to save massive amounts of temporary data.
+Just because on typical games, 80% of the polygons seem to be intakt. Of course I would love a symmetric approach.
+
+Only beam trees scale in a sane way. I would use a stack and manage the overflow in natural way. No oppionated hack to repeat code in registers, SRAM, DRAM.
+With scanline rendering on the other hand I know how many edges I have. I reserve an active edge list of the same size in DRAM. This list is short compared to DRAM size.
+LoadP is a fast way to crawl through the edges. I only need to write back indices occasionally. So, all this drawing data is kept at the edges. Only the indices are sorted so that I don't need StoreP.
+Problem is: Active Edge list is as uncool as z-buffer. The hardware should have done that efficiently. Why do I need to write software for it?
+
+At least with pure scanline algorithm I probably have something to draw every scanline and it does not hurt that skipping lines is kinda difficult.
+Actually, the concurrency with the blitter is far better here. Base address and shading are only two values which switch between faces.
+All the other values switch even within a polygon: s,t,x,y,luminosity.
+With blitter control and visible surface determination both in code cache, we can releax and not try to cache any data or do blitter double pass.
+
+Of course, Doom had a boudning volume hierarchy. Beam trees are compatible, but scanlines are also. Feed the bounding surface into the algorithm.
+When it tries to draw the first pixel, bait and switch, replace the bounding volume with the detailed interiour. Same for portals.
+
 So it seems like there is no hybrid between scanline rendering and painters. At least I get scary worst case (memory scenario).
 Now I am almost sure that I don't have enough code memory to squeeze in scanline rendering (16 bit math, 32 bit math) and texture mapping (texture coordinates at corner, sub-spans, register address)
 at the same time. Maybe I even want shading because Fight4Life looks so flat.
