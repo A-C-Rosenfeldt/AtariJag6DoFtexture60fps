@@ -1,3 +1,133 @@
+Perspective correction is slower than affine texturemapping because I need to also fill the increment register.
+I may need to check the SDK code, but please, don't change horizontal increment for affine triangles.
+Small area triangles need to be affine. Slithers are extremely slow with correction. Also check z-dynamic to apply this render path on as much triangles as possible.
+Reuse of the increment is also a reason why pure scanline rendering is a bad idea for texture mapping, less for Gouraud, but certainly for SRCshaded textures as in skyhammer.
+JRISC lacks certain instructions to efficiently fill the texture registers. Nothing is faster than naive:
+
+;increment along edge and fight the slow branches in JRISC
+add r10,11 ; eigentlich: check sign of r10 ? That would mean the loop depends o
+branch on carry ;to select delta. Bresenham creates two different deltas
+add r1,r8	; s
+add r2,r9	; t 
+add r13,r14 ; x  nur integer
+
+When I keep increments in the blitter register, uh, I save two registers on the GPU. So how many do I need?
+(s,t,(xy,counter) =4) * (alternative jumps=2 + akkumulator=1  =3 ) = 12  
+
+;interleave words -- okay ist jetzt nicht so viel komplizierter als der doppelt Bresenham
+interleave instructions{
+cp r1,r2
+cp r2,r3 ; could swap these two. Would not make much of a difference, but
+and 10,r3 ; Maybe I can deliver r3 to or ? But there is alredy shift quick for this.
+|
+cp r4,r5
+cp r5,r6
+and 01,r6
+}
+
+interleave {
+shift r5
+or r3,r5
+-- uh, wait for blitter?  load 02238; btest 0
+store -- interleave is mandatory to reduce blitter idle time. Maybe MoveTa instead of store, then flip page (all others are off the score board because reg-reg calcs only), then store, then flip back.
+|
+shift r2
+or r2,r6
+store displacement
+}
+
+
+Bresenham needs two decisions which I want to implement as up jumps to eliminate the loop jumps. Taking a jump costs 3 cycles.
+Both edge increments are round half up. So I know the favourable code path
+
+loop{
+other right
+favour left
+block optional break if counter
+favour right
+other left
+}counter was already elsewhere
+
+So all combos only need one jump, , but other right, other left . Code duplication lets us reduce these 3 jumps to 2.
+
+store F0220C ; screen position. A2 Okay, here I am glad that it is only a single register. X is low word. For 3 direction const-z, the code is not allowed to care.
+store F0223C ; counter . For max speed I could detect changes
+
+We have enough registers. Any ROR, NOT will save a register, but cost a cycle. Same with double shift.
+Now when does perspecitve come into play?
+13*2=26 cycles just for storing values is as long as a division. The edge calcuations take as long. MUL is not async to it has to be added.
+So basically we can say that the two DIVs on both edges are not the bottleneck .. if I can spread them equally.
+There would be multiple scanlines in flight.
+# UVW and edges -> DIV, second data interleaving , wait for blitter
+# process DIV result, kick off other DIV, first interleave -> TA, linerp via lookup, mul 
+
+Quake has special cases for linerp. I want fast corners
+
+load base+delta_x, target
+compq deltax, 3
+if smaller then jump target    ; if there were not so many funny rules around jump, I could put two jumps butt to butt ... Bresenham already does the up jumps. I want to reuse code verbatim for perspective
+	x_end=x_start : do nothing
+	delta_x=1 : set xy integer
+	delta_x=2 : set integer for akku and increment  .. so not in all cases. Use addressing mode with offset
+
+default (no jump?) : It is a shift. How do I detect those without jumping? 
+bitscan
+add silly_bias,s
+shift s,delta_x
+if zero flag
+{
+	shiftR s,increment
+}
+else
+{
+	setup{cp buffer_address_in_localSRAM}
+	add delta_x
+	and wrap_around   ; rem ODer page aligned und einfach mit bset das carry killen. Also die addresse muss mit 0 enden. Sonst muss man auf sub umstellen. Also delta_X signed? Aber bitclear statt bitset ist ein anderer opcoce!
+	58 LOAD (R14+Rn),RM 
+	for x,y{
+		cp increment32
+		mul divisor,increment32   .. uh 
+		shR increment,16 ; Maybe here is some synergy with interleave
+
+		ror increment32_cp
+		mul divisor, increment32_cp		
+		add increment32_s
+	}
+}
+store integer.fraction 
+
+Selection of const_z seeems like a realy good idea. Even though the subspans use fast shift_R, I think we need even more registers and additional code. And I want extra long blitter runs.
+Of course, 3 direction drawing is incompatible with scanline-rendering.
+Scanline rendering access the bus. Hmm, could try to do it when I will be waiting on the blitter in a minute anyways.
+
+So with about 64 cycles per line, the blitter can blit 8px in pixel mode without fast-page mode. Ah wait read to write cost another cycles. So 9*8=72 cycles per scanline.
+So let's say that blitter and GPU are matched on average because a lot of triangles in Fight4Life or BattleSphere are about 16px wide.
+It might be tempting to have a queue over the height of a trapezoid. In contrast to interleave of long and short spans, here I can pay back on triangle set-up. And code is clear because the queue is separate and dumb. Draw middle vertex to coners
+
+wait:
+if blitter idle then shortcut ; 'Blitter does no care about order of lines
+else ;shelve
+cmp write_pointer, wrap_around  (or test?)
+	== goto wait
+	<> store [write_ppointer++& wrap]
+
+: ;second place in GPU loop and later on triangle set-up to pay back the shelved blitter runs.
+cmp read_pointer, write_pointer
+if <> and blitter_is_idle then load[read++& wrap],store in blitter
+
+ADQ
+AND
+Load					xy
+;these const two more cycles per instruction. This is a clear disadvantage of the queue and shows the need for the short-cut
+;going throuhg the queue word by word adds 3 instructions into our tight memory and only removes 3 cycles?
+load displacement		st
+load displacement		fraction
+load displacement		counter
+store
+store displacemnt only costs one cycle per instruction. Oh, register loads happen on different cycles anyway. 
+Shortcut uses the same blitter registers, so maybe have their addresses in different registers? I don't think that I have much left
+
+
 Scanline-Renderer: Cons: I cannot do const-z texture mapping and 8x8 tiles is hard.
 For interpolating values, this is not really so bad because Jaguar has faster MUL than branch.
 So I could hit two edge pixels out of the blue, load a whole matrix to multiply (x,y)&Matrix+Offset -> s,t,lumen. Or uvw . And edge propagation data.
