@@ -7,6 +7,8 @@ JRISC lacks certain instructions to efficiently fill the texture registers. Noth
 ;increment along edge and fight the slow branches in JRISC
 add r10,11 ; eigentlich: check sign of r10 ? That would mean the loop depends o
 branch on carry ;to select delta. Bresenham creates two different deltas
+;perspective add w first position  for in-loop DIV
+;perspecitve div w
 add r1,r8	; s
 add r2,r9	; t 
 add r13,r14 ; x  nur integer
@@ -24,7 +26,7 @@ cp r4,r5
 cp r5,r6
 and 01,r6
 }
-
+;perspective: can place one mul,mul,DIV  here. ; DIVs in my code do not depend on each other (LINERP uses lookup). So the DIV bug does not apply. Even the LINERP does not depend directly on perspective. SUB acts as fence. 
 interleave {
 shift r5
 or r3,r5
@@ -41,11 +43,11 @@ Bresenham needs two decisions which I want to implement as up jumps to eliminate
 Both edge increments are round half up. So I know the favourable code path
 
 loop{
-other right
-favour left
-block optional break if counter
-favour right
 other left
+favour right
+block optional break if counter  also jump in here. This allows me to duplicate code before and after this loop to have special cases for first and last. Espciallly, bresenham is needed one less than lines of polygon
+favour left
+other right
 }counter was already elsewhere
 
 So all combos only need one jump, , but other right, other left . Code duplication lets us reduce these 3 jumps to 2.
@@ -58,6 +60,17 @@ Now when does perspecitve come into play?
 13*2=26 cycles just for storing values is as long as a division. The edge calcuations take as long. MUL is not async to it has to be added.
 So basically we can say that the two DIVs on both edges are not the bottleneck .. if I can spread them equally.
 There would be multiple scanlines in flight.
+Uh, this is too expensive. Rather I need to start one DIV right when the left edge was calculated and one after the interleave for the left edge was done. Oh this does not sound efficient.
+So rather have more of an unrolled loop? I don't want to duplicate Bresenham. So I only have the special first lopp and last . I don't see how I can put ping-pong registers in the Bresenham construct.
+At least I don't really have space.
+So I use the interleaved start register as delay stage. Looks like I need a duplicate of xy . Ah, but perspectiv correction already as uvw as inputs and st as output.
+So for the left edge I have all different registers. I need to delay the right edge u,v. 
+Loop is enterred before the blitter call and abort condition is after wards. so blitter is called one more than bresenham.
+To fill the delayed registers I would need to calculate the first line before the loop.
+This does not work. Rather I enter the loop after the blitter because then  .. the question is: what code do I duplicate
+expensive computer with uvw -> st or expensive IO towards the blitter.
+Raterh I need to computer before the loop. Loop has as many block encounters as scanline. Also need to call the blitter as often. But Bresenham is one less. So enter before blitter, break after.
+Or I call the blitter afterwards. Loop iterations are the same, but I enter after Bresenham because delay registers are not yet valid. Then break after blitter, access delayed calculations (LINERP) and blitter.
 # UVW and edges -> DIV, second data interleaving , wait for blitter
 # process DIV result, kick off other DIV, first interleave -> TA, linerp via lookup, mul 
 
@@ -65,7 +78,9 @@ Quake has special cases for linerp. I want fast corners
 
 load base+delta_x, target
 compq deltax, 3
+;interleave : perspective MUL U,s; latest position to access DIV result in loop
 if smaller then jump target    ; if there were not so many funny rules around jump, I could put two jumps butt to butt ... Bresenham already does the up jumps. I want to reuse code verbatim for perspective
+	;delay slot : perspective MUL v,t
 	x_end=x_start : do nothing
 	delta_x=1 : set xy integer
 	delta_x=2 : set integer for akku and increment  .. so not in all cases. Use addressing mode with offset
@@ -99,6 +114,16 @@ store integer.fraction
 Selection of const_z seeems like a realy good idea. Even though the subspans use fast shift_R, I think we need even more registers and additional code. And I want extra long blitter runs.
 Of course, 3 direction drawing is incompatible with scanline-rendering.
 Scanline rendering access the bus. Hmm, could try to do it when I will be waiting on the blitter in a minute anyways.
+Per polygon render may load the affine or corrected code (self modify).
+I should not correct corners even of otherwise corrected poygons. I just akzept some skew on the border (histeresis: as polygon grows in animation, and or const-z gets unfavouralbe: correct belt bursts open).
+Occlusion may still leave large parts of unoccluded poylgons where the edge calculation can go vroom.
+To use the full 32 bit precsion of the blitter address generator, I set up every triangle with full precision, but the scanline renderer then also needs to jump using 32bit mul.
+I don't know how to efficiently trigger deltas from occluding poylgons.
+Of course, I do frustum (special code path with less or no Bresenham?).
+The deltas for the edge are a speed advantage when I can use them for at least like 8 lines. Does not matter if due to occlusion or own edge.
+I only know this after the scanline reneder has looked ahead of beam tree was used. The scanline renderer on any vertex would trigger the rendering of the lines upwards. But I want const-z !
+Some overdraw might be okay after all? Ah, I guess that I want to die on this hill. See: Quake2 span buffer. Large background polygons read from the span buffer / visiplanes.
+I would need to correct every span. I would need meta information to detect edges (over 8 lines) and corners which better are renderered using affine mapping.
 
 So with about 64 cycles per line, the blitter can blit 8px in pixel mode without fast-page mode. Ah wait read to write cost another cycles. So 9*8=72 cycles per scanline.
 So let's say that blitter and GPU are matched on average because a lot of triangles in Fight4Life or BattleSphere are about 16px wide.
