@@ -1,3 +1,43 @@
+So I feared that I cannot debug a beamtree, but now decided that I will keep numbers small by sticking to the raster.
+So the edge equations use 16-bit screen coordinates, but for every vertex I use 320x200 screen resolution -- no fraction. For natural vertices this works just as with my normal sub-pixel correction rasterizer.
+When two edges cross, I go along the dominant axis of one and find the crossing ordinate. This can use Bresenham on both edges.
+When used for BSPs, the crossing has a side. When jaggies co-propagate I get a different crossing on the other side.
+Now the reason for all this is that I need to insert splitting edges into a polygon and I need to know which vertices from the parent go into with side. So here I need the "internal" crossings.
+I can compare ordinates along the dominant axis of the boundary polygon. Split once split twice and just compare this ordinate almost like scanline rendering.
+
+This rasterized crossing can also be used for a portal renderer. I guess that portals produce quite a balanced tree on screen. First the current room splits, then the view through the portals split.
+
+I seems to be very difficult to find a heuristics for the BSP. Sorting kinda brings up a tree internally. This n*log(n) sorting is what repelled me.
+Also it seems like BSP will often be efficient. I don't know how to iterate on the previous frame in Fight4Life because fighters move so fast.
+Binary trees can be balanced. Does it make sense to balance a tree after we already built it?
+An edge on the border of the screen would be kinda useless indeed. I cannot insert poylgon-soup efficiently into a degenerated tree.
+Degeneration means that I could just use the scanline rendering + bubble sort.
+I don't even care too much about splits because I eat superfluous splits before the rasterizer and I think I do it efficiently ( some bit logic -- yeah sadly some branches).
+So I only care about balance. So I choose the edge which splits all vertices in two equal groups ( greedy, I don't look down the tree for now).
+So I don't have that many vertices and could compare all edges with all vertices. Somehow equal split can be calculated using a BSP.
+Let us assume that I already have a BSP. Now I split it along the new edge. Sectors which are not cut just contriubte to the sum of their side.
+So I can resist degeneration by stopping at some depth.
+Then I start a new tree. I guess, I now have a forrest.
+Finally, I merge them. Each tree offers a root splitting edge, which already has numbers stored with it about the own vertices split.
+Now merging tries out one split over the other. Merging is n-log n. I take the more balanced order.
+Merged trees have more depth allowance and may ingest polgons. But still, I might want to have to break.
+With a forrest of trees, I merge the two largest .. or with some figure like minimal added depth in percentage.
+
+The Forrest shows that bottom up using the scene graph is the way to go. The algorithm does not care if I merge a triangle into a BSP, or if I merge two BSPs.
+Regarding degeneration, starting from a small polygon player or starting from large polygon level, cannot be that bad as accicentally starting with a polygon in the top left corner.
+Tree merge does the balancing for us. So two merges are calculated at every level. As said above. Sounds expensive, but I want this. Last merger does not need this.
+
+I use the same z-sort algorithm for scanline rendering as for beam tree. I may have a fresh formulation here:
+For every polygon I check if the camera is in front or in the back (in 3d or by order of their vertices). Polygons
+Ah, I wanted to avoid high precision z values in screen space, but I still need high precision. With skins and blends and ragdoll, polygons are not known upfront.
+I need a cross-product for the normal and an inner product with the camera and .. When a triangle ends up with size after rasterization, then the turning order of the vertices is to be believed?
+Imagine a slither with the middle vertex in the middle. Now add wobble. Rounded coordinates flip front and back all the time. Sub-pixel precision edges will not as bad. So it is in-consistent.
+I need 3d. For polygon polygon comparision I just need one vertex of the other polyon. Now, what if the planes clip?
+There still exist a plane of separation between both polygons, but it kinda difficult to find.
+So I guess: Beamtree to the rescue. We have a sector with overlap. Ah, no sector needed. Just one pixel. I'll take the interpolated z value. Interpolation does not uses deltas here. Just a single point.
+So with some luck one of the polygons has the vertex here? Did I not just round vertices? So I need the sub-pixel corrected W value, which I later use for the texture.
+So I can just as well have the other corrected W value and the deltas? Then 32-bit multiply and done.
+
 To get this running, I want fight4life and a simple room. I go to the leaves of the sce graph and compose towards the root.
 Merge two trees. Alternating, start with larger area. Or try who doesn' split other polygons.
 Split need to be cheap like doom floors. There on the path back to the front all column buffers are merged, but for the columns where ranges don't merge (for original Doom limtis (floor - ceiling)).

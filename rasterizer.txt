@@ -179,6 +179,7 @@ Actually, the concurrency with the blitter is far better here. Base address and 
 All the other values switch even within a polygon: s,t,x,y,luminosity.
 With blitter control and visible surface determination both in code cache, we can releax and not try to cache any data or do blitter double pass.
 
+
 Of course, Doom had a boudning volume hierarchy. Beam trees are compatible, but scanlines are also. Feed the bounding surface into the algorithm.
 When it tries to draw the first pixel, bait and switch, replace the bounding volume with the detailed interiour. Same for portals.
 
@@ -221,6 +222,11 @@ Memory managemnt is like: count number of vertices for each y "bucket". Then fil
 Even packing in internal memory would be possible. load ror add rol (either counter or increment) store.
 Quicksort and Mergesort are also good conentenders, but have weird worst cases when I take internal memory constraints into account.
 Finally, for cockpit view with like 120 lines on screen, bucket sort just plain wins.
+
+Scanline rendering is only fun with bubble sort. Edges cross on screen, and exhchange places in RAM. No suprises. I feel like this can be made very fast.
+Use the blitter to load a chunk. Ah, probably want to completely sort it? Write back all but the values moved to the top end. These are now the low end in the next block.
+CPU moves back and forth in the cached block. Then blitter goes back and forth over the blocks. Maybe there is a way to verify order early? Note when ends are sorted?
+So only bubbles would let the sorter move into these region.
 
 Active edge list can be a b-tree with root in internal memory and leafs in external memory.
 
@@ -268,6 +274,11 @@ Other.Edge through face (vertices on both sides). Other.Edge . Volume = camera-O
 Early out vs collect signs first (branch free, optimized JRISC can be fast) and divide later. Okay, is probably not fast due to floats, but uh..
 So on each polygon we get signs per vertex, and changes per edges. And we get links between edges. We get links because we check each edge with each other edge.
 To justify this, in the outer loop we go over the polygon and calculate camera x edge. Then in the inner loop we inner product this with the corner rays from the camera.
+
+I need quite a few values I also would need for perspective correct testure mapping. I mean, I need 32 bit W values.
+Scanline rendering would need to sub-pixel correct as we reach the scanline of the top vertex. With other vertices know I need to calculate delta.
+Going to the next scanline, vertical delta is applied .. Bresenham the whole package. Then on the scanline horizontal delta is used to propagate to the edge which may occlude our polygon.
+I am kinda back at the 32bit z-buffer of the blitter. 
 
 The result is again a convex polygon. Calculate z. Sort. Ranges. Slope if deltaZ>2. X Ranges. Affine Slope for delta(round(X))>1.
 The remaining space in the portal is not convex. But we now only need to cosider the visible edges and vertices.
