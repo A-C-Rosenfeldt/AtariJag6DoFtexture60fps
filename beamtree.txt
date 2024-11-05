@@ -28,6 +28,24 @@ Regarding degeneration, starting from a small polygon player or starting from la
 Tree merge does the balancing for us. So two merges are calculated at every level. As said above. Sounds expensive, but I want this. Last merger does not need this.
 
 I use the same z-sort algorithm for scanline rendering as for beam tree. I may have a fresh formulation here:
+Z-comparison is kinda expensive, so check transoformed z values first (we have those). Only if overlapping:
+A raster independent method could use the seperating axis theorem. Yeah, it is quite trivial to come up with, but needs 32 bit MUL cross, inner (I guess that z interpolation boils down to this?).
+So for one triangle take the vertices (I don't store normals of fighter animations to save RAM), inner product with all other vertices? Found an axis.
+Reverse triangle (or flat polygon) roles, try again
+I found more cases where triangles don't cut each other but need a different axis: Use other combinations of vertices. Like you can take two vertices from one triangle and one from the other.
+This should cover all cases. I don't know a heuristic for the order in this latter part. Maybe sort by z and leve out the outer vertices first. Two cases. Maybe leave out second vertex first which is more at the border.
+But actually, I don't care. Is fine grained enough. 2 cases and then the last 4. Maybe have a counter for those in statistic menu.
+Do I really need 32 bit Math? I could find AABB and convert to floats relative to the center first. Later when I compare with the camera, I use the full 32 bit position of one vertex,
+but 16 bit direction precision is in agreement with the rest of engine. Might want to have a switch for this.
+I would be interesting to do an exhaustive search to get 4 planes which span up a tetraheader. Then I check if a box of 16bit precision fits in. Ah, we don't care for vector lenght. Only need 3 normals.
+There is actually an easy way. With the given plane, expand points in axis direction and calculate a plane with safety margin. Check if it fullfils.
+Ah all this smart math is slower than just doing 32 bit.
+
+All this maths really wants me to run the blitter in parallel. Flip register banks. Even size optimized code and some crude round robin method should be faster than optimized sequential.
+So interrupts and switched register banks seem to have a bug. So there is no clean solution for this? PEmu is broken? Is it my responsibility?
+Or do I even want interrupts? Probably better check the blitter state somewhere in Maths where I just freed most registers so that I can use the for the interleave stuff.
+
+not so fresh
 For every polygon I check if the camera is in front or in the back (in 3d or by order of their vertices). Polygons
 Ah, I wanted to avoid high precision z values in screen space, but I still need high precision. With skins and blends and ragdoll, polygons are not known upfront.
 I need a cross-product for the normal and an inner product with the camera and .. When a triangle ends up with size after rasterization, then the turning order of the vertices is to be believed?
