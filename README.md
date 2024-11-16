@@ -98,6 +98,22 @@ This way I can controll all caching (There is no trap mechanism in the blitter).
 Currently it looks like a will draw a lot of small triangles simply scanline by scanline.
 If I use a 4 associative texture cache, I can read 4 values for bilinear interpolation without trashing myself even if zoomed out ( no Mipmaps ).
 The same cache also allow to store 8 block long cached lines in texture ram ( 2x2 cache lines ).. good enough for scanline rendering.
+
+# Possible games, where the Jaguar could blit directly into the line-buffer
+(I gave up on texture loading using the ObjectProcessor).
+A space shooter should be possible. I want a story like in an Adventure Game. A puzzle game. Not so much based on skills. All ships with texture and shading (directional light source).
+Change of resolution depending on coverage. Like Doom did it for the stats bar.
+
+3d cars on a pseudo3d track. I don't know if there is enough fill rate left to paint the street like in Atari Karts or Super Burnout (still dunno if it uses the OP).
+Actually, with pseudo3d I mean that I don't draw to many road polygons per scanline. No tunnel. Though, even with a wipe-out tunnel, fill rate is the ultimate limit.
+I guess like a frame buffer for the far away part of the road is actually the way to go for the Jaguar, but don't use a slower frame rate there. That would be ugly.
+Rather letter-box , cockpit-view, low-res . Vertex count is a problem. Jaguar can only do the corners of the road, but no full tunnel. Indeed use OP for scenery ??
+
+Fight4Live should be possible at 60fps. Make the fighters small. I don't know about OP. Maybe there is some speed-up possible to have second playfield only where there are polygons.
+Less memory to clear. Blitting bitmaps is so inefficent on Jaguar that I rather not draw a background.
+
+Scanline-rendering likes to draw while doing a lot of maths. This is great for the blitter and for even polygon density with the line-buffer.
+A beam tree is better at identifying high polygon density. Then nodes could be pre-rendererd.
 # Todo
 https://github.com/toarnold/jag2048.git
 https://hub.docker.com/r/toarnold/jaguarvbcc/

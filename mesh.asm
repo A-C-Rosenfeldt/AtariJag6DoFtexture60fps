@@ -104,6 +104,18 @@ REASMAC 5  ; for Bresenham
 ; A triangle can be visible if only one edge is visble => screen corners become other vertices.
 ; A triangle may be visible without any edge or vertex on screen .. all corner become vertices.
 ; Use raytracing to determine [W,U,V] at the corners. Early out if W is behind camera. Multiply with W to get U and V.
+; Notice how this one use of tracing a ray is singular. There is no grand unification between a rasterizer and a tracer
+; No motivation to cache some inverted matrix to speed this up because this matrix would need to be rotated anyway, or even worse stuff for skins.
+; So this boils down to a quite boring 3x3 Matrix-Inversion: of ray_with_direction*length = cammera-polygon_basis + u*u_vector + v * v_vector
+; I don't want to use any fancy inversion because I need to avoid division. No fancy invert vector while doing it can compensate for this.
+; Stupid 2x2 sub determinants .. oh this is not cross, inner for volume decsion. Inversion is a little more expensive.
+something ,a
+something ,b
+imult a
+imac b
+resmac
+; We need 9 .. or at least 6 of these determiants and then still have two inner products.
+; 3 of these sub determiants need to form an inner product with the unused row of the non-inverted matrix to get our divisor.
 ; For triangles with textureCount != 1 or with Gouraud  .. we better argue using interpolation (s,t)
 ; interpolation of the vertices need to result in the same point as frustum corner scaled ( we choose w as variable)
 ; Matrix inversion gives us s,t,w
@@ -114,11 +126,19 @@ REASMAC 5  ; for Bresenham
 ; Matrix multiplication (MMULT) gives us Gouraud, U, V
 
 
-;Backface culling
+;Backface culling. Screen space allows me to get rid of the z ( 32bit or float). Just don't do it on int pixel, but use the full 16 bit of (NDC). Fixed point
 IMULT
 IMAC
 RESMAC
 
+;Generally, only for Matrices I see a benefit of a common denominator. And maybe for homogenous coordinates. All other ad-Hoc tricks look suspiciours. The blazing fast renderer has an interpolation trick, which only works if we accept pixel wobble and if we had a 386 with 32x32=64. So just forget about it!
+;So, only way for common denominator or to use more precsion  and less processed variables is to go 3d
+
+;16 bit . Normal of triangle in local coordinates ( center, floating to size). 16 bits are okay here because basically we float them. All floats within the scope of this engine use 16bit mantissa max (often even with up to 3 unused bits and never normalized).
+;32 bit delta between camera and center. Actually: Why not float them? We only care for the direction. Ah, would need more instructions! Maybe use one vertex for like 6 triangles?
+;Can't be too difficult to analyse a mesh on load. Sort vertices by cardinality, then by lowest in neighborhood .
+;inner product
+;At first it looks like the normal could be used as an intermediate value for UV texture coordinates, but this did not pan out.
 
 ;EdgeStartingAtVertex .. going to vertex
 ;Bresenham is quite cheap. Pipeline wants us to do two at a time. No need to reused values for adjacent triangles

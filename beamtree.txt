@@ -28,6 +28,15 @@ Regarding degeneration, starting from a small polygon player or starting from la
 Tree merge does the balancing for us. So two merges are calculated at every level. As said above. Sounds expensive, but I want this. Last merger does not need this.
 
 I use the same z-sort algorithm for scanline rendering as for beam tree. I may have a fresh formulation here:
+z comparison pulls in the 32 bit or float discussion. Z between (non-intersecting) polygons can only be checked on pixels where they overlap.
+I need compact code to fit into 4 kB. So maybe don't do any pre-checks or caching?
+At least with a beam tree the number of checks is less than in the scanline rendering.
+
+When merging two trees, z-occlusion applies. As with scanline rendering, I first solve xy screen space. So z comparison happens per leaf (sector).
+The result may be that some cuts need to be undone. When two children show the same polygon: Parent becomes leaf with pointer to said polygon. Rinse repeat.
+Sadly, I cannot evaluate this going top down, but it may come into play at lower levels. Large occluders close to the root should lock out fine detail behind them.
+
+Old version.
 Z-comparison is kinda expensive, so check transoformed z values first (we have those). Only if overlapping:
 A raster independent method could use the seperating axis theorem. Yeah, it is quite trivial to come up with, but needs 32 bit MUL cross, inner (I guess that z interpolation boils down to this?).
 So for one triangle take the vertices (I don't store normals of fighter animations to save RAM), inner product with all other vertices? Found an axis.
