@@ -39,7 +39,12 @@ store displacement
 }
 
 
-Bresenham needs two decisions which I want to implement as up jumps to eliminate the loop jumps. Taking a jump costs 3 cycles.
+Bresenham needs two decisions which I want to implement as up jumps to eliminate the loop jumps. Taking a jump costs 3 cycles;
+and additionally there may be wait states to deduce the condition (though it looks well with all the numbers I have to crunch anyways).
+Slight loop unrolling is justified I think, just I would love to have all of the scratchpad memory for me here.
+So only full trapezes get this fast treatment, after I don't need any scanline rendering anymore. Also beam tree cannot trigger these, I guess.
+I have the feeling that beam tree code will be too big anyway. Yeah sorry, no parralel GPU, blitter execution.
+Maybe self modify code? Affine texture mapping gets unrolling, while perspecitve gets W ordinate.
 Both edge increments are round half up. So I know the favourable code path
 
 loop{
