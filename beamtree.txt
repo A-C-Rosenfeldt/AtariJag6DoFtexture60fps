@@ -36,6 +36,12 @@ When merging two trees, z-occlusion applies. As with scanline rendering, I first
 The result may be that some cuts need to be undone. When two children show the same polygon: Parent becomes leaf with pointer to said polygon. Rinse repeat.
 Sadly, I cannot evaluate this going top down, but it may come into play at lower levels. Large occluders close to the root should lock out fine detail behind them.
 
+Occlusion culling with beam trees already writes the full resolved tree to memory. Expensive allocation in B-tree or so already happend.
+For a separate rendering pass, where I load all the texture mapping code and edge tracing code, I can just read through this data (reletively cheap).
+Sorting along surface normal for const-z "Doom visiplane", can use the tree for sorting. Generic sorting, instead of the degenerated triangle case
+Instead of akward split of non-convex polygons for floodfill, merge across parent edges while tracing the current scanline.
+This is still a lot of code. So it is nice to have a separate pass for this.
+
 Old version.
 Z-comparison is kinda expensive, so check transoformed z values first (we have those). Only if overlapping:
 A raster independent method could use the seperating axis theorem. Yeah, it is quite trivial to come up with, but needs 32 bit MUL cross, inner (I guess that z interpolation boils down to this?).
