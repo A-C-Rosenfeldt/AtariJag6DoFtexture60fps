@@ -42,6 +42,19 @@ Sorting along surface normal for const-z "Doom visiplane", can use the tree for 
 Instead of akward split of non-convex polygons for floodfill, merge across parent edges while tracing the current scanline.
 This is still a lot of code. So it is nice to have a separate pass for this.
 
+## textures ##
+Zero overdraw generally leads to jumps. With painters or z-buffer we have 2 (3) deltas going along the pixels. With beam tree (or Doom-space), we jump by screen pixel count (8 bits, or at least <16 bit) integers.
+Now, the address generator in the blitter has 16.16 deltas. In reality the integer part is more like 1, or polygons are so small that precision is not an issue anyway.
+Before perspective correction we want the most precise values. I mean, I still may split along power of 2 z values, but for now lets roll with i486 PC style 16.16 fixed point.
+The code has not many ways for optimizations. Just use IMUL. I think one ADD can be placed 2 after IMUL. One per texture ordinate.
+For scaled up polygons the integer part is zero. We only need 16x16. Scaled down poylgons have a low number of pixels and probably also not many jumps. I just hate to have two code paths.
+I have two pathts anyway: affine and corrected. It kinda feels weird not to cut along power of 2 for perspective correction. It also feels weird not to use mip-maps.
+Like pseude3d racers have constrained my view on general 3d, F-zero also seems to have a bad influence. I should not optimize too much for this case.
+But then again full 32 bit are like 16 mipmap levels. But (2nd) div -- even in fixed-point moode -- only allow a relative precision of 16.8 / 8.8 = 8.8 of 24 bit => 8 mipmap levels = 256 texture resolution.
+When I want to cover scaled up textures without any wobble, this might not be enough.
+So now I have a rough precision in place for the flow of the calcuation. This gives me an order to upgrade from 16 to 32 and check the end-result. I could also check if all bits are used.
+Subspans come in the second iteration. I am looking forward to see the warping when a small polygon crosses in front of a large one, just to show off the unique algorithm.
+
 Old version.
 Z-comparison is kinda expensive, so check transoformed z values first (we have those). Only if overlapping:
 A raster independent method could use the seperating axis theorem. Yeah, it is quite trivial to come up with, but needs 32 bit MUL cross, inner (I guess that z interpolation boils down to this?).
