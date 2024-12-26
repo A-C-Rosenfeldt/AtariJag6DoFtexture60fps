@@ -4,13 +4,7 @@
 
 </head>
 <body>
-	<canvas id="FieldGl0" width="540" height="100" style="border:1px solid #000000;" class=""></canvas> 
-	<script src="TestGl.js" type="module" ></script>
-	<p>
-	simple model. Move camera. 
-	rasterizer checks for overdraw.
-	Show  graph.
-</p>
+
 <h2>Motivation</h2>
 <p>
 	The Jaguar is the last standard hardware to allow mostly software rendering, but already has a Blitter to do the dumb linear interpolation along a span.
@@ -45,7 +39,13 @@
 		So for a demo I should probably use a simple game like Outrun, where other cars stay in their lane and have a convex shape. 
 	</p>
 	
-	
+	<canvas id="FieldGl0" width="540" height="100" style="border:1px solid #000000;" class=""></canvas> 
+	<script src="TestGl.js" type="module" ></script>
+	<p>
+	simple model. Move camera. 
+	rasterizer checks for overdraw.
+	Show  graph.
+</p>	
 <h2>Beam tree and large integers</h2>
 <p>The beam tree is motivation alone. Start with a low number of polygons in a soup. Add BSP and portals to render roughly front to back and to terminate rendering in a dungeon ( yeah, old 90s look ).</p>
 <p>Pure beam tree has the smallest code size (important for the cache in Tom) and a low number of comparison. Probalby neither large integers nor float will fit into the cache.
