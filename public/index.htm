@@ -11,10 +11,41 @@
 	rasterizer checks for overdraw.
 	Show  graph.
 </p>
-<h1>ToDo</h1>
+<h2>Motivation</h2>
 <p>
-Set up local node to be able to test. Compile to public for github pages to show off.
-</p>
+	The Jaguar is the last standard hardware to allow mostly software rendering, but already has a Blitter to do the dumb linear interpolation along a span.
+	Later I learned that this Blitter is buggy. Especially, Atari added a mode to lighten or darken texture, but did repurpose the "self-lightening" of Gouraud for this.
+	There is no mode which would use an extra cycle on the Adder unit to have both. So I cannot port Descent from the PC.
+	Descent has 6 degrees of freedom and uses a portal renderer to run fast on systems with low fill rate. I need to steal the controls from Sky Hammer to have such a game on Jaguar.
+	Thanks to some serious design flaws, the Atari blitter falls back from 64 bit to 16 bit mode all the time and is slow so slow that it makes the JRISC GPU look fast:
+	JRISC has single cycle multiplication and a separate division unit.  
+	</p>
+	<p>
+		Multiplication has lower precision (16x16->32) than on contemporary PCs. I already had planned a 3d engine for Commodore plus4 (8 bit) and had ideas for variable length integers to manage graphics quality.
+		It turns out that this management code is slower than just composing instructions for higher precision, at least on Jaguar.
+	At least I can be clever at times and implement 16x32.
+	Besides, I was interested in how -- using low precision -- to avoid gaps between polygons, and also not pull in texels from outside the official domain in texture memory.
+	</p>
+	<p>
+		It turns out that these glitches in old games happen due to big mistakes in code. Without these, 32 bit math on PC is virtually glitch free (like one wrong pixel every hour).
+	It hurts a bit that the playstation wobble graphics at least is perfect in regard to glitches. But clipping to the screen borders (viewing frustum) brings Playstation and those quad rendering 3do back into reality. Only high precision maths helps here. Actually, Playstation devs complain that they are hard limited to 16 bit here. 
+	To be backwards compatible with tile maps of old 2d games, I can still install axis aligned fences. In code this is one extra compare and a seldomly taken jump. The blitter in Jaguar actually accepts high precision 16.16 fixed point coordinates. Compare this to the low memory (RAM and ROM) and lack of filtering. To adhere to the fences I just need to floor the increments. Hah, the blitter can even render right to left. So when there is a fence on only one side, I can start there. I think this feature is actually meant for 2d mirror/flip blits for background art. 
+	</p>
+	<p>
+		John Carmack wanted to unify level rendering and object rendering. Descent does not use portals for the raging robots.
+		If Atari had not messed up, z-buffering and fill rate would be so fast on the Jaguar that the GPU should just send all polygons through.
+		As it is, we cannot only use fill rate, but also not really the z-buffer. So as on PC, I would like to use some smart way.
+		Doom already uses a Binary Space Partitioning (BSP) Tree and a coverage map to unify the view through two portals. But this only works with an upright camera. Basically, this inspired the hierarchical z-buffer.
+		But I want to try out the beam tree. I don't like to stress the beams too much because my rounding considerations led me to handle this as a 2d-BSP Tree on the screen.
+		After projection and clipping, I round to 16 bit coordinates on screen. So any operation (especially clipping) on the tree is fast with JRISC 16-bit maths.
+	</p>
+	<p>
+		The Jaguar really lacks beautiful 3d games. Some games need like 100 cycles per pixel, so it cannot be all the fault of the Blitter.
+		A lot of games seem to use a lot of time for AI and collision detection.
+		So for a demo I should probably use a simple game like Outrun, where other cars stay in their lane and have a convex shape. 
+	</p>
+	
+	
 <h2>Beam tree and large integers</h2>
 <p>The beam tree is motivation alone. Start with a low number of polygons in a soup. Add BSP and portals to render roughly front to back and to terminate rendering in a dungeon ( yeah, old 90s look ).</p>
 <p>Pure beam tree has the smallest code size (important for the cache in Tom) and a low number of comparison. Probalby neither large integers nor float will fit into the cache.
