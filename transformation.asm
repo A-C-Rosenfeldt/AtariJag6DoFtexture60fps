@@ -1,3 +1,78 @@
+;I try to grow up and use floats
+;To still have clean graphics I want to check if edges pass close to the camera. For these I cannot help it. They need their next 16 bit rotated with carry onto the significiant ones
+;Floats store a bit per ordinate to mark the biggest(abosolute) on
+;I look along this axis and check if the edge passes close to (0,0) on the plane of the other ordinates
+
+6 Load vertices
+3 sub to get edge length   . Find interleave code. Make it safe by :
+
+pointer_flip+=Q
+pointer_flop+=q
+Load po->this.x
+Load pi->that.x
+interleave
+interleave
+mov that->delta
+sub this,that   -> delta
+
+;find largest in delta
+if x>y goto
+if z>y goto  z biggest
+;y biggest
+goto end
+yz:
+if z>y goto  z biggest
+x biggest
+
+goto end
+z biggest:
+
+end:
+normalize_xy (swap if z is not biggest)
+mul that.z, this.x
+mul that.z, this.y
+mul this.z, that.x
+mul this.z, that.y
+
+;No rounding happens in this test, but what is the result actually? How small is it allowed to be?
+
+sub this.x, that.x
+abs
+cmp    2^16 ;,abs(this.z)+abs(that.z)+this.x+that.y , ; one tick off in one of the factors leads to an error of factor. I just need an upper bound.
+if bigger jump out
+
+sub this.x, that.x
+abs
+cmp
+if bigger jump out
+
+
+;Some check for a vertex close to the camera and another "behind it"
+;Then the other vertex could be expressed as close vertex(small EXP) + rotated edge(big EXP). Clipping calcuation exes the EXP .
+;Some kind of inner product / norm
+;Seams easier to go 32 bit for all abs(EXP delta) > 3
+
+; Plane with distant vertices
+; Calculate normal
+; inner product (closest vertex - camera ) * normal < threshold
+; basically, this calculates a volume. It is very expensive
+
+;I think the real solution is to default to 32 bit, switch to 16 bit for vertices inside a bounding box.
+;This is meant for heads, vehicles, maybe "fractal" objects like trees
+;Also I can render the road as a tube. The far away segemts have low relative distance
+;Yeah sorry, this interface leaks
+
+All these calcuations are slower than 32x16 integer . They only make sense if really only like 16 vertices are affected per frame. Or even add delta? Do it before rotation!
+A second pass is bad for bus contingation. So better fill a list of these <= 16 vertices in local SRAM.
+16 bit are almost enough. In a racing game objects scale from 2 px to 200. So we don't even need more than 8 bit.
+But what if I want to go the full mile and allow 1 px to larger than the screen ( camera in front of a tall wall / tree reaching of the hood of the car ).
+And it should still be stable. 720px stills? 24 bits are needed. 720 x 480 px. Then I would need floats.
+Now what if someone defines a large polygon to the horizon. Maybe a ceiling with our head close to it? Then we need 24 bit ints.
+Also I want to use .. Ah I don't use the z-buffer. But maybe I compare 32 bit z-values in the beamtree? 16bit pixel * 32 bit delta -> 32 bit to compare.
+For high detail density nodes I would indeed like to use the z-buffer. And I want to use full 16bit precision in RAM. So I want to supply full 32 bit z-values.
+
+
+
 ;A lot of speical case do work with floats
 For an edge, if the closer vertex is within the frustum, the direction to the other can be floats.
 For two vertices within the frustum, if their relative distance is < 4 or some low factor, floats (one EXP per vector) works.

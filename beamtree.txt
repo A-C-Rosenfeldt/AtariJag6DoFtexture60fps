@@ -31,6 +31,14 @@ I use the same z-sort algorithm for scanline rendering as for beam tree. I may h
 z comparison pulls in the 32 bit or float discussion. Z between (non-intersecting) polygons can only be checked on pixels where they overlap.
 I need compact code to fit into 4 kB. So maybe don't do any pre-checks or caching?
 At least with a beam tree the number of checks is less than in the scanline rendering.
+With a beamtree I can identify high edges where it makes sense to set up accumulators and delta values for.
+For a long edge I would like to round the delta and then use pixel values for correction. This way I can reduce the number of (taken )jumps.
+I already know that I execute the loop at least once and I can invest in weird jumps at the first and last iteration.
+For long edges there would be two sets of delta-S, delta-T and delta-Z for the texture depending on the outcome of the left edge calculation.
+A short edge uses floor. But importantly, S,T, and Z are calculated using MUL. I think, pixel mode uses pixel co-orrdinates. So I have both factors.
+Edges can be the own edges or an edge from an occluder. Gouraud works the same.
+Short edges count scanline on the bottom.
+This optimization may seem to be a bit pointless, but I was worried about efficient rendering of faces in a fighter game, or efficient rendering of vehicles in a racing game or space shooter.
 
 When merging two trees, z-occlusion applies. As with scanline rendering, I first solve xy screen space. So z comparison happens per leaf (sector).
 The result may be that some cuts need to be undone. When two children show the same polygon: Parent becomes leaf with pointer to said polygon. Rinse repeat.
@@ -41,6 +49,9 @@ For a separate rendering pass, where I load all the texture mapping code and edg
 Sorting along surface normal for const-z "Doom visiplane", can use the tree for sorting. Generic sorting, instead of the degenerated triangle case
 Instead of akward split of non-convex polygons for floodfill, merge across parent edges while tracing the current scanline.
 This is still a lot of code. So it is nice to have a separate pass for this.
+
+##edges##
+U
 
 ## textures ##
 Zero overdraw generally leads to jumps. With painters or z-buffer we have 2 (3) deltas going along the pixels. With beam tree (or Doom-space), we jump by screen pixel count (8 bits, or at least <16 bit) integers.
