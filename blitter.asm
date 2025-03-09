@@ -219,6 +219,7 @@ mp_wait2:
 ; 4x4 block in regs 0..3
 ; 2x2  *  2x2  rotations
 ; rough rotation
+; Probably needs some MFA
 MOVE 0,4
 MOVE 2,5
 AND lo,0

@@ -147,6 +147,108 @@ class Matrix{
 // Quake PVS is also in world space. I now understand modern raytracing: Polygons in camera spacen, pixels in world space
 // real ray-tracing would be if I round rays to world coordinates, but this will kill Bresenham
 // linerp in the blitter does not even care.
+
+
+/**
+ * I switched the beam tree to sceen coordinates. The name is a bit misleading, but then again it is not because it replaces the z-buffer.
+ * The back projection into real 3d is straight forward and allows me compare points to it before projection ( because I hate the arbitrary near plane),
+ * and it allows me to clip lines to it ( even if one of the points is behind me ).
+ * Now, do to rounding, the portals may not be convex anymore. The beam-tree then splits them up into sectors. Still can clip lines
+ * Line clipping needs 32bit anyway. Might be the reason Descent appeared on 32bit 386.
+ * 
+ * I am a little unsure if 32 bit are really enough. Perhaps we should at an epsilon so that eh cutting point is outside of the portal for sure. Then clip again.
+ * With the screen, the worst thing that can happen is that we have to decide at the corner what to do. But then the other ordinate is just the screen border after projection.
+ * 
+ * I looks like portals don't add much to a beam tree. When a portal is visble then we need to proceed with the room behind.
+ * We should render all walls of the source room first. Any reason why we would not?
+ * This visibility test in screen space is okay.
+ * The interesting thing is that we take the part of the beam tree inside the portal to clip lines instead of the viewing frustum.
+ * Does this give us any advantage? I mean, if clipping is not precise?
+ * We could solve for y or x in screen space and use the .
+ * I mean, I stopped wanting full precision for binary space partitioning trees.
+ * But do? Sure for further comparision I only need pixel coordinates for points, but to get there, I need full precision lines
+ * Ah, screen space BSP is 16 bit:  16x16 = 32 for checks. Then clipping a full precision line is 32x16 bit and still not that expensive.
+ * Full precision already accepted the rounding due to rotation. No need for a convex projection.
+ * Though, the math is: Normal of beam tree: first product. Inner product with points. Divide by square of edge length. Multiply with line.
+ * I say: lots of multiplication and rounding.
+ * View frustum culling on either guard band or normalized device coordinates is just a comparison.
+ * I mention guardband because portals could use some smaller power of two bounding box on screen. And then we get away with one multiplication I think:
+ * ( x0/(x1-x0) ) * (y1-y0) + y0
+ * Of course it still is not perfect, but rounding does not change a sign of a component of the line vector!
+ * Power of two screen borders shift one compontent before comaparing with the other. Almost feels like components should have their own exponent.
+ * This 32bit math does not reduce precision relative to the MUL based rotation. But: can it introduce glitches?
+ * Probably, points need to only be clipped to one bounding box. Even lines. So a bounding box infects a mesh.
+ * What about the portal itself? Its vertices belong to both meshes.
+ * Ah, we just need to round each float vertex to less than 32 bit. We could go down to 16, but then we would throw a little bit away. We could have smoother movement.
+ * What about: 24 bit mantissa and 8 bit exponent? Then the mantissae in the vector components can shift by 8 and still not lead to rounding while clipping.
+ * Rounding before the division .. Really? Division only does 24 / 16 = 24 ( 16.16 / 8.16 = 8.16). We have full 32 bit for the product.
+ */
+
+/*
+Bounding boxes need an epsilon. I want the them tight in 3d, and add the epsilon in the projector. I need to add a line width? And corners get a pen shape?
+So I project the points. Each point becomes a box. Then each line needs to know inside vs outside, and shift outside as far as possible on both boxes.
+The boxes complicate the beam tree comparison.
+
+This only sounds good with synergy with clipping. So find a bounding box on power of two frustum beams. Find overlap with the portal frustum.
+Ridiculous. Just use bounding rectangles on screen. Seems like Jaguar has fast multiply, but glitch free occlusion requires a lot of bits.
+Just say: Rectangle still better than viewing frustum. Use rectangles to check for visibility ( epsilon is easy ).
+Then (optionally) set up a power of two view frustum. Clip project. Then clip again in screen space.
+Of course, in this case, the bounding rectangle probably is not (much) larger than the screen. So we could just clip to screen borders.
+The interesting case is when the portal is small, but the bounding box useless ( camera is in it). Like when we look out a window of an airplane.
+Then the overlap is the portal. We still clip there, to be able to reject more vertices and in turn more edges.
+*/
+
+/*
+A guardband for the whole screen would give me screen coordinates, which I still need to clip against the beam tree.
+So the screen borders become special cases of the beam tree? Is it as fast as just 32x16 math? No, I still need that.
+Multiplication in screen space is okay with using 16bit. So NDC -> Pixel does not really need the shifter trick. shifter works with quick value.
+The shifter is always involved because we use floats ( or rather: fixed point factors). I cannot throw away 8 bits. But then often field of view is something close to binary.
+Hmm. NDCs look less akward when rotating. Most factors then a close to 1. Skew is easy. Though comparison with other components is rather easy:
+
+cmp a,b
+Jump lessThan
+neg a   ;delay slot
+cmp a,b
+jump lessthan
+
+and b,b  -> sign  ( in MIPS or RISCV this would be simpler)
+
+copy a,b
+sub c,a
+sar a,31
+and 1,a
+sub c,b
+sar b,30
+and 2,b
+
+bit pattern
+
+so for a line
+xor p0,p1
+count bits
+=1? find crossing
+>1? opposing? find crossings
+	angled  ? calcualte "volume" aign aka determinant aks outer inner product with corner to check for passing
+	
+Bit patterns for polygons?
+All vertices on same side border ? -> done
+	or check x pattern  00 00 00 or 11 11 11  ( comparison result with screen border)
+	or check y pattern         dito
+
+all edges and vertices outside, but polygon still visible? A raytracer would need to x| with every edge and pass inside all of them.
+I already processed the edges. I know that they all pass outside of the corners. Uh, this approach sounds topological. How do I check that I go around?
+		All volumes have the same sign. I could drop one corner of the screen. Result would still be true.
+
+This assembly code would start to look really ugly if I try 3d beam clipping. Much less hard encoding possible. Interleave / assignment. Symmetry.
+
+At least, a guardband allows me to stick to 16 bit for some clipping calculations.
+When I see checkered flag and Iron Soldier, there are a lot of small polygons on screen.
+This may even make it efficient to have an exception batch for lines going over the whole guardband and polygons covering screen + band.
+Iteration is slow, but clipping could target the middle of the guard band. Then perhaps before rotation the direction is 16 bit. Then multiply with percentage of going to the other vertex.
+This vertex then is float rotated like all others. Ends up in the middle of the guard band.
+Just this gets a little weird for screen corners. Like I would raytrace exactly in the corner and get my s,t coordinates
+*/
+
 // Beam tree is so PVS like. I want it as graph and independent of rotation.
 // How do I display this? With rotation I can draw the BSP on screen
 // I should not care about the precision. I can switch the code later on, to use time coherence .. or even build bounding volumes for the camera
