@@ -1,3 +1,84 @@
+=== new: Floats are better than lazy precision ===
+
+So basically lazy precision is slow on JRISC like on all other real hardware.
+I could easily tweak transistors to make this faster. Latency on the used DRAM would even be low enough to pull more precision throught the graph.
+But there is a lazy light way of doing things:
+
+Use floats with 16 bit mantissa ( not normalized because the IMUL instruction does not know that concept, and probably with sign in mantissa because XOR is so slow on JRISC).
+32 bit vertices
+subtract camera position
+16 bit + exp floats
+rotate
+MAC is not really that fast, but still: A vertex better has a common expontent
+I would almost have used normalized device coordinates, but the rounding into pixels killa the beam tree. Ah, no it does not.
+So NDC is used to clip to the viewing frustum. JRISC is quite suited for this. Only thing is: the vertices of an edge might have a different expontent ( more than +-1).
+	=> fall back to 32 bit . This is not really pure: I cannot justify to pull the 32bit through the rotation matrix
+After that coordinates are mulitplied (and shifted) to mean pixel.subpixel  (9.7 bit or even 8.8 ).
+Then the beam tree is constructed. It is really not a beam tree from the point of rounding, though. It is 2d, and is limited to the viewing frustum.
+It has a z component though. So kind height field.
+For fast maths on JRISC, z needs to also be 16 bit int. Our floats cover a larger range.
+So for this ( even without a z-buffer), we need to define a near and far clipping plane. Or we keep the 32 bit fall back?
+Z resolution happens on BSP merge. It is similar to scanline rendering, when on the leading edge we sort by z ( similar to sprites ).
+This is quite expensive and may be the reason why the beam tree beats scanline rendering on Jaguar.
+Now when we resolve polygons where all vertices are with the same expontent +-1 range ( I should allow only two expontents to not make the whole float concept ridiculous ),
+we can use 16 bit math. Else we need 32 bit. Of course it is easy when we can just use the expontents to sort stuff out.
+Actually, the problems start when one polygon has vertices with far different expontent. Like a floor or corridor walls. This infects all comparisons.
+I am afraid that I cannot squeeze 16 and 32 bit math into 4 kB.
+I also plan to use bounding boxes. I accept that I need to pre-calcuate "growing" vectors for the vertices to account for rounding.
+Perhaps there is a way to shrinkwrap without creating pointy vertices. Anyways: I need this code to also fit into 4 kB.
+Bounding boxes allow me to skip view frustum culling for complex meshes ( simpler code path, self modify code? ).
+It allows me to skip floating within the box. It allows occlusion culling in the beam tree.
+Also I want portal code at my finger tips. I wonder if there is a way to validate portals in 3d? We have foam, and must prove that only the portals allow beams to pass from one cell to the other.
+So, a near and far clipping plane is a way to reduce code size.
+
+Perhaps I could own the floating z? I split polygons along const-z ( like near and far plane ).
+Just there would be no funny equation ( though, it is really funny: it is just 1/z minus some offset for the far plane. Then the near plane results from this).
+1/z with rounding looks much more efficient for floats than for ints.
+The weird thing with 1/z is, as we move backwards, the comparison becomes less precise on a given mesh. A stable mesh then starts to flicker.
+z is of course impossible on 1993 era hardware. LoD does not really work on low poly 3d in 1993. So float z is better anyway. 
+There could still be a happy path for expontent range max 1.
+
+How expensive is this clipping? It only deals with z. The plane is not 0, but 2^n is easy enough.
+It is the same expression as for the other clipping planes even after specalization.
+I mean, the expressions originally use vectors, but we already know one ordinate clipping result.
+Or is it really vector? With planes orthogonal to a main axis ( or easy 32 bit transform using ADD ), there is not much vector math left.
+We use one ordinate to get the part we need to move along the edge. Then we blend the others.
+
+I would be ugly if this would disturb the edges of the polygon as inserted into the BSP.
+So this is like merging two BSPs.
+The edge equations become independent of the vertices .. are cutting points really vertices?
+So cutting points only have the integer part of the screen coordinates.
+The calcuation for cutting takes in the 16 bit edges, and then does a division -> 8 bit.
+Thanks to the high precision division unit on JRISC ( and SH2 for ports ), this is no problem.
+Uh, how does this equation look again? View frustum culling had one aligned edge and already maxed out our precision.
+Here we are in 2d, but does it help? The solution breaks the symmetry, not only between point 0 and 1 (as for the frustum), but also between x and y.
+
+There may be an error in the beam tree code.
+It seem like the temporary variables (s,t  -- originally meaning time or trajactory) are the easy way.
+
+given: [s,t] * Matrix_2d = delta_cross
+=>      [s,t] = delta_cross * inv(Matrix_2d) ( 16 bit / 32 bit)
+then [s,t] * delta_inner = [x,y]
+So it is 32 bit / 32 bit . And funny enough, for the integer cut-points this is also integer division.
+
+So float z and beam tree are compatible.
+
+What about the precision of the const z? So z wobbles around with the position of these cut lines?
+2d interpoltation is similar to texture, but how do we deal with 4 vertices?
+The direction values for all const-z lines need to be the same. Gradient is rotated. There may be a small jump at z lines.
+This does not work. For textures I have accepted that I need safety distance in the atlas.
+Jaguar hardware does not know clamp or saturate. Software can clamp per span on rectangular boundaries to avoid extreme color mistakes. Would not be so bad if CLUT was available to the blitter.
+Flickering texturs are kinda cute, gaps in geometry are not.
+Z rounding is okay. I guess with float I have enough leeway to accept some z fighting.
+So take the direction (of the first cut I do), and scale it.
+Make sure to overexpand the 16 bit range by delta.
+For grazing incidence, the lines may become visible due to extreme expansion?
+Grazing incidence looks weird anyway.
+
+
+
+----- old Event based method ----
+
 1000 vertices max per scene, so that I can store a whole dependency graph in memory.
 All the calculations outweight the memory access penalty slightly ( on JRISC ).
 Maybe I should create this graph only per frame. No need to pull the rest of the dungeon into this.
