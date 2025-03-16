@@ -75,7 +75,38 @@ Make sure to overexpand the 16 bit range by delta.
 For grazing incidence, the lines may become visible due to extreme expansion?
 Grazing incidence looks weird anyway.
 
+-- Lazy precision: another try --
 
+Lazy precision should only be triggered very seldomly because it is so slow. So we should start with a the high precsion float / occasional 32 bit math.
+Then when a vertex in the beamtree falls to close the border of a pixel, or a span falls to close to pixel border, or a texel or texel + delta falls to close to a texel border,
+or a z comparison has a delta below, the precsion can be upped.
+
+Expontent stays. Since I need to ADC any values any way and temporary storage is kind expensive, the whole calculation is repeated.
+This clearly is an expansion on the original design. As an intermediate step I need counters for the above mentioned triggers.
+With 8 bit subpixel precision, I can roughly estimate that every 100th calculation needs to be repeated? And probably no glitch was visible..
+There is no synergy with the 32 bit clipping math. 32x32 math is kinda expensive, but not thaaat expensive like event based lazy precision.
+16 bit clipping is not even expensive, so no need for a general guard band. Only reason would be to use shift between clipping coordinates and pixels. But then need to clip against beam tree a little more.
+Is clipping even real 32 bit?
+t = x_0 / x_delta    
+y = y_0 + y_delta * t
+z =
+what if I do the last two as floats? Use the vertex close to the camera as base. Then direction to far away ( all 16 bit so far ). t as 16 bit is okay also.
+Then the nasty float add strikes: Compare exponents 
+Then we get a real 3d point clipped . Then divide ( don't really care for the double rounding)
+We need z anyway.
+
+If we care for rounding we could calculate y like this (closest vertex means all compontents!):
+projected_y = (y_0 + y_delta * t) / (z_0 + z_delta * t )   
+projected_y = (y_0*x_delta + y_delta * x_0) / (z_0*x_delta + z_delta * x_0 )
+
+delta is calcuated in 32 bit ( even before camera shift? ). Can even calcuate the exponent before rasterization.
+Then if delta is needed, it needs to be rotated like a vertex. Thankfully, no homogenous coordinates in use. I mean, I would not understand what they do here. 
+So, these checks are kinda expensive and justify a guard band. A full matrix rotation, huh?
+Float subtraction sounds cheaper. But thre are 5. The 3 deltas. Kinda as expensive as the bitscan comming from 32bit.
+Then the partial move along the edge also leads to float adds. But no matter what: Both methods need this.
+And then repeat this all for the UV texturer coordinates? Oh, I really need to interleave transformation with blitting. Both are slow.
+But I need the whole beam tree before I can rasterize. Only texture coordinates can be late.
+No lightning is very confusing. Flat shading really makes 3d pop. So no need for Gouraud auf low poly textures.
 
 ----- old Event based method ----
 
