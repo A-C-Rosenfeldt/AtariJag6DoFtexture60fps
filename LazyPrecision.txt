@@ -149,17 +149,27 @@ The happy path is essential for debuggin. So I start with affine texture mapping
 To keep the inner rasterizer, I need affine triangles. I know that perspecitve edges look better, but then I need to set-up the vertices in the happy path for this.
 Clipping gives me all information for perspecitve. I feel like I should flat shade clipped polygons above a certain size until the beam tree works.
 Then I go full subspan (Quake, Descent) rendering for everything clipped ( beam tree, portal, screen (not even NDC) ) and/or above a certain size / delta-z.
-Basically, only small happy path triangles stay affine.
+Basically, only small happy path triangles stay affine. Jaguar has no GL_REPEAT, so there will be many small triangles. I should invest in drawin pairs of them with a shared texture.
 
 Raytraced pixels and DMZ are not screen space vertices. It is impossible to triangulate the polygon from this ( sort by z, zig-zag).
 I kinda like z-zigzag because it could even work in PS1, but it really is not good for Jaguar.
-For Jaguar rather it may be interesting for larger polygons to align the spans on const-z lines (like DukeNukem3d) for less HF-jitter and possibly 16 bit Manitssa floats.
+For Jaguar rather it may be interesting for larger polygons to align the spans similar to the 8x8 bilinear tile method in terminal velocity.
+Just with the blitter it makes no sense to have 1:1 aspect ratio. Set-up is so expensive that I can just as well do the full calcuation per scanline.
+For this, try to merge all sectors of the polygon. I don't know why doom has trouble doing this in the column buffer.
+But with a beam-tree, we collect all leafs which end up in this polygon. Then per scanline we know all the leafs to look at in a O(log(n)) fashion.
+So the kinda artificial beam tree will not be visible like a ghost on the texture. Only anoyiance will be the 45° pops.
 If Jaguar really can also do diagonal blitter runs, this would reduce the pops. Const-z slices would be anchored to the screen center and only rotate. Or polygon cg (mean value of (triangle) vertices)?
 {\displaystyle C_{\mathrm {x} }={\frac {1}{6A}}\sum _{i=0}^{n-1}(x_{i}+x_{i+1})(x_{i}\ y_{i+1}-x_{i+1}\ y_{i}),}
 {\displaystyle A={\frac {1}{2}}\sum _{i=0}^{n-1}(x_{i}\ y_{i+1}-x_{i+1}\ y_{i}).}
 Different saching strategy for scale down and scale up. ( nearly 1:1 is faster without any cache). Scale up may be the only cacheable thing.
 Is it possible to first load a const-z slice into color ram? No it is not becaue the blitter does not wrap around.
 Still no argument for triangles. The real solution for scale up is to draw quads composed of 16x16 pixel from the CLUT (which I don't plan to use).
+Similarly, since GL_REPEAT is missing, I want to draw quads for GL_REPEAT. This mesh of quads is constructed after the beam tree and everything finished.
+I don't see any synergy here. I may want to use both kinds of quads on the same polygon: For a large floor for example.
+It may make sense to extract a subtree only for this polygon. Then like normal pull texture-mapping project the vertices of this tree back onto the (repeated) texture.
+Now we have a tree there and rasterize it to draw all visible quads. I love affine so much, but I guess, I should interpolate over the edges and then the spans here. Like Sky-hammer.
+I should probalby also do that for clipped triangles. So I need to sub-pixel correct twice on every scanline. Clearly, not the happy path.
+I would be a nice show to have options to let the tester try out affine vs quads. With fps gauge.
 
 For the Rasterizer we still know the scanlines the polygon covers. But we need to check where the edge exits the DMZ. If any edge to the side then one more than if both on the bottom.
 I need to deal with zero pixel spans anway. So could just use the edge equations and cover the full y-range.
