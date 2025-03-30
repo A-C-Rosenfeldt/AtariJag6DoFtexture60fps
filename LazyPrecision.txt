@@ -75,6 +75,97 @@ Make sure to overexpand the 16 bit range by delta.
 For grazing incidence, the lines may become visible due to extreme expansion?
 Grazing incidence looks weird anyway.
 
+Z-precision vs xy precision
+
+It feels weird to calcuate z and its gradients from the rounded screen coordinates. Probably 16 bit for direction (even with wasted guard band) and independent 16 bit for distance are enough.
+How far can you even view in descent? And do we appreciate the pixel mess far away in doom? Simulators with LoD surface may need a larger viewing distance.
+The z-buffer in the Jaguar has 16 bit precision. It would be logical that the expensive buffer as a lower precision than what the GPU uses.
+The blitter thinks so, and uses 16.16 internally for z. Same for the gradient. So I probably should also use this precision when I "jump" around using GPU mul.
+One jump factor is the byte from the screen coordinate. So it is still quite fast on JRISC. And compoact. Or is it? 4k is not much.
+I can only have so many passes. Probably, the small code scratchpad will be the main reason why T&L and blitting cannot happen in parallel.
+Now I do not need to think about: Texture coordinates could run in parallel with blitter government, but, texture coordinates need their own pass??
+
+The great thing about deformed meshes and UV maps in screen space is that I only need to invert a 2d Matrix. Multiplication of 2d matrices also is twice as fast as 3d.
+Interpolation of floats can be done using const-z splits, but I want to postpone this to version 2.
+Rather I want to use 32 bit integers. No random splits which complicate the debugging of the beam tree and wreck the aesthetics.
+I could even convert float back to 32 bit int. At this poinst, I don't care anymore.
+I feel like 32x16 math is the norm. I would only need one code path also for clipped vertices.
+32 bit math can run over 64k steps before rounding becomes as severe as in 16 bit.
+
+In screen space I already have kinda 32 bit: I want subbpixel precsion. So there is one MUL with the . Ah scrap that.
+In screen space I have 8 x 32 bit for subbpixel precision ( for textures -- ah and z ).
+Then I have another 8 x 32 bit multiplication to jump around pixels ( for the blitter and to compare z in a pixel in a convex sector).
+
+With the guard band clipping co-ordinates become useless. I really want NDC and screen to be mappend by a shift operation so that I can absorb this into my float module.
+NDC is a power of two number. So I cannot even use integer division to arrive at pixels -- other then the integer 2.
+Since z and textures cannot be perfect anyway ( I know, I tried ), I can just as well mix ray tracing into this. So not only in screen corners I would trace for s,t and z,
+but for all clipped polygons. Inverse rotation matrix is just the transpose, isn't it 
+(I use square pixels (up to power of 2) and square NDC, squish would only be one reciproce .. or one row if multiplied in)?
+
+So I already have it in memory.
+I would skip the subbpixel calcuation (on the happy path for triangles within the guard.)
+I really hope that this code also fits into the 4k local RAM. Perhaps it is a blessing that I cannot govern the blitter while doing this. The code for that looks quite fat.
+The beam tree cares for DMZ in the square between the pixel dead-on rays ( even for forward rasterization, thanks to my precision, they are basically still there ).
+I don't want to solve the rotation order of multiple cuts. So edges just end on one face of the DMZ (demilitariazed zone).
+Of cource I need to make sure that edges don't cross outside. I mean, it would just trigger a new DMZ.
+Looks like I need this DMZ also on the screen border, but only on pixel precision ultimately.
+
+Ray tracing needs 3d Matrix inversion. Even if 3d is not as nice as 2d, we still can formulate this a little more friendly using cross-produc ( outer product ) and inner product.
+Surface normals. s,t <-> u,v transformation is 2d. So inversion is transpose cong.. This hints at the rounding: It should not be problematic. Surely 32 bit will solve every problem.
+Now I wonder If I could calcuate the (precise) gradient of a clipped edge from 3d vector maths?
+Gradient is the normal vector of the plane going through the camera and the edge. The z-component is shifts the edge to hit the vertex on screen (or to create correct results for a passing edge like a horizon).
+Yeah, so obviously this is just a cross product between the end points of the edge ( endpoints treated as vectors from the camera position).
+For clipping I argued for 32 bit in the past. Here, both vectors would be needed to be treated as 32 bit. So a lot of MULs and perhaps a reason to accumulate.
+In the end of course, I can float the whole vector down to 16 bit because the actual length of the vector is not important.
+For compact code I probably need to loop over the components and store them with pointer++? Keep the max mantisse.
+Then on pointer-- load, shift them.
+
+How do I merge a pure edge ( no vertex on screen "horizon" ) in the beam tree? I could place it above. For the other tree I can easily decide per vertex if lies below or above the horizon.
+The crossing between two edges is 16 bit math as with normal edges with their enpoints on screen. Solve for (x,y) ( 2d Matrix inversion).
+I wonder if I should use two divisions here. I am on 16bit screen space which does really not like rounding.
+I could use a rasterization trick: For one of the edges check into which sector the gradients falls.
+Ah crap. So rather calcuate the silly 1/det  (integer?) multiply with the vector nominator, and check both results using MUL and CMP (code size! arg!! Probably div can be hidden)?
+
+This trick is somewhat equivalent to dialing in to a 3x3 pixel -- 2x2 DMZ block. Then check if the center pixel is below or above the edges.
+Then for each edge depending on the quadrant of its gradient check pixels on the "cross". Finally we know on which border the edge hits the DMZ.
+If both edges disagree on the DMZ ( one of the four), do we detect this early? 
+Edge-Edge comparison on the DMZ border seems to be rather tedious. Better to do it right from the start.
+The thing is, we need to multiply the inverse gradient with the vertices. So we then deal with 32 bit. DIV for some funny reason accepts 32 bit on JRISC.
+But when we try to check the last bit, we would need to to 32 bit MUL .. uh.
+
+Anyways, we knoe the DMZ which containts the cut. Only thing which is left for us to do to allow BSP merge is to check on which of the four borders the edges enter.
+This is 8x16 math and easy. Code size is so-so.
+
+How do merge beam trees with DMZs. I feel like DMZs go first? Per level?
+DMZ make sectors not convex anymore. Hmm. I can sort DMZ on the sides of a tree-edge. If the edge passes the DMZ, this no problem? I always had cuts on the edge.
+Now the DMZs sit like beads on a string. Of course, both children need to take these "beads" into account. On merging, beads can fall togehter.
+If a sector is filled by its beads, or already if a line is filled ( covered ), I see no reason to keep it alive.
+This may be crucial for sane execution time of high detail, high important objects far away ( see typical scene from Iron Soldier or checkered flag  ).
+Ah, the sector sit on the pixels. So they are never coverd by DMZ. Uh, a cut is not allowed to hit a pixel because then I don't know the color to draw. Remember the top-left rule!
+
+In the MVP I want to use affine texture mapping because perspective correction really is a second step. As for z, I probably need 32 bit values, but as for z, pixels are <16 bit.
+Then just apply subspan like Quake (+90° decider). When I raytrace the texture coordinates, there probably is some z in the denominator. For happy path: Multiply z back in? Sounds weird.
+The happy path is essential for debuggin. So I start with affine texture mapping. But what do I do on clipping?
+To keep the inner rasterizer, I need affine triangles. I know that perspecitve edges look better, but then I need to set-up the vertices in the happy path for this.
+Clipping gives me all information for perspecitve. I feel like I should flat shade clipped polygons above a certain size until the beam tree works.
+Then I go full subspan (Quake, Descent) rendering for everything clipped ( beam tree, portal, screen (not even NDC) ) and/or above a certain size / delta-z.
+Basically, only small happy path triangles stay affine.
+
+Raytraced pixels and DMZ are not screen space vertices. It is impossible to triangulate the polygon from this ( sort by z, zig-zag).
+I kinda like z-zigzag because it could even work in PS1, but it really is not good for Jaguar.
+For Jaguar rather it may be interesting for larger polygons to align the spans on const-z lines (like DukeNukem3d) for less HF-jitter and possibly 16 bit Manitssa floats.
+If Jaguar really can also do diagonal blitter runs, this would reduce the pops. Const-z slices would be anchored to the screen center and only rotate. Or polygon cg (mean value of (triangle) vertices)?
+{\displaystyle C_{\mathrm {x} }={\frac {1}{6A}}\sum _{i=0}^{n-1}(x_{i}+x_{i+1})(x_{i}\ y_{i+1}-x_{i+1}\ y_{i}),}
+{\displaystyle A={\frac {1}{2}}\sum _{i=0}^{n-1}(x_{i}\ y_{i+1}-x_{i+1}\ y_{i}).}
+Different saching strategy for scale down and scale up. ( nearly 1:1 is faster without any cache). Scale up may be the only cacheable thing.
+Is it possible to first load a const-z slice into color ram? No it is not becaue the blitter does not wrap around.
+Still no argument for triangles. The real solution for scale up is to draw quads composed of 16x16 pixel from the CLUT (which I don't plan to use).
+
+For the Rasterizer we still know the scanlines the polygon covers. But we need to check where the edge exits the DMZ. If any edge to the side then one more than if both on the bottom.
+I need to deal with zero pixel spans anway. So could just use the edge equations and cover the full y-range.
+If the span contans a DMZ linked to one of the edges, we need not calcuate the edge. But we need the accumulator on the next line.
+So only drop calculation if and edges is covered with DMZ for the rest of the height .. Or don't because code gets too fat.
+
 -- Lazy precision: another try --
 
 Lazy precision should only be triggered very seldomly because it is so slow. So we should start with a the high precsion float / occasional 32 bit math.
