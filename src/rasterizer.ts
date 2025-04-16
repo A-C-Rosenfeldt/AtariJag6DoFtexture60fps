@@ -62,6 +62,7 @@ class Polygon_in_cameraSpace {
 
 	vertices: Array<Vertex_in_cameraSpace>  // Inheritance or templates?
 	outside: boolean[]
+	corner11: number;
 
 	project(vertices: Array<Vertex_in_cameraSpace>): boolean {
 		this.outside = [false, false]; let pattern32 = 0
@@ -88,6 +89,58 @@ class Polygon_in_cameraSpace {
 			this.outside[1] &&= outside
 		})
 
+		pattern32 = pattern32 << vertices.length | pattern32// pattern allows look ahead
+		// Edges
+		let on_screen = [],cut=[], l = vertices.length
+		this.corner11=0 // ref bitfield in JRISC ( or C# ) cannot do in JS
+		vertices.forEach((v, i) => {
+			let k = (i + 1) % vertices.length
+			switch ((pattern32 >> i) & 2) {
+				case 3: // both outside, check if the edge is visble
+					let pattern4=0
+					if (0== (pattern4=this.isEdge_visible([vertices[i], vertices[k]])))  break;
+						this.edge_crossing_two_borders(vertices,  pattern4, on_screen);
+						//on_screen is pointer to collection:  on_screen.push(...cuts)
+					break;
+				case 1:
+					on_screen.push(v)
+					cut=this.edge_fromVertex_toBorder([vertices[i], vertices[k]],  l);
+					on_screen.push(cut)
+					break
+				case 2:
+					cut=this.edge_fromVertex_toBorder([vertices[k], vertices[i]],  l);
+					on_screen.push(cut)
+					break
+				case 0: //none outside
+					on_screen.push(v)  // Nothing to insert before   // of course in JRISC this would be in a fixed length pool
+					break;
+			}
+
+		})
+
+		if (on_screen.length>0) { this.rasterize_all_onscreen(on_screen) ;return true}
+
+		// trace a single ray for check. But, can I use one of the patterns instead? pattern32=-1 because all vertices are outside. Pattern4 undefined because it is per vertex
+		// tracing is so costly because I need to go over all vertices, actually edges, again.
+		// Backface culling does not help.
+		// 001 vector is simple to trace though
+		// At least in 3d -- it looks -- I need official s,t edges (vertics) ( vertex 0 and 1)
+		// v0 + s*S + t * T = z * 001  // we only care about the sign
+		// normal = s x t 
+		// ( vo | normal ) /  ( z | normal )      // similar equation to  UVZ mapping for txtures and occlusion
+		let null_egal=(this.corner11 >> 2 & 1)^(this.corner11 & 1)
+		if (null_egal==0 ) return // polygon completely outside of viewing frustm
+		// viewing frustum piercing through polygon
+		let m = new Mapper()
+		// fill whole screen rectangle
+		let coords=[-1,-1]
+		for(coords[1]=-1;coords[1]<=1;coords[1]+=1/256)
+			for(coords[0]=-1;coords[0]<=1;coords[0]+=1/256){{
+				m.brute_force(coords)
+		}}
+			
+
+		return 
 		// infi . Though I could define the evil outside as 1. I need to rotate vertex.length to 0. Then logical and detects edges without visible vertex
 		for (let shifter = 0; shifter < 32; shifter += vertices.length) {
 			pattern32 = pattern32 << vertices.length | pattern32
@@ -96,12 +149,12 @@ class Polygon_in_cameraSpace {
 		// check for double 0  ( some JRISC trick? )
 		pattern32 = ~pattern32  // C language cannot rotate. In JRISC I would rotate
 		if ((pattern32 & (pattern32 << 1)) == 0) { let at_least_every_second = true }
-		else this.rasterize(vertices,pattern32)
+		else this.rasterize(vertices, pattern32)
 
 		return this.outside[0] // all vertices within viewing frustum  .  Why return?
 	}
 
-	rasterize(vertex: Array<Vertex_in_cameraSpace>,pattern32:number): boolean {
+	rasterize(vertex: Array<Vertex_in_cameraSpace>, pattern32: number): boolean {
 		if (this.outside[0] == false) return this.rasterize_every2nd_Inside(vertex)
 
 		// Since I accept polygons in original geometry, and the allInside rasterizer looks clean,
@@ -116,26 +169,35 @@ class Polygon_in_cameraSpace {
 
 			let l = vertex.length   //weird to proces second component first. Rotate?
 			for (let i = 0; i <= l; i++) {
-				let k=(i+1) % l,pattern4=0
-				if ((pattern32>>i&3)==0 && 0!=(pattern4=this.isEdge_visible([vertex[i],vertex[k]] ) ))// huh? Since I already did this? Todo: find all cases!	
-				{ 
-				
-					let slope=this.get_edge_slope_onScreen(vertex.slice(i,i+2))
-					for (let border=0;border<4;border++){
-						if ((pattern4 >> border & 1) != (pattern4 >> (border+1) & 1) ){
+				let k = (i + 1) % l, pattern4 = 0
+				if ((pattern32 >> i & 3) == 0 && 0 != (pattern4 = this.isEdge_visible([vertex[i], vertex[k]])))// huh? Since I already did this? Todo: find all cases!	
+				{
 
-
-							// code duplicated from v->edge
-							vertex[i].onScreen[border & 1] = (border & 2)-1  
-							vertex[k].onScreen[~border & 1] = (slope[2] + ((border & 2)-1) * slope[border & 1] )/ slope[~border & 1]
-							
-						}
-					}
-					vertex.splice(0,0) // cutting points insert
+					this.edge_crossing_two_borders(vertex, i, pattern4, k);
+					vertex.splice(0, 0) // cutting points insert
 				}
 			}
 
 		}
+	}
+
+	private edge_crossing_two_borders(vertex: Vertex_in_cameraSpace[], pattern4: number, on_screen) {
+		let slope = this.get_edge_slope_onScreen(vertex);
+
+		for (let border = 0; border < 4; border++) {
+			if ((pattern4 >> border & 1) != (pattern4 >> (border + 1) & 1)) {
+
+
+				// code duplicated from v->edge
+				let coords=[0,0]
+				coords[border & 1] = (border & 2) - 1;
+				coords[~border & 1] = (slope[2] + ((border & 2) - 1) * slope[border & 1]) / slope[~border & 1];
+
+
+				on_screen.push(coords)
+			}
+		}
+		return on_screen
 	}
 
 	isEdge_visible(vertices: Array<Vertex_in_cameraSpace>): number {
@@ -155,32 +217,67 @@ class Polygon_in_cameraSpace {
 		let corner_screen = [0, 0]
 		let bias = corner_screen[2] * cross.v[2]
 
-		let head=[false, false]  // any corner under water any over water?
-		let pattern4=0
+		let head = [false, false]  // any corner under water any over water?
+		let pattern4 = 0,inside=0
 		for (corner_screen[1] = -1; corner_screen[1] <= +1; corner_screen[1] += 2) {
 			for (corner_screen[0] = -1; corner_screen[0] <= +1; corner_screen[0] += 2) {
-				let inside = bias + corner_screen[0] * cross.v[0] + corner_screen[1] * cross.v[1]
-				pattern4<=1;if (inside>0) pattern4 |=1
+				inside = bias + corner_screen[0] * cross.v[0] + corner_screen[1] * cross.v[1]
+				pattern4 <= 1; if (inside > 0) pattern4 |= 1
 			}
 		}
+		this.corner11|= 1 << (Math.sign(inside)+1) // accumulate compact data to check if polygon covers the full screen or is invisible
 		
-		if (pattern4==15 || pattern4==0) return 0
+		
+
+		if (pattern4 == 15 || pattern4 == 0) return 0
 		// check for postive z
-		let base=new Vec3([vertices[0].inSpace])
-		let direction=new Vec3([vertices[0].inSpace,vertices[1].inSpace]) ;
+		let base = new Vec3([vertices[0].inSpace])
+		let direction = new Vec3([vertices[0].inSpace, vertices[1].inSpace]);
 		// Gramm-Schmidt
-		let corrector= direction.scalarProduct( base.innerProduct(direction) / direction.innerProduct(direction) ) ;
-		let close=vertices[0].inSpace[2]-corrector.v[2] // Does nearest point have positive z?  full equation. base - corrector  
-		if (close<0) return 0
+		let corrector = direction.scalarProduct(base.innerProduct(direction) / direction.innerProduct(direction));
+		let close = vertices[0].inSpace[2] - corrector.v[2] // Does nearest point have positive z?  full equation. base - corrector  
+		if (close < 0) return 0
 
 		// compfort repeat for caller
-		pattern4|=pattern4<<4  // |= 1<<8 for zero temrination in JRISC
+		pattern4 |= pattern4 << 4  // |= 1<<8 for zero temrination in JRISC
 		// for(let i=0;i<4;i++){
 		// 	let t=((pattern4 >> i)&1)
 		// 	head[t]=true
 		// }
 
 		return pattern4 //head[0] && head[1]
+	}
+
+	rasterize_all_onscreen(vertex: Array<number[]>) {
+		let l = vertex.length, min = [0, vertex[0][1]]   //weird to proces second component first. Rotate?
+		for (let i = 1; i < l; i++) {
+			if ( vertex[i][1] < min[1]) min = [i, vertex[i][1]]
+		}
+
+		let i = min[0]
+		let v = vertex[i]
+		let active_vertices = [[i, (i + l - 1) % l], [i, (i + 1) % l]]
+
+		// active_vertices.forEach(a => {
+		// 	let vs = a.map(b => this.vertices[b])
+		// 	if (vs[0].outside != vs[1].outside) {
+		// 		// get edge data. Needs a data structure (for sure). Somehow for the rasterizer I calculate it on the fly now
+		// 		 this.edge_fromVertex_toBorder(vs, l);
+		// 	}
+		// 	let v = this.vertices[a[1]]
+		// 	v.outside
+		// })
+
+		let y = v[1]
+		do {
+			let ny = Math.min(...active_vertices.map(a => vertex[a[1]][1]))
+
+			for (; y < ny; y += 1 / 256) {  // floating point trick to get from NDC to pixel cooridinates. 256x256px tech demo. Square pixels. Since I don't round, any factor is possible. Easy one is 256  * 5/4-> 320  .. 256 * 3/4 = 192
+
+			}
+		} while (active_vertices[0][1] != active_vertices[1][1])
+
+	
 	}
 
 	// even if not perfectly convex, this will not crash: checked for find()
@@ -199,41 +296,21 @@ class Polygon_in_cameraSpace {
 		let v = vertex[i]
 		let active_vertices = [[i, (i + l - 1) % l], [i, (i + 1) % l]]
 
-		active_vertices.forEach(a => {
-			let vs = a.map(b => this.vertices[b])
-			if (vs[0].outside != vs[1].outside) {
-				// get edge data. Needs a data structure (for sure). Somehow for the rasterizer I calculate it on the fly now
-				let slope = this.get_edge_slope_onScreen(vs).slice(0, 2)
-				if (slope[0] < slope[1]) { // slope tells us that the edge comes from above
-					i = (i + 1) % l  // correct order . At least every other vertex need to be on inside for this function
-					// check the top screen corners
-					let cc = 0
-
-					for (let corner = -1; corner <= +1; corner += 2) {
-						if ((corner - vs[0].onScreen[0]) * slope[1] > (-1 - vs[0].onScreen[1]) * slope[0]) {
-							vs[1].onScreen[0] = corner
-							vs[1].onScreen[1] = vs[0].onScreen[1] + (corner - vs[0].onScreen[0]) * slope[1] / slope[0]
-
-							cc++
-							break
-						}
-					}
-					if (cc == 0) {
-						vs[1].onScreen[1] = -1 
-						vs[1].onScreen[1] = vs[0].onScreen[0] + (-1 - vs[0].onScreen[1]) * slope[0] / slope[1]
-					}
-					vs[1].onScreen[1] = -1;
-				}
-			}
-			let v = this.vertices[a[1]]
-			v.outside
-		})
+		// active_vertices.forEach(a => {
+		// 	let vs = a.map(b => this.vertices[b])
+		// 	if (vs[0].outside != vs[1].outside) {
+		// 		// get edge data. Needs a data structure (for sure). Somehow for the rasterizer I calculate it on the fly now
+		// 		 this.edge_fromVertex_toBorder(vs, l);
+		// 	}
+		// 	let v = this.vertices[a[1]]
+		// 	v.outside
+		// })
 
 		let y = v.onScreen[1]
 		do {
 			let ny = Math.min(...active_vertices.map(a => this.vertices[a[1]].onScreen[1]))
 
-			for (; y < ny; y+=1/256) {  // floating point trick to get from NDC to pixel cooridinates. 256x256px tech demo. Square pixels. Since I don't round, any factor is possible. Easy one is 256  * 5/4-> 320  .. 256 * 3/4 = 192
+			for (; y < ny; y += 1 / 256) {  // floating point trick to get from NDC to pixel cooridinates. 256x256px tech demo. Square pixels. Since I don't round, any factor is possible. Easy one is 256  * 5/4-> 320  .. 256 * 3/4 = 192
 
 			}
 		} while (active_vertices[0][1] != active_vertices[1][1])
@@ -242,6 +319,32 @@ class Polygon_in_cameraSpace {
 	}
 
 
+
+	private edge_fromVertex_toBorder(vs: Vertex_in_cameraSpace[],  l: number) {
+		let slope = this.get_edge_slope_onScreen(vs).slice(0, 2);
+		if (slope[0] < slope[1]) { // slope tells us that the edge comes from above
+			 // correct order . At least every other vertex need to be on inside for this function
+
+			// check the top screen corners
+			let cc = 0;
+
+			for (let corner = -1; corner <= +1; corner += 2) {
+				if ((corner - vs[0].onScreen[0]) * slope[1] > (-1 - vs[0].onScreen[1]) * slope[0]) {
+					vs[1].onScreen[0] = corner;
+					vs[1].onScreen[1] = vs[0].onScreen[1] + (corner - vs[0].onScreen[0]) * slope[1] / slope[0];
+
+					cc++;
+					break;
+				}
+			}
+			if (cc == 0) {
+				vs[1].onScreen[1] = -1;
+				vs[1].onScreen[1] = vs[0].onScreen[0] + (-1 - vs[0].onScreen[1]) * slope[0] / slope[1];
+			}
+			vs[1].onScreen[1] = -1;
+		}
+		return vs[1].onScreen;
+	}
 
 	get_edge_slope_onScreen(vertex: Array<Vertex_in_cameraSpace>): Array<number> {
 		/*

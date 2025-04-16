@@ -1,6 +1,6 @@
 /**
  * This is used to map (x,y) to (z(w),u,v)
- * Like the early engine that Looking Glas designed, it goes via (s,t) of two edges of a polygon
+ * Like the early engine that Looking Glass designed, it goes via (s,t) of two edges of a polygon
  */
 
 class Camera_in_stSpace{
@@ -11,6 +11,13 @@ class Camera_in_stSpace{
 }
 
 class Mapper{
+	brute_force(coords:number[]){
+		const pixel = new Uint8Array(4); // 2+4+4 = 10
+		pixel[0] = 0; //[0, 0, 255, 255];  // opaque blue
+		pixel[1] = 0;
+		pixel[2] = 255;
+		pixel[3] = 255;
+	}
 	affine(){
 		Span.render();
 	}
