@@ -1,3 +1,11 @@
+
+/* The Data and rounding oriented "industry way" of clipping failed me
+Jaguar and plus/4 rather like unrolled code, branches, and parser generators
+I will cherry pick from below.
+*/
+
+
+
 /**
  * Regarding occlusion culling I seem to have two alternatives. After clipping to frustum in screen space even older hardware can give me 16 bit per ordinate, so 8.8 fixed point.
  * Yeah, 8 bit hardware may really need to stick to adaptive precision integers. So if I dual release plus4 and Jag?
@@ -54,7 +62,8 @@ class Vec{ // looks like I need 2 and 3 dimensions to show off this (adaptive) l
 	//constructor(points:number[][],len)
 	constructor(points:number[][]){
 		if (points.length<2){
-			this.v=new Array<number>(points[0][0])
+			if (points[0].length<2) 			this.v=new Array<number>(points[0][0])
+				else this.v=new Array(...points[0])
 		}else{
 			this.v=new Array<number>(points[0].length)
 			for(let i=0;i++;i<points[0].length){
@@ -62,9 +71,18 @@ class Vec{ // looks like I need 2 and 3 dimensions to show off this (adaptive) l
 			}
 		}
 	}
+
+	// no overloaded parameter in this critical part. JRISC can't overlaod anyway
+	// in-place also not
+	scalarProduct(f:number){
+		let v= this.v.map( comp=> comp*f)
+		return new Vec([v])
+	}
+
+	
 }
 
-class Vec3 extends Vec{
+export class Vec3 extends Vec{
 
 	crossProduct(o:Vec3):Vec3{
 		let v:Vec3=new Vec3([[this.v.length]])
@@ -565,7 +583,7 @@ class Point_Tex2{
 }
 
 class Texture{ // similar to (clipped) edge
-	p:Polygon // reference .. bidirectional .. I may need to pull some data like base:
+	p:Polygon_in_cameraSpace // reference .. bidirectional .. I may need to pull some data like base:
 	base:number[] // texture (0,0) in space .. So not so great for environment mapping, but really great later maybe for triangles which are extended into perfectly flat, not necessarily concave polygons
 	// Material texture (tiles) should not be squeezed .. but UV unwrapped organic texture (globe) needs to
 	spanning:Vec3[]
