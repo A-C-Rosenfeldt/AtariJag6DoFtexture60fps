@@ -304,12 +304,19 @@ class Polygon_in_cameraSpace {
 						let span_within=integer[1]-x
 						if (span_within>0 && fralment[0]>0.001){  // z>0 safety first
 							let right_side=payload.map((p,i)=>fralment[i]+p[1]*span_within)
+							let w=1/fralment[0]		// perspective correction  I feel stupid because at 16 bit even the Jaguar has enough RAM for a LUT
 							for (let uv=0;uv<2 ;uv++){
-								let left=fralment[uv+1]/fralment[0]		// perspective correction				
+								let left=fralment[uv+1]*w
 								fragment[1+uv]=left
-								if (span_within==0 || right_side[0]<=0.001) continue
-								let right=right_side[uv+1]/right_side[0]   // perspective correction  // Attention: JRISC bug: use register "left" before next division instruction!
-								blitter_slope[1+uv]=(right-left) / span_within	 // linear interpolation
+							}
+							if (span_within==0 || right_side[0]<=0.001) continue
+							w=1/right_side[0]    // perspective correction  // Attention: JRISC bug: use register "left" before next division instruction!
+							for (let uv=0;uv<2 ;uv++){
+								let right=right_side[uv+1]*w  
+								let d=(right-fragment[1+uv])  // JRISC is a load-store architecture. There would be a physical register with the d variable. So this line adds no cost
+								// Quake 1 demake to keep code small. Ah, >> and /2 relation is undefined in C. In JRISC I would inlcude the span_within==2 case
+								if ( span_within) blitter_slope[1+uv]=d;									
+								else blitter_slope[1+uv]= d/ span_within	; // linear interpolation. Quake bloats the code for small values. I have some JRISC ideas in the project: scan for first bit. shift one more. Zero flag? then apply shift to argument. Else: div
 							}
 						}
 					}
@@ -317,6 +324,7 @@ class Polygon_in_cameraSpace {
 					// The JRISC blitter cannot do perspective correction
 					// the only solution for this hardware is subspan interpolation
 					// So, I actually would need to trace the edge on the other side 
+					// here on real hardware: wait for blitter, copy fragment and blitter slope into register
 					for (;x<integer[1];x++){ // the blitter does this. Todo: move this code ... . But what about perspective correction? Also not in this source file!
 						m.putpixel([x,y],fragment)
 						blitter_slope.forEach((p,i)=>{fragment[i]+=p[1]})  // x-gradient = slope ( different name for 1-dimensional aka scalar case )
