@@ -91,24 +91,24 @@ class Polygon_in_cameraSpace {
 
 		pattern32 = pattern32 << vertices.length | pattern32// pattern allows look ahead
 		// Edges
-		let on_screen = [],cut=[], l = vertices.length
-		this.corner11=0 // ref bitfield in JRISC ( or C# ) cannot do in JS
+		let on_screen = [], cut = [], l = vertices.length
+		this.corner11 = 0 // ref bitfield in JRISC ( or C# ) cannot do in JS
 		vertices.forEach((v, i) => {
 			let k = (i + 1) % vertices.length
 			switch ((pattern32 >> i) & 2) {
 				case 3: // both outside, check if the edge is visble
-					let pattern4=0
-					if (0== (pattern4=this.isEdge_visible([vertices[i], vertices[k]])))  break;
-						this.edge_crossing_two_borders(vertices,  pattern4, on_screen);
-						//on_screen is pointer to collection:  on_screen.push(...cuts)
+					let pattern4 = 0
+					if (0 == (pattern4 = this.isEdge_visible([vertices[i], vertices[k]]))) break;
+					this.edge_crossing_two_borders(vertices, pattern4, on_screen);
+					//on_screen is pointer to collection:  on_screen.push(...cuts)
 					break;
 				case 1:
 					on_screen.push(v)
-					cut=this.edge_fromVertex_toBorder([vertices[i], vertices[k]],  l);
+					cut = this.edge_fromVertex_toBorder([vertices[i], vertices[k]], l);
 					on_screen.push(cut)
 					break
 				case 2:
-					cut=this.edge_fromVertex_toBorder([vertices[k], vertices[i]],  l);
+					cut = this.edge_fromVertex_toBorder([vertices[k], vertices[i]], l);
 					on_screen.push(cut)
 					break
 				case 0: //none outside
@@ -118,7 +118,14 @@ class Polygon_in_cameraSpace {
 
 		})
 
-		if (on_screen.length>0) { this.rasterize_all_onscreen(on_screen) ;return true}
+		// NDC -> pixel
+		const screen = [320, 200], epsilon = 0.001  // epsilon depends on the number of bits goint into IMUL. We need to factor-- in JRISC . So that floor() will work.
+
+		if (on_screen.length > 0) {
+			// you may rotate by 90° here for walls like in Doom. Also set blitter flag then
+			let pixel_coords = on_screen.map(ndc => [(ndc[0] + 1) * (screen[0] - epsilon), (ndc[1] + 1) * (screen[1] - epsilon)]) // It may be a good idea to skew the pixels before this because even with floats, I uill use 2-complement in JRSIC and use half open interval?. Does the code grow?
+			this.rasterize_onscreen(pixel_coords); return true
+		}
 
 		// trace a single ray for check. But, can I use one of the patterns instead? pattern32=-1 because all vertices are outside. Pattern4 undefined because it is per vertex
 		// tracing is so costly because I need to go over all vertices, actually edges, again.
@@ -128,57 +135,12 @@ class Polygon_in_cameraSpace {
 		// v0 + s*S + t * T = z * 001  // we only care about the sign
 		// normal = s x t 
 		// ( vo | normal ) /  ( z | normal )      // similar equation to  UVZ mapping for txtures and occlusion
-		let null_egal=(this.corner11 >> 2 & 1)^(this.corner11 & 1)
-		if (null_egal==0 ) return // polygon completely outside of viewing frustm
+		let null_egal = (this.corner11 >> 2 & 1) ^ (this.corner11 & 1)
+		if (null_egal == 0) return // polygon completely outside of viewing frustm
 		// viewing frustum piercing through polygon
-		let m = new Mapper()
-		// fill whole screen rectangle
-		let coords=[-1,-1]
-		for(coords[1]=-1;coords[1]<=1;coords[1]+=1/256)
-			for(coords[0]=-1;coords[0]<=1;coords[0]+=1/256){{
-				m.brute_force(coords)
-		}}
-			
 
-		return 
-		// infi . Though I could define the evil outside as 1. I need to rotate vertex.length to 0. Then logical and detects edges without visible vertex
-		for (let shifter = 0; shifter < 32; shifter += vertices.length) {
-			pattern32 = pattern32 << vertices.length | pattern32
-		}
-
-		// check for double 0  ( some JRISC trick? )
-		pattern32 = ~pattern32  // C language cannot rotate. In JRISC I would rotate
-		if ((pattern32 & (pattern32 << 1)) == 0) { let at_least_every_second = true }
-		else this.rasterize(vertices, pattern32)
-
-		return this.outside[0] // all vertices within viewing frustum  .  Why return?
-	}
-
-	rasterize(vertex: Array<Vertex_in_cameraSpace>, pattern32: number): boolean {
-		if (this.outside[0] == false) return this.rasterize_every2nd_Inside(vertex)
-
-		// Since I accept polygons in original geometry, and the allInside rasterizer looks clean,
-		// I should adapt that function for clipped polygons for mixed cases
-
-		if (this.outside[1]) {
-			// trace a single ray for check
-			let m = new Mapper()
-		} else {
-			// see if edges between vertices run inside of a corner
-			// rough cull
-
-			let l = vertex.length   //weird to proces second component first. Rotate?
-			for (let i = 0; i <= l; i++) {
-				let k = (i + 1) % l, pattern4 = 0
-				if ((pattern32 >> i & 3) == 0 && 0 != (pattern4 = this.isEdge_visible([vertex[i], vertex[k]])))// huh? Since I already did this? Todo: find all cases!	
-				{
-
-					this.edge_crossing_two_borders(vertex, i, pattern4, k);
-					vertex.splice(0, 0) // cutting points insert
-				}
-			}
-
-		}
+		this.rasterize_onscreen([[-1,-1],[+1,-1],[+1,+1],[-1,+1]])  // full screen
+		return
 	}
 
 	private edge_crossing_two_borders(vertex: Vertex_in_cameraSpace[], pattern4: number, on_screen) {
@@ -187,12 +149,10 @@ class Polygon_in_cameraSpace {
 		for (let border = 0; border < 4; border++) {
 			if ((pattern4 >> border & 1) != (pattern4 >> (border + 1) & 1)) {
 
-
 				// code duplicated from v->edge
-				let coords=[0,0]
+				let coords = [0, 0]
 				coords[border & 1] = (border & 2) - 1;
 				coords[~border & 1] = (slope[2] + ((border & 2) - 1) * slope[border & 1]) / slope[~border & 1];
-
 
 				on_screen.push(coords)
 			}
@@ -218,16 +178,15 @@ class Polygon_in_cameraSpace {
 		let bias = corner_screen[2] * cross.v[2]
 
 		let head = [false, false]  // any corner under water any over water?
-		let pattern4 = 0,inside=0
+		let pattern4 = 0, inside = 0
 		for (corner_screen[1] = -1; corner_screen[1] <= +1; corner_screen[1] += 2) {
 			for (corner_screen[0] = -1; corner_screen[0] <= +1; corner_screen[0] += 2) {
 				inside = bias + corner_screen[0] * cross.v[0] + corner_screen[1] * cross.v[1]
 				pattern4 <= 1; if (inside > 0) pattern4 |= 1
 			}
 		}
-		this.corner11|= 1 << (Math.sign(inside)+1) // accumulate compact data to check if polygon covers the full screen or is invisible
-		
-		
+		this.corner11 |= 1 << (Math.sign(inside) + 1) // accumulate compact data to check if polygon covers the full screen or is invisible
+
 
 		if (pattern4 == 15 || pattern4 == 0) return 0
 		// check for postive z
@@ -248,15 +207,15 @@ class Polygon_in_cameraSpace {
 		return pattern4 //head[0] && head[1]
 	}
 
-	rasterize_all_onscreen(vertex: Array<number[]>) {
+	rasterize_onscreen(vertex: Array<number[]>) {  // may be a second pass like in the original JRISC. Allows us to wait for the backbuffer to become available.
 		let l = vertex.length, min = [0, vertex[0][1]]   //weird to proces second component first. Rotate?
 		for (let i = 1; i < l; i++) {
-			if ( vertex[i][1] < min[1]) min = [i, vertex[i][1]]
+			if (vertex[i][1] < min[1]) min = [i, vertex[i][1]]
 		}
 
 		let i = min[0]
 		let v = vertex[i]
-		let active_vertices = [[i, (i + l - 1) % l], [i, (i + 1) % l]]
+		let active_vertices = [[0,i],[0,i]] // happens in loop first iteration, (i + l - 1) % l], [i, (i + 1) % l]]
 
 		// active_vertices.forEach(a => {
 		// 	let vs = a.map(b => this.vertices[b])
@@ -267,63 +226,112 @@ class Polygon_in_cameraSpace {
 		// 	let v = this.vertices[a[1]]
 		// 	v.outside
 		// })
-
-		let y = v[1]
+		let m=new Mapper()  // our interface to the hardware dependent side
+		// this is probably pretty standard code. Just I want to explicitely show how what is essential for the inner loop and what is not
+		// JRISC is slow on branches, but unrolling is easy (for my compiler probably), while compacting code is hard. See other files in this project.
+		let y = Math.floor(v[1])
+		let slope_accu_c=[[0,0],[0,0]]  // (counter) circle around polygon edges as ordered in space / level-mesh geometry
+		// let slope_accu_s=[[0,0],[0,0]]  // sorted by x on screen  .. uh pre-mature optimization: needs to much code. And time. Check for backfaces in a prior pass? Solid geometry in a portal renderer or beam tree will cull back-faces automatically
 		do {
-			let ny = Math.min(...active_vertices.map(a => vertex[a[1]][1]))
+			for(let k=0;k<2;k++){
+				if (y==vertex[active_vertices[k][1]][1]){
+					active_vertices[k][0]=active_vertices[k][1]
+					active_vertices[k][1]=active_vertices[k][1]+(k*2-1+l)%l  
+					// JRISC has a reminder, but it is quirky and needs helper code. Probably I'd rather do: 
+					/* 	
+						;prep
+						CPY len_spring,len
+						XOR zero,zero
+						; carry trick
+						ADDQ 1,i 
+						SUB	 i,len
+						SBC zero, zero   ; on JRISC carry is normal. Not as on 6502
+						AND zero,i
+						; sign trick  // alternative, shorter
+						ADDQ 1,i 
+						SUB	 i,len
+						SAR 31,len   ; on JRISC carry is normal. Not as on 6502
+						AND len,i
+					*/
+					let v_val=active_vertices[k].map(a=>vertex[a]) 		// JRISC does not like addressing modes, but automatic caching in registers is easy for a compiler. I may even want to pack data to save on LOADs with Q-displacement
+					let d=[0,0] // delta, diff
+					for(let i=0;i< v_val[0].length;i++){
+						d[i]=v_val[1][i]-v_val[0][i]
+					}
+					if  (d[1]!=0)	slope_accu_c[k][0]=d[0]/d[1]  // we only care for edges with actual height on screen. And exact vertical will not glitch too badly
+					// I am going all in to floats / fixed point. No rounding => No DAA  aka  Bresenham. Let the glitches come. 4 kB might be enough code to have a macro to convert all MUL to 16.16*16 muls. I want to check that!
+					// sub-pixel correction against PlayStation1 (TM) wobble
+					slope_accu_c[k][1]= slope_accu_c[k][0] * (y-v_val[0][1])
 
-			for (; y < ny; y += 1 / 256) {  // floating point trick to get from NDC to pixel cooridinates. 256x256px tech demo. Square pixels. Since I don't round, any factor is possible. Easy one is 256  * 5/4-> 320  .. 256 * 3/4 = 192
-
+					// Do I allow back faces ? I cannot belive that I want to support non-planar poylgons in any way. Use this as assert / for initial debugging?
+					//let no_mirror= slope_accu_c[0][0]<slope_accu_c[1][0]  
+					//for_mapper.sort()  // non-planar poylgons will vanish. Once again: 16.16 will eliminate this glitch to 1 px every hour. 16.16 still fast than guarding IF commands here! Level is checked for planarity. Keyframe animated characters use triangles. Only stuff like head or armor has poylgons.
+				}
 			}
-		} while (active_vertices[0][1] != active_vertices[1][1])
 
-	
+			let payload=[[0,0]],anchor=false // todo: parameter owned by the mapper . calculated by infinite_plane_mapper (in a previous pass?)
+			let fragment=[].fill(0,0,payload.length) // malloc (reg)
+			let fralment=[].fill(0,0,payload.length) // malloc (reg)
+
+			let ny = Math.min(...active_vertices.map(a => vertex[a[1]][1])) ,xo:number
+			for (; y < ny; y ++) {  // floating point trick to get from NDC to pixel cooridinates. 256x256px tech demo. Square pixels. Since I don't round, any factor is possible. Easy one is 256  * 5/4-> 320  .. 256 * 3/4 = 192				
+				let a=slope_accu_c.map(sa=>sa[1])
+				a.sort() // Until I debug my sign errors
+				let integer=a.map(a_if=>Math.floor(a_if))  // Should be cheap in JRISC despite the wild look in TypeScript
+				let x=integer[0];if (x<integer[1]){  // dragged out of the for loop. Not an actual additional jump in JRISC
+					// linear interpolation
+					// this is  an experiment. Gradients ADD or ADC on 32 bit should work great in JRISC, right?
+					// When debugged: precalc the gradient in the coordinate system spanne dup by slope floor and ceiling!
+					// Though this primitve approach woudl even work if I use and active-edge (on multiple sectors of a beamtree)
+					if ( anchor){  // I run out of registers, but actually would like to keep more temporary values. MOVTA ? So her is just a quick hack for half of all slopes
+						let dx=x-xo
+						switch(dx)
+						{
+							case -1:payload.forEach((p,i)=>{fragment[i]+=p[2]-p[1]})	;break
+							case +1:payload.forEach((p,i)=>{fragment[i]+=p[2]+p[1]})	;break
+							case 0	:payload.forEach((p,i)=>{fragment[i]+=p[2]})	;break   // this will speed up all edges clipped at the screen borders
+							default: anchor=false
+						}
+					}
+					if (!anchor){  // too fat for inner loop, but where do I put this?
+						anchor=true,xo=x
+						// 16.16 internals: let fraction=a[0] % 1 // sub-pixel correction for z and Gouraud or the texture to fight PS1 wobble
+						fralment=payload.map(p=> p[0]+p[1]*a[0] + p[2]*y )   // IMAC is fast in JRISC
+					}				
+					fragment=fralment // would feel weird to use the fragemt from the other side to "carriage return" like a typeWriter
+					let blitter_slope=payload.map(p=> p[1])
+					if (fralment.length>2){// Z=0 U=1 V=2 coordinates need perspective correction. Gouraud on this blitter is Z=0 G=1
+						let span_within=integer[1]-x
+						if (span_within>0 && fralment[0]>0.001){  // z>0 safety first
+							let right_side=payload.map((p,i)=>fralment[i]+p[1]*span_within)
+							for (let uv=0;uv<2 ;uv++){
+								let left=fralment[uv+1]/fralment[0]		// perspective correction				
+								fragment[1+uv]=left
+								if (span_within==0 || right_side[0]<=0.001) continue
+								let right=right_side[uv+1]/right_side[0]   // perspective correction  // Attention: JRISC bug: use register "left" before next division instruction!
+								blitter_slope[1+uv]=(right-left) / span_within	 // linear interpolation
+							}
+						}
+					}
+					xo=x
+					// The JRISC blitter cannot do perspective correction
+					// the only solution for this hardware is subspan interpolation
+					// So, I actually would need to trace the edge on the other side 
+					for (;x<integer[1];x++){ // the blitter does this. Todo: move this code ... . But what about perspective correction? Also not in this source file!
+						m.putpixel([x,y],fragment)
+						blitter_slope.forEach((p,i)=>{fragment[i]+=p[1]})  // x-gradient = slope ( different name for 1-dimensional aka scalar case )
+					}
+				}
+				for(let k=0;k<2;k++) slope_accu_c[k][1]+= slope_accu_c[k][0]				
+			}
+
+		} while (active_vertices[0][1] != active_vertices[1][1]) // full circle, bottom vertex found on the fly
 	}
 
-	// even if not perfectly convex, this will not crash: checked for find()
-	// back-face culling  ->  mapper
-	// I need this code as a start. Clipping is important to me. Frustum already demonstrates this
-	// Later with the beam tree, the sectors are still convex.
-	// Also I may defer some rendering / use bounding boxes and use this for unobstructed polygons on high-detail, smooth models (streets, vehicle, humans).
-	// to combine multiple sectors, Doom like span rendering is necessary
-	rasterize_every2nd_Inside(vertex: Array<Vertex_in_cameraSpace>): boolean {
-		let l = vertex.length, min = [0, vertex[0].onScreen[1]]   //weird to proces second component first. Rotate?
-		for (let i = 1; i < l; i++) {
-			if (vertex[i].outside == false && vertex[i].onScreen[1] < min[1]) min = [i, vertex[i].onScreen[1]]
-		}
-
-		let i = min[0]
-		let v = vertex[i]
-		let active_vertices = [[i, (i + l - 1) % l], [i, (i + 1) % l]]
-
-		// active_vertices.forEach(a => {
-		// 	let vs = a.map(b => this.vertices[b])
-		// 	if (vs[0].outside != vs[1].outside) {
-		// 		// get edge data. Needs a data structure (for sure). Somehow for the rasterizer I calculate it on the fly now
-		// 		 this.edge_fromVertex_toBorder(vs, l);
-		// 	}
-		// 	let v = this.vertices[a[1]]
-		// 	v.outside
-		// })
-
-		let y = v.onScreen[1]
-		do {
-			let ny = Math.min(...active_vertices.map(a => this.vertices[a[1]].onScreen[1]))
-
-			for (; y < ny; y += 1 / 256) {  // floating point trick to get from NDC to pixel cooridinates. 256x256px tech demo. Square pixels. Since I don't round, any factor is possible. Easy one is 256  * 5/4-> 320  .. 256 * 3/4 = 192
-
-			}
-		} while (active_vertices[0][1] != active_vertices[1][1])
-
-		return false
-	}
-
-
-
-	private edge_fromVertex_toBorder(vs: Vertex_in_cameraSpace[],  l: number) {
+	private edge_fromVertex_toBorder(vs: Vertex_in_cameraSpace[], l: number) {
 		let slope = this.get_edge_slope_onScreen(vs).slice(0, 2);
 		if (slope[0] < slope[1]) { // slope tells us that the edge comes from above
-			 // correct order . At least every other vertex need to be on inside for this function
+			// correct order . At least every other vertex need to be on inside for this function
 
 			// check the top screen corners
 			let cc = 0;
@@ -359,60 +367,7 @@ class Polygon_in_cameraSpace {
 
 		return normal.v
 	}
-
-
-	sort_y_triangle(a, b, c) { // no life sort. Only program pointer. Struct will be sorted in branch
-		if (a > b) {
-			if (c > a);
-			else;
-			//fill a
-			if (c < b);
-			else;
-		} else {
-
-		}
-	}
-	sort_slope() { }
-
 }
 
-// looks like I use homogenous coordinates for vertices, even if I do not like the name. I like rational numbers
-class Vertex_Q {
-	is_cut: boolean
-	ordinate: Array<number>
-}
-
-// to cater to the blitter, I need to pick the low-hanging fruits. Doom has a lot of quads. Portals often have more than three vertices. Clipping gives me even more. I want to allow clipping of a convex polygon into another.
-class Polygon_clipped_by_portal extends Polygon_in_cameraSpace {
-	vertices: Vertex_Q[]
-	y_segment: number  // why again does TypeScript not have integers? This really complicates compiling to JRISC. Now I have to mark the vector class for really using float?
-	branch: boolean // 2023-12-26 as a muse I play around with the idea of rendering polygon cut by other polygon. This is geared towards the original Elite with ships with convex shape in front of each other. I don't expand this towards a ridge in front of another polygon. At some point, the tree becomes faster. 
-	rasterize(): void {
-		let pv: Array<Array<number>> = this.vertices.map((v, i) => {
-			//let z=1/v.ordinate[0]  // this works for cuts and for projection just as normal floats do
-			//return [v.ordinate[1]*z,v.ordinate[2]*z]  // so these are floats because they share z. Sadly, in conflict with my concept 
-			return [Math.floor(v.ordinate[2] / v.ordinate[0]), i]  // this agrees with  rasterizer.txt
-		})
-		pv.sort(v => v[0])
-		// I use the good old algorithm: Scanline rendering
-		let activeEdgeList = [[]]
-		pv.forEach(v => {   // JRISC can only run the blitter in parallel to it. Theire is no internal paralle operation.
-			activeEdgeList.forEach(ae => {
-				if (Math.abs(v[1] - ae[0][1]) == 1) shift_active_vertices
-			})
-			this.vertices[v[1]]  // pointer instead? At least, that would be typed. I can also type indices I guess .. in TypeScript or my own language
-
-			return v
-		})
-
-	}
-
-	// To merge trees. This is not part of the rasterizer. At the moment it is a comment, how the data structure comes into life
-	// Also I want to defer as much logic as possible into the rasterizer to keep the blitter busy without adding latency.
-	// So this should sit in the same class sharing the same data ( which will be queued out to DRAM once).
-	clip(other: Polygon_clipped_by_portal) {
-
-	}
-}
 
 

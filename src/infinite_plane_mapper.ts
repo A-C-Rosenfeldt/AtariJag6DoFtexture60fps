@@ -11,7 +11,7 @@ class Camera_in_stSpace{
 }
 
 class Mapper{
-	brute_force(coords:number[]){
+	putpixel(coords: number[], fragment: any){
 		const pixel = new Uint8Array(4); // 2+4+4 = 10
 		pixel[0] = 0; //[0, 0, 255, 255];  // opaque blue
 		pixel[1] = 0;
