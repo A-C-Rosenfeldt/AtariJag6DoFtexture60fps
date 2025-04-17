@@ -203,3 +203,4 @@ function loadTexture(gl, data) {
 function isPowerOf2(value) {
     return (value & (value - 1)) == 0;
 }
+//# sourceMappingURL=GL.js.map

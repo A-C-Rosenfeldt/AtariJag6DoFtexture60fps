@@ -1,11 +1,46 @@
+/* The Data and rounding oriented "industry way" of clipping failed me
+Jaguar and plus/4 rather like unrolled code, branches, and parser generators
+I will cherry pick from below.
+*/
+/**
+ * Regarding occlusion culling I seem to have two alternatives. After clipping to frustum in screen space even older hardware can give me 16 bit per ordinate, so 8.8 fixed point.
+ * Yeah, 8 bit hardware may really need to stick to adaptive precision integers. So if I dual release plus4 and Jag?
+ * It is not really a beam tree then anymore. Just a 2d tree. Binary area subdivision.
+ * Without more precision I cannot subpixel decide on the circular order of cuts. Everything will have to be rounded first.
+ * We only care about the rays, not the space between. These BSP unsuited areas become child nodes in the tree.
+ * I still seek a general Theory where a profiler changes from tree, to scanlines with spans, to z-buffer ( at a small enough are, this will be fastest. Though it costs code size.
+ *
+ * Realy, with normalized deviced coordinates we only need DIV 16,16 . Only the vertices of the edge are 16 bit. Frustum is "1 bit". So we get the cutting position along the edge by 16/16 .
+ * Then to get the position along the frustum we multiply with 16. (16*16)/16 is possible in most ISAs . It feels weird because we only want 8 bit .. ah for subpixel correction the OpenGL way, we want 16 bit.
+ * This does not work with edge to edge. So even if we don't compare 3 edges for the hole they make, we run out of precision on some ISAs.
+ * Edge to edge still have < 1px rounding error. So cut out a 2x2px quad. Quad is just a BSP. Bigger sectors become parents, small become children. 2x2 is quite small.
+ * Within a quad for each pixel all edges are calculated. Z precision is less of a problem .. see z-sort.
+ * Fall back and extra code? Infinite integers lead to the same code. So what is the advantage? With infinite precision I can use frame-to-frame coherence, which I find faszinating.
+ * 1 cycle ( 2 cycles thanks to register file) MUL on JRISC makes scaling to pixels cheap. Ah, need a third cycle for SHR . For both cooridinates. So 6 cycles.
+ * Maybe there is some synergy with the strange register layout of the address generator. It may be possible to keep values in the rotated position. Can still sort by integer y, right. For the triangle I mean.
+ * Though, we should make sure to utilize AddQ.
+ *
+ * Multiply from normalized to screen is cheap on JRISC. Funny. With special FoV it can be done with some Adds in other ISAs.
+ * The original values are clipped at exactly 1000 ( some 0 ). So multiply with FoV will not need rounding. All non clipped vertices are rounded, but never draw over the frustum.
+ */
+/*
+World space occlusion culling, really only makes fun with frustrum rotating in world space. No vehicles (not even polygon monsters) . Bookkeeping is not thaaat bad.
+If I precalculate world space occlusion data structures like BSP or portals, I cannot allow rounding errors.
+Though a loose bounding volume hierachy can specify padding which is good enough until the far plane.
+This yields false positives but, would do something in camera space about this overlaps.
+On the other hand it would be cool if vehicles -- even if we cannot enter them -- would solve self occlusion ( shadows ) internally first.
+*/
 // no native vectors in JS. Buffers are for large data (also called vectors)
 // I need vec3 and only two products
 // I don't want external dependencies of fat because I later need to compile to JRISC
-class Vec {
+export class Vec {
     //constructor(points:number[][],len)
     constructor(points) {
         if (points.length < 2) {
-            this.v = new Array(points[0][0]);
+            if (points[0].length < 2)
+                this.v = new Array(points[0][0]);
+            else
+                this.v = new Array(...points[0]);
         }
         else {
             this.v = new Array(points[0].length);
@@ -28,8 +63,17 @@ class Vec {
         }
         return 0;
     }
+    // no overloaded parameter in this critical part. JRISC can't overlaod anyway
+    // in-place also not
+    scalarProduct(f) {
+        let v = this.v.map(comp => comp * f);
+        return new Vec([v]);
+    }
+    subtract(other) {
+        return new Vec([this.v, other.v]);
+    }
 }
-class Vec3 extends Vec {
+export class Vec3 extends Vec {
     crossProduct(o) {
         let v = new Vec3([[this.v.length]]);
         for (let i = 0; i++; i < this.v.length) {
@@ -46,19 +90,220 @@ class Frac {
         return this.nom[0] < 0 == this.nom[1] < 0;
     }
 }
-class Matrix {
+export class Matrix {
     static inverse(spanning2d) {
         throw new Error("Method not implemented.");
     }
     inverse(m) {
         return null;
     }
-    mul(trans) {
+    // Matrix with vector shoud usually use the inner product for fast implementation in JRISC MMULT and for nice mathematical notation ( as opposed to the SUM sign Sigma)
+    // So here the right Matrix is seen as a collection of vectors. Somehow this works great to interpolate, but badly for rotation.
+    // Thinking of column major for the vector. We store along columns, we mmult along columns
+    // But obviously here, Matrix is row major, and the vector is considered trans.
+    mul_left(trans) {
         let res = new Matrix();
         for (let i = 0; i++; i < this.nominator.length) {
-            res[i] = this.nominator[0].innerProductM(trans, i); // base would want vector add, while JRISC wants inner product
+            res[i] = this.nominator[i].innerProductM(trans, i); // base would want vector add, while JRISC wants inner product
         }
         return res;
+    }
+    // On the other hand, matrix multiplications is symmetric with respect to its operands. Vector.Inner_product feeld weird
+    // This fits the A * A.inv() of SO3 very well
+    // A * T(A) = 1
+    // A*W_col -> C_col   ; T(A)*C_col -> W   <=> T(C_col)*A -> T(W) 
+    // <=>
+    // T(A*W_col) -> T(C_col)   ; T(A)*C_col -> W   <=> T(T(C_col)*A) -> W 
+    // So I would store vectors in World space or Vectors in Camera space in different orientation? 
+    // What if I never multiply two Matrices? ( I keep the division of the projection separated)?
+    // I lose the symmetry. My code will be full of Transpose(). Ah no, Transpose is only for rotation .. nothing else. JRISC loves transpose. For others I could let the setter maintain the transpose.
+    // BeamTree has only vector products. Texture mapping has inverse. Texture mapping is a beast: I need the product of the full projection matrix, the vertex interpolation, and the texture wrapping.
+    // it goes like: Texel coordinate * texture rotation/scale * vertex position * rotation * projection .. and then inverse.
+    // Inverse is slow. There is not point in swapping loops from inner to outer. No Transpose.
+    // So weird that the unfied Vec4 approach of OpenGL has nothing on this
+    // OpenGL goes forward over the vertices and then inverts on screen. They mix they near and far plane into this for the reason that linear interpolation without artefacts does not like large z dynamic.
+    // So we do full precision z on the edge and then affine ( style of 1993 ). For sub spans, ah I get it. Interpolation is naturally an integer thing. We want to use the full machine integer range for this.
+    // So both, texture subspans and z buffer, want the viewing frustum. It feels weird to keep dependencies for spans, like I would run along the span, and then suddenly will have to MUL to up the precision at one point,
+    // or generally pull in more precision on a lot of.. But hey, grazing incidence is not suited to subspans. So I would fall back to full software and full precision, anyway.
+    static mul(A) {
+        let res = new Matrix();
+        for (let j = 0; j++; j < A[0].length) {
+            for (let i = 0; i++; i < A[0].length) {
+                res[i][j] = 0;
+                for (let k = 0; k++; k < A[1].length) {
+                    res[i][j] += A[0][i][k] * A[1][k][j]; // base would want vector add, while JRISC wants inner product
+                    // for Vector Add, we want the last index select the component
+                    // So no matter what picture you have in your head ( row or column, left or right multiply),
+                    // Like in OpenGL Vectors would need to live in the right factor ( the inner loop ) as input
+                    // Output uses the other index
+                }
+            }
+        }
+        return res;
+    }
+}
+// So some engines don't seem to care, but I care about rounding
+// Now for Doom or portal renderers I need infinite precision to avoid glitches.
+// clipping to screen borders makes more sense after rotation ( even without normalized device coordinates .. because I clip a lot against portals and beam tree, Screen borders are nothing special)
+// Quake PVS is also in world space. I now understand modern raytracing: Polygons in camera spacen, pixels in world space
+// real ray-tracing would be if I round rays to world coordinates, but this will kill Bresenham
+// linerp in the blitter does not even care.
+/**
+ * I switched the beam tree to sceen coordinates. The name is a bit misleading, but then again it is not because it replaces the z-buffer.
+ * The back projection into real 3d is straight forward and allows me compare points to it before projection ( because I hate the arbitrary near plane),
+ * and it allows me to clip lines to it ( even if one of the points is behind me ).
+ * Now, do to rounding, the portals may not be convex anymore. The beam-tree then splits them up into sectors. Still can clip lines
+ * Line clipping needs 32bit anyway. Might be the reason Descent appeared on 32bit 386.
+ *
+ * I am a little unsure if 32 bit are really enough. Perhaps we should at an epsilon so that eh cutting point is outside of the portal for sure. Then clip again.
+ * With the screen, the worst thing that can happen is that we have to decide at the corner what to do. But then the other ordinate is just the screen border after projection.
+ *
+ * I looks like portals don't add much to a beam tree. When a portal is visble then we need to proceed with the room behind.
+ * We should render all walls of the source room first. Any reason why we would not?
+ * This visibility test in screen space is okay.
+ * The interesting thing is that we take the part of the beam tree inside the portal to clip lines instead of the viewing frustum.
+ * Does this give us any advantage? I mean, if clipping is not precise?
+ * We could solve for y or x in screen space and use the .
+ * I mean, I stopped wanting full precision for binary space partitioning trees.
+ * But do? Sure for further comparision I only need pixel coordinates for points, but to get there, I need full precision lines
+ * Ah, screen space BSP is 16 bit:  16x16 = 32 for checks. Then clipping a full precision line is 32x16 bit and still not that expensive.
+ * Full precision already accepted the rounding due to rotation. No need for a convex projection.
+ * Though, the math is: Normal of beam tree: first product. Inner product with points. Divide by square of edge length. Multiply with line.
+ * I say: lots of multiplication and rounding.
+ * View frustum culling on either guard band or normalized device coordinates is just a comparison.
+ * I mention guardband because portals could use some smaller power of two bounding box on screen. And then we get away with one multiplication I think:
+ * ( x0/(x1-x0) ) * (y1-y0) + y0
+ * Of course it still is not perfect, but rounding does not change a sign of a component of the line vector!
+ * Power of two screen borders shift one compontent before comaparing with the other. Almost feels like components should have their own exponent.
+ * This 32bit math does not reduce precision relative to the MUL based rotation. But: can it introduce glitches?
+ * Probably, points need to only be clipped to one bounding box. Even lines. So a bounding box infects a mesh.
+ * What about the portal itself? Its vertices belong to both meshes.
+ * Ah, we just need to round each float vertex to less than 32 bit. We could go down to 16, but then we would throw a little bit away. We could have smoother movement.
+ * What about: 24 bit mantissa and 8 bit exponent? Then the mantissae in the vector components can shift by 8 and still not lead to rounding while clipping.
+ * Rounding before the division .. Really? Division only does 24 / 16 = 24 ( 16.16 / 8.16 = 8.16). We have full 32 bit for the product.
+ */
+/*
+Bounding boxes need an epsilon. I want the them tight in 3d, and add the epsilon in the projector. I need to add a line width? And corners get a pen shape?
+So I project the points. Each point becomes a box. Then each line needs to know inside vs outside, and shift outside as far as possible on both boxes.
+The boxes complicate the beam tree comparison.
+
+This only sounds good with synergy with clipping. So find a bounding box on power of two frustum beams. Find overlap with the portal frustum.
+Ridiculous. Just use bounding rectangles on screen. Seems like Jaguar has fast multiply, but glitch free occlusion requires a lot of bits.
+Just say: Rectangle still better than viewing frustum. Use rectangles to check for visibility ( epsilon is easy ).
+Then (optionally) set up a power of two view frustum. Clip project. Then clip again in screen space.
+Of course, in this case, the bounding rectangle probably is not (much) larger than the screen. So we could just clip to screen borders.
+The interesting case is when the portal is small, but the bounding box useless ( camera is in it). Like when we look out a window of an airplane.
+Then the overlap is the portal. We still clip there, to be able to reject more vertices and in turn more edges.
+*/
+/*
+A guardband for the whole screen would give me screen coordinates, which I still need to clip against the beam tree.
+So the screen borders become special cases of the beam tree? Is it as fast as just 32x16 math? No, I still need that.
+Multiplication in screen space is okay with using 16bit. So NDC -> Pixel does not really need the shifter trick. shifter works with quick value.
+The shifter is always involved because we use floats ( or rather: fixed point factors). I cannot throw away 8 bits. But then often field of view is something close to binary.
+Hmm. NDCs look less akward when rotating. Most factors then a close to 1. Skew is easy. Though comparison with other components is rather easy:
+
+cmp a,b
+Jump lessThan
+neg a   ;delay slot
+cmp a,b
+jump lessthan
+
+and b,b  -> sign  ( in MIPS or RISCV this would be simpler)
+
+copy a,b
+sub c,a
+sar a,31
+and 1,a
+sub c,b
+sar b,30
+and 2,b
+
+bit pattern
+
+so for a line
+xor p0,p1
+count bits
+=1? find crossing
+>1? opposing? find crossings
+    angled  ? calcualte "volume" aign aka determinant aks outer inner product with corner to check for passing
+    
+Bit patterns for polygons?
+All vertices on same side border ? -> done
+    or check x pattern  00 00 00 or 11 11 11  ( comparison result with screen border)
+    or check y pattern         dito
+
+all edges and vertices outside, but polygon still visible? A raytracer would need to x| with every edge and pass inside all of them.
+I already processed the edges. I know that they all pass outside of the corners. Uh, this approach sounds topological. How do I check that I go around?
+        All volumes have the same sign. I could drop one corner of the screen. Result would still be true.
+
+This assembly code would start to look really ugly if I try 3d beam clipping. Much less hard encoding possible. Interleave / assignment. Symmetry.
+
+At least, a guardband allows me to stick to 16 bit for some clipping calculations.
+When I see checkered flag and Iron Soldier, there are a lot of small polygons on screen.
+This may even make it efficient to have an exception batch for lines going over the whole guardband and polygons covering screen + band.
+Iteration is slow, but clipping could target the middle of the guard band. Then perhaps before rotation the direction is 16 bit. Then multiply with percentage of going to the other vertex.
+This vertex then is float rotated like all others. Ends up in the middle of the guard band.
+Just this gets a little weird for screen corners. Like I would raytrace exactly in the corner and get my s,t coordinates
+*/
+// Beam tree is so PVS like. I want it as graph and independent of rotation.
+// How do I display this? With rotation I can draw the BSP on screen
+// I should not care about the precision. I can switch the code later on, to use time coherence .. or even build bounding volumes for the camera
+// All the math is 3d with some non-normalized vectors. But the edges can still be drawn on screen.
+// So uh, okay fantasy world without rounding
+class Matrix_Rotation extends Matrix {
+    // for rotation matrices this is the same as multiplying with inverse
+    // First version only uses vectors because beam tree has a lot of rays to trace which are not projected
+    // I want to leak the implementation because I count the bits. It is research code!
+    // transpose only confuses me with other Matrices
+    // Looks like Quaternions and Rotation Matrix belong together, while other Matrices don't
+    MUL_left_transposed(v) {
+        let res = new Vec([[0, 0, 0]]);
+        for (let i = 0; i++; i < this.nominator.length) {
+            for (let k = 0; k++; k < this.nominator.length) {
+                res[i] = this.nominator[k][i]; //.innerProductM(trans,i)  // base would want vector add, while JRISC wants inner product
+            }
+        }
+        return res;
+    }
+    // Controls rotate from left. Forward ray = transposed. After the original rotation. 
+    // It only affects two oridinates
+    // Only these need to be modified, but all be read
+    // Only reason for this is here is this rotation!
+    Rotate_along_axis_Orthonormalize(axis, sine) {
+        // rotate an normalize
+        // orthogonal: 3 products. Correction is shared 50:50
+        //let cosine=Math.sqrt(1-sine*sine)
+        let n;
+        for (let i = 0; i < 3; i++) { // left transpose = right normal? I do row major as normal. So second index [i] just goes through. Right index mates.
+            let k = (axis + 1) % 3, l = (k + 1) % 3, n, sqs = Math.pow(this.nominator[axis][i], 2);
+            for (let j = 0; j < 2; j++) { // Maybe I should have both versions available
+                n[k][i] += sine[0] * this.nominator[k][i] + sine[1] * this.nominator[l][i];
+                k = l, l = (k + 1) % 3;
+                sine[1] = -1 * sine[1];
+                sqs += Math.pow(n[k], 2);
+            }
+            let rsq = 1 / Math.sqrt(sqs); // see Quake for Taylor series
+            n[k][i] *= rsq;
+            n[axis][i] = this.nominator[k][i];
+        }
+        let sums = []; // So do I need a transpose?	
+        for (let i = 0; i < 3; i++) {
+            let sum = 0, j = (i + 1) % 3;
+            for (let k = 0; k < 3;) {
+                sum += n[k][i] * n[k][j];
+            }
+            sums[i] = sum;
+        }
+        for (let i = 0; i < 3; i++) {
+            let sum = 0, j = (i + 1) % 3, l = (j + 1) % 3;
+            for (let k = 0; k < 3; k++) {
+                this.nominator[k][i] = n[k][j];
+                if (k != axis) {
+                    this.nominator[k][i] -= sums[i] * n[k][j] / 2;
+                    this.nominator[k][i] -= sums[l] * n[k][l] / 2;
+                }
+            }
+        }
     }
 }
 class Matrix_frac extends Matrix {
@@ -129,171 +374,162 @@ class Camera extends Player {
         this.fov = 256; // It hurts me that magic values help with float. OpenGL runs on float hardware and combines this into one Matrix
         this.scale = [];
     }
-    rotate() {
-        this.inverse = this.
-        ;
-    }
     // pre multiply matrix or not? 
     pixel_projection_texel(pixel) {
         var backwards_ray = new Vec3([[this.fov, pixel[0] - screen[0] + .5, pixel[1] - screen[0] + .5]]);
-        this.rotation.mul([backwards_ray]);
+        this.rotation.mul_left([backwards_ray]); // I support both directions of rotations nativeley because that is how I think of them, generally (when solving equations, or physcs, or synergy with HBV). SO3 just does not have a common denominator in neither direction.
+        // something position?
     }
     // I need a start pixel of the polygon for the rasterizer
     // I know that it feels weird that edges and texture are then projected backwards
-    vertex_projection_pixel(forward_ray) {
-        let m = new Matrix();
-        m.nominator = [forward_ray];
-        let fr = m.mul(this.rotation); // Todo: Right-Mul?  Vec.Mul() ?
+    vertex_projection_pixel(vertex) {
+        let forward_ray = new Vec3([vertex, this.position]);
+        let fr = this.rotation.MUL_left_transposed(forward_ray);
         let pixel = [Math.floor(fr[1] * this.fov / fr[0]), Math.floor(fr[2] * this.fov / fr[0])];
     }
+    // very similar to Jaguar SDK. Guard band clipping only bloats the code.
+    // actually, JRISC only has unsigned DIV. So we are forced to clip the near plane beforehand (no divide by zero). We are also forced to skew and make two sides of the screen axis aligned. Then again: clip using the sign.
+    // Also to use full precision of DIV ( which sets no flags ), in fixedPoint mode, I need to make sure that the result does not overflow fixedPoint.
+    // like 100 / .01 expands the envelope!
+    // Actually we have no x much larger than z after rotation. The large part is shift before DIV.
+    // To clip both other screen borders before the shift, we only MUL with 5 ( for 5*64=320 ) and 15 ( 16*15=240 ). So ADD/SUB SHL ADD. Ah oh just go ahead with MULT
+    // OpenGL thinks that clipping is so very important and MMULT in such a way that it can clip at diagonals ( but no clipping to portals? )
+    // using simple CMP or ADC, and move.
+    // Transformation to screen space uses those small factors (1+4 and 16-1) and the SHL; DIV. 
+    // short refresher: After transformation we don't store 1/z, but we subtract the far plane to use the whole scale (and that is the only reason: Memory is expensive!).
+    // this gives us a far plane. I see how 1/z still has to be linear after this substraction
+    // Perspective correction works by using W also for UV just as for the other coordinates. W is the unbiased Z and U and V have not been transformed.
     vertex_projection_clip(forward_ray) {
-        for (let side = 0; side < 2; side++) {
-            var pyramid_normal = new Vec3([[-160, this.fov, 0]]); //-160, -220 )
-            let nr = this.rotation.mul([pyramid_normal]);
-            forward_ray.innerProduct(nr);
+        var clipcode = [];
+        for (let side = 0; side < 4; side++) {
+            var pyramid_normal;
+            if (side & 1) {
+                pyramid_normal = new Vec3([[side & 2 ? -160 : 160, 0, this.fov]]); //-160, -220 )
+            }
+            else {
+                pyramid_normal = new Vec3([[0, side & 2 ? -120 : 120, this.fov]]);
+            }
+            let nr = this.rotation.mul_left([pyramid_normal]); // forward or backwards? I dunno
+            clipcode[side] = forward_ray.innerProduct(nr[0]);
         }
+        var plane = []; // near and far
+        clipcode[5] = forward_ray[0] - plane[0];
     }
-    edge_projection_clip(origin) {
+    // Todo: Find my text about this. I only use rotation matrix to be able to debug this
+    // BeamTree language. Precision is no problem
+    edge_clip(origin) {
+        // planes form a BSP, which breaks symmmetry
+        // we go down the BSP. As long as both vertices fall into the same child, no problem
+        // and edge is split each time we go down a node
+        // we use the backwards vectors in the corners of the screen ( and near an far) and one base of the edge and the edge itself
+        // to determin in which child of the BSP the cut ends up
         for (let x = 0; x < 2; x++) {
             for (let y = 0; y < 2; y++) {
             }
         }
     }
-    transform_ray_backwards(vec) {
-        for (let i = 0; i < 3; i++) {
-        }
-    }
-    mul(b, v) {
-        for (let i = 0; i < 3; i++) {
-            inner;
-        }
-    }
-    set_rotation(r) {
-        this.rotation = r;
-        this.inverse = new Array(3);
-        for (let i = 0; i < 3; i++) {
-            var t = r[(i + 1) % 3].crossProduct(r[(i + 2) % 3]);
-            for (let k = 0; k < 3; k++) {
-                this.inverse[k].v[i] = t[k];
-            }
-        }
-        this.denominator = r[2].innerProduct(t); // For rounding and FoV / aspect ratio (no normalized device coordinates)
-    }
-    // top left rule  helps us: We don't change rounding mode. Ceil, Floor, 0.5 is all okay. Only 1-complement cut off ( towards 0 ) is not allowed. So be careful with floats!
-    transform_vertex_forwards(ver) {
-        this.mul;
-        let screen = new Array < Frac;
-        y = div; // for for loop across scanline
-        // for Bresenham
-        nominator[];
-        z =
-        ;
-    }
-    // todo: some weird OOP pattern to shift direction of transformation. Mix with a custom number type which can be fixed, float, variablePrecision
-    y_at_intersection(e) {
-        if (e[0].id == border_top) {
-            y = border_top;
-            return;
-        } // portal renderer  or  even BSP with coverage-buffer wants this
-        let beam = e[0].crossProduct(e[1]); // edges are planes with a normal in a beam tree
-        this.transform_vertex_forwards(beam);
-        beam[1] / beam[2];
-        return l;
-    }
-    get_spanX_at_y_clipped(edge, y) {
-        // so backward forward? This works for clipped edges. This is similar to the texture-mapping short cut. It is important for the variable precision graph.
-        transform();
-        let normal = x[1], cross, x, [];
-        0;
-        // non-normalized  device, so we can just
-        view_ray.crossProduct(normal);
-        // first scanline ys
-    }
-    get_spanX_at_y_vertices_on_screen(edge, y) {
-        let x = 2; // first scanline
-        // I should prefer forward to stay in line with OpenGL
-        let slope = x[1] - x[0];
-        // both also as integer
-        x_int += slope_int + bresenham(slope_frac);
-    }
-    transform_edge_forwards(ver, screen_border_flags) {
+    triangle_clip() {
+        // BSP again
+        // all vertices .. okay
+        // edge cuts .. okay
+        // we now only care for the frustum, no other child in the BSP
+        // when we cut in a new plane in the BSP, now the roles are reversed. The inner-BSP edges can stick through the triangle
+        // actually it would make more sense to have the triangle-cut edge within a BSP tree
+        // when a new plane goes it, its cut within the concave sector may cut with the other cut
+        // it is a 2d problem. Cut happens when seen from each edge, the other has vertices on both sides.
+        // Ah I see, how I avoided the fractions in the past
+        // the 3d way is to form volumes with all edges in clockwise rotation. All positive: we are in.
+        // Though at this point we need this decision only for triangles which cut of a 3d (rear) corner of the frustum.
+        // With more viewing distance than level loading, pure topological arguments suffice. I thinkt that is what I write in some text somewhere in this project.
     }
 }
 class Point_Tex2 {
 }
-class Texture {
-    constructor(vertex) {
-        if (clippling) { // point array count=2  // important for level . Perspective correction is mandatory to differentiate the Jag from 3do and PSX
-            this.base = vertex[1].point;
-            // inverse within a plane at least gives us a more simple determinant in the denominator .. hm lenght(cross product) . So somehow we now have a square-root here?
-            // nominator xyz * innvers = uv  . not square.
-            // linear equations. It does not help to omit the normal. Just cut off the line of the matrix in the end.
-            /*
-                Here is the geometric version
-            */
-            for (let i = 0; i < 2; i++)
-                this.spanning[i] = new Vec3(vertex.slice(0 + i, 2 + i).map(p => p.point));
-            let camera;
-            let normal = this.spanning[0].crossProduct(this.spanning[1]); // length should not matter .. inverse does not care. 
-            this.spanning[2] = normal; // feels as silly as the 1/z in the forward path . This screams for float .. or at least reinforces the fact that edges in a level should be about 1m long. 1mm cammera precision, 1km level ( or viewing distance??)
-            //let hasToBeCoverdBy1=this.spanning[0].crossProduct(normal).innerProduct(camera) // just the inversion equation (transpose is a bit hidden? With inner product here the other direction needs left multiply)
-            //let denominator=this.spanning[0].crossProduct(normal).innerProduct(this.spanning[0]) // obviously gives 1 when needed
-            // I need height anyway (whatever "unit"). So 3x3 inverse. Then transform both (same unit) camera position and viewing direction into this. Then triangle divide as in checker board.
-            // The normal is hence justified. Maybe I could compile the level and find small normals.
-            // multiply with spanning UV
-            // inverter , check for normel.cross => early out 0
-            // spanning is vectorAdd . We don't need to transpose. Inverse is already innerP.
-            let inverse = new Matrix_frac;
-            for (let i = 0; i < 2; i++) {
-                let v = this.spanning[(i + 1) % 3].crossProduct(this.spanning[(i + 2) % 3]);
-                inverse.nominator[i] = v; //.inverse(spanning2d)
-            }
-            inverse.denominator = inverse.nominator[0].innerProduct(this.spanning[0]); // count down in the loop above to have the values in registers
-        }
-        else { // imporant for high detail enenmies and affine texture mapping on small triangles
-            /*
-            2d
-                spanning Points
-                invert  . Only place with 2d invert
-            */
-            if (affine) { // check if (delta z^2)/2 * (x+y ) < threshold ( value)  or cost : block division?
-                let spanning2d = new Array(2);
-                for (let i = 0; i < 2; i++) {
-                    spanning2d[i] = new Vec([vertex[i + 1].point, vertex[0].point]); // temporary
-                }
-                let inverse = new Matrix_frac;
-                for (let i = 0; i < 2; i++) {
-                    let v = new Vec([[2]]);
-                    v[0 + i] = -spanning2d[1 - i].v[1 - i];
-                    v[1 - i] = +spanning2d[0 + i].v[1 - i];
-                    inverse.nominator[i] = v; //.inverse(spanning2d)
-                }
-                inverse.denominator = 0;
-                for (let i = 0; i < 2; i++) {
-                    inverse.denominator = spanning2d[0].v[0 + i] * spanning2d[1].v[1 - i] - inverse.denominator;
-                }
-                // todo: tests from CPU sim
-                // UV
-                for (let i = 0; i < 2; i++) {
-                    spanning2d[i] = new Vec([vertex[i + 1].point, vertex[0].tex]); // temporary
-                }
-                let deltas = inverse.mul(spanning2d);
-                //
-            }
-            else {
-                // do I really want this?
-                U = U / Z;
-                V = V / Z;
-                W = 1 / Z; // this looks so artificial compared to the other branch
-            }
-        }
-    }
-}
-class Mesh {
-}
-class Level {
-}
-class Enemy {
-}
-class World {
-}
+// class Texture{ // similar to (clipped) edge
+// 	p:Polygon_in_cameraSpace // reference .. bidirectional .. I may need to pull some data like base:
+// 	base:number[] // texture (0,0) in space .. So not so great for environment mapping, but really great later maybe for triangles which are extended into perfectly flat, not necessarily concave polygons
+// 	// Material texture (tiles) should not be squeezed .. but UV unwrapped organic texture (globe) needs to
+// 	spanning:Vec3[]
+// 	innerLoop:number[][] // scree{x,y} -> u v denominator  // the dependency graph may depend on clipping. The form of the function is independent from it.
+// 	constructor(vertex:Point_Tex2[]){ 
+// 		if (clippling){ // point array count=2  // important for level . Perspective correction is mandatory to differentiate the Jag from 3do and PSX
+// 			this.base=vertex[1].point
+// 			// inverse within a plane at least gives us a more simple determinant in the denominator .. hm lenght(cross product) . So somehow we now have a square-root here?
+// 			// nominator xyz * innvers = uv  . not square.
+// 			// linear equations. It does not help to omit the normal. Just cut off the line of the matrix in the end.
+// 			/*
+// 				Here is the geometric version
+// 			*/
+// 			for(let i=0;i<2;i++)
+// 				this.spanning[i]=new Vec3(vertex.slice(0+i,2+i).map(p=>p.point))
+// 			let camera:Vec3
+// 			let normal=this.spanning[0].crossProduct(this.spanning[1])   // length should not matter .. inverse does not care. 
+// 			this.spanning[2]=normal // feels as silly as the 1/z in the forward path . This screams for float .. or at least reinforces the fact that edges in a level should be about 1m long. 1mm cammera precision, 1km level ( or viewing distance??)
+// 			//let hasToBeCoverdBy1=this.spanning[0].crossProduct(normal).innerProduct(camera) // just the inversion equation (transpose is a bit hidden? With inner product here the other direction needs left multiply)
+// 			//let denominator=this.spanning[0].crossProduct(normal).innerProduct(this.spanning[0]) // obviously gives 1 when needed
+// 			// I need height anyway (whatever "unit"). So 3x3 inverse. Then transform both (same unit) camera position and viewing direction into this. Then triangle divide as in checker board.
+// 			// The normal is hence justified. Maybe I could compile the level and find small normals.
+// 			// multiply with spanning UV
+// 			// inverter , check for normel.cross => early out 0
+// 			// spanning is vectorAdd . We don't need to transpose. Inverse is already innerP.
+// 			let inverse=new Matrix_frac
+// 			for (let i=0;i<2;i++){
+// 				let v=this.spanning[(i+1)%3].crossProduct(this.spanning[(i+2)%3])
+// 				inverse.nominator[i]=v //.inverse(spanning2d)
+// 			}		
+// 			inverse.denominator=inverse.nominator[0].innerProduct(this.spanning[0])	// count down in the loop above to have the values in registers
+// 		}else{ // imporant for high detail enenmies and affine texture mapping on small triangles
+// 			/*
+// 			2d 
+// 				spanning Points
+// 				invert  . Only place with 2d invert
+// 			*/
+// 			if (affine){ // check if (delta z^2)/2 * (x+y ) < threshold ( value)  or cost : block division?
+// 				let spanning2d=new Array<Vec>(2)
+// 				for(let i=0;i<2;i++){
+// 					spanning2d[i]=new Vec([vertex[i+1].point,vertex[0].point]) // temporary
+// 				}
+// 				let inverse=new Matrix_frac
+// 				for (let i=0;i<2;i++){
+// 					let v=new Vec([[2]])
+// 					v[0+i]=-spanning2d[1-i].v[1-i]
+// 					v[1-i]=+spanning2d[0+i].v[1-i]
+// 					inverse.nominator[i]=v //.inverse(spanning2d)
+// 				}
+// 				inverse.denominator=0
+// 				for (let i=0;i<2;i++){				
+// 					inverse.denominator=spanning2d[0].v[0+i]*spanning2d[1].v[1-i]-inverse.denominator
+// 				}				
+// 				// todo: tests from CPU sim
+// 				// UV
+// 				for(let i=0;i<2;i++){
+// 					spanning2d[i]=new Vec([vertex[i+1].point,vertex[0].tex]) // temporary
+// 				}		
+// 				let deltas=inverse.mul(spanning2d)
+// 				//
+// 			}else{
+// 				// do I really want this?
+// 				U=U/Z
+// 				V=V/Z
+// 				W=1/Z  // this looks so artificial compared to the other branch
+// 			}
+// 		}
+// 	}
+// }
+// class Mesh{ // static
+// 	// Left edge structure
+// 	// BSP
+// 	// recursion
+// 	//// strict BHV
+// 	//// accelerate rough front to back heap-sort ( or queue sort) 
+// }
+// class Level{
+// }
+// class Enemy{
+// }
+// class World{ // dynamic
+// 	camera:Projector
+// 	level:Level
+// 	enemy:Enemy
+// }
+//# sourceMappingURL=clipping.js.map

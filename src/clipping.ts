@@ -41,7 +41,7 @@ On the other hand it would be cool if vehicles -- even if we cannot enter them -
 // I need vec3 and only two products
 // I don't want external dependencies of fat because I later need to compile to JRISC
 
-class Vec{ // looks like I need 2 and 3 dimensions to show off this (adaptive) linear approximation trick for textures after persepective projection 
+export class Vec{ // looks like I need 2 and 3 dimensions to show off this (adaptive) linear approximation trick for textures after persepective projection 
 	v:number[]
 	innerProduct(o:Vec):number{
 		let sum=0
@@ -79,10 +79,14 @@ class Vec{ // looks like I need 2 and 3 dimensions to show off this (adaptive) l
 		return new Vec([v])
 	}
 
+	subtract(other: Vec): Vec {
+		return new Vec([this.v, other.v])
+	}
 	
 }
 
 export class Vec3 extends Vec{
+
 
 	crossProduct(o:Vec3):Vec3{
 		let v:Vec3=new Vec3([[this.v.length]])
@@ -104,7 +108,7 @@ class Frac{
 }
 
 
-class Matrix{
+export class Matrix{
 	nominator:Vec[]
 	static inverse(spanning2d: Vec[]) {
 		throw new Error("Method not implemented.")
@@ -429,7 +433,7 @@ class Camera extends Player{ // camera
 	*/
 
 
-	const screen=[320,240]
+	 screen=[320,240]
 	scale:number[]
 
 	constructor(){
@@ -447,7 +451,7 @@ class Camera extends Player{ // camera
 		// something position?
 	}
 
-	const fov=256 // It hurts me that magic values help with float. OpenGL runs on float hardware and combines this into one Matrix
+	 fov=256 // It hurts me that magic values help with float. OpenGL runs on float hardware and combines this into one Matrix
 	// I need a start pixel of the polygon for the rasterizer
 	// I know that it feels weird that edges and texture are then projected backwards
 	vertex_projection_pixel(vertex:number[]){
@@ -527,7 +531,7 @@ class Camera extends Player{ // camera
 	// 	this.denominator=r[2].innerProduct(t)  // For rounding and FoV / aspect ratio (no normalized device coordinates)
 	// }
 
-	// top left rule  helps us: We don't change rounding mode. Ceil, Floor, 0.5 is all okay. Only 1-complement cut off ( towards 0 ) is not allowed. So be careful with floats!
+/* 	// top left rule  helps us: We don't change rounding mode. Ceil, Floor, 0.5 is all okay. Only 1-complement cut off ( towards 0 ) is not allowed. So be careful with floats!
 	transform_vertex_forwards(ver:number[]):Vec3_frac{
 		this.mul
 		let screen=new Array<Frac
@@ -573,7 +577,7 @@ class Camera extends Player{ // camera
 
 	transform_edge_forwards(ver:number[][], screen_border_flags:number ):vec3{
 
-	}	
+	}	 */
 }
 
 class Point_Tex2{
@@ -582,102 +586,102 @@ class Point_Tex2{
 
 }
 
-class Texture{ // similar to (clipped) edge
-	p:Polygon_in_cameraSpace // reference .. bidirectional .. I may need to pull some data like base:
-	base:number[] // texture (0,0) in space .. So not so great for environment mapping, but really great later maybe for triangles which are extended into perfectly flat, not necessarily concave polygons
-	// Material texture (tiles) should not be squeezed .. but UV unwrapped organic texture (globe) needs to
-	spanning:Vec3[]
-	innerLoop:number[][] // scree{x,y} -> u v denominator  // the dependency graph may depend on clipping. The form of the function is independent from it.
-	constructor(vertex:Point_Tex2[]){ 
-		if (clippling){ // point array count=2  // important for level . Perspective correction is mandatory to differentiate the Jag from 3do and PSX
-			this.base=vertex[1].point
+// class Texture{ // similar to (clipped) edge
+// 	p:Polygon_in_cameraSpace // reference .. bidirectional .. I may need to pull some data like base:
+// 	base:number[] // texture (0,0) in space .. So not so great for environment mapping, but really great later maybe for triangles which are extended into perfectly flat, not necessarily concave polygons
+// 	// Material texture (tiles) should not be squeezed .. but UV unwrapped organic texture (globe) needs to
+// 	spanning:Vec3[]
+// 	innerLoop:number[][] // scree{x,y} -> u v denominator  // the dependency graph may depend on clipping. The form of the function is independent from it.
+// 	constructor(vertex:Point_Tex2[]){ 
+// 		if (clippling){ // point array count=2  // important for level . Perspective correction is mandatory to differentiate the Jag from 3do and PSX
+// 			this.base=vertex[1].point
 
-			// inverse within a plane at least gives us a more simple determinant in the denominator .. hm lenght(cross product) . So somehow we now have a square-root here?
-			// nominator xyz * innvers = uv  . not square.
-			// linear equations. It does not help to omit the normal. Just cut off the line of the matrix in the end.
-			/*
-				Here is the geometric version
-			*/
-			for(let i=0;i<2;i++)
-				this.spanning[i]=new Vec3(vertex.slice(0+i,2+i).map(p=>p.point))
-			let camera:Vec3
-			let normal=this.spanning[0].crossProduct(this.spanning[1])   // length should not matter .. inverse does not care. 
-			this.spanning[2]=normal // feels as silly as the 1/z in the forward path . This screams for float .. or at least reinforces the fact that edges in a level should be about 1m long. 1mm cammera precision, 1km level ( or viewing distance??)
-			//let hasToBeCoverdBy1=this.spanning[0].crossProduct(normal).innerProduct(camera) // just the inversion equation (transpose is a bit hidden? With inner product here the other direction needs left multiply)
-			//let denominator=this.spanning[0].crossProduct(normal).innerProduct(this.spanning[0]) // obviously gives 1 when needed
+// 			// inverse within a plane at least gives us a more simple determinant in the denominator .. hm lenght(cross product) . So somehow we now have a square-root here?
+// 			// nominator xyz * innvers = uv  . not square.
+// 			// linear equations. It does not help to omit the normal. Just cut off the line of the matrix in the end.
+// 			/*
+// 				Here is the geometric version
+// 			*/
+// 			for(let i=0;i<2;i++)
+// 				this.spanning[i]=new Vec3(vertex.slice(0+i,2+i).map(p=>p.point))
+// 			let camera:Vec3
+// 			let normal=this.spanning[0].crossProduct(this.spanning[1])   // length should not matter .. inverse does not care. 
+// 			this.spanning[2]=normal // feels as silly as the 1/z in the forward path . This screams for float .. or at least reinforces the fact that edges in a level should be about 1m long. 1mm cammera precision, 1km level ( or viewing distance??)
+// 			//let hasToBeCoverdBy1=this.spanning[0].crossProduct(normal).innerProduct(camera) // just the inversion equation (transpose is a bit hidden? With inner product here the other direction needs left multiply)
+// 			//let denominator=this.spanning[0].crossProduct(normal).innerProduct(this.spanning[0]) // obviously gives 1 when needed
 			
-			// I need height anyway (whatever "unit"). So 3x3 inverse. Then transform both (same unit) camera position and viewing direction into this. Then triangle divide as in checker board.
-			// The normal is hence justified. Maybe I could compile the level and find small normals.
-			// multiply with spanning UV
+// 			// I need height anyway (whatever "unit"). So 3x3 inverse. Then transform both (same unit) camera position and viewing direction into this. Then triangle divide as in checker board.
+// 			// The normal is hence justified. Maybe I could compile the level and find small normals.
+// 			// multiply with spanning UV
 
-			// inverter , check for normel.cross => early out 0
-			// spanning is vectorAdd . We don't need to transpose. Inverse is already innerP.
-			let inverse=new Matrix_frac
-			for (let i=0;i<2;i++){
-				let v=this.spanning[(i+1)%3].crossProduct(this.spanning[(i+2)%3])
+// 			// inverter , check for normel.cross => early out 0
+// 			// spanning is vectorAdd . We don't need to transpose. Inverse is already innerP.
+// 			let inverse=new Matrix_frac
+// 			for (let i=0;i<2;i++){
+// 				let v=this.spanning[(i+1)%3].crossProduct(this.spanning[(i+2)%3])
 	
-				inverse.nominator[i]=v //.inverse(spanning2d)
-			}		
-			inverse.denominator=inverse.nominator[0].innerProduct(this.spanning[0])	// count down in the loop above to have the values in registers
-		}else{ // imporant for high detail enenmies and affine texture mapping on small triangles
-			/*
-			2d 
-				spanning Points
-				invert  . Only place with 2d invert
-			*/
-			if (affine){ // check if (delta z^2)/2 * (x+y ) < threshold ( value)  or cost : block division?
-				let spanning2d=new Array<Vec>(2)
-				for(let i=0;i<2;i++){
-					spanning2d[i]=new Vec([vertex[i+1].point,vertex[0].point]) // temporary
-				}
-				let inverse=new Matrix_frac
-				for (let i=0;i<2;i++){
-					let v=new Vec([[2]])
-					v[0+i]=-spanning2d[1-i].v[1-i]
-					v[1-i]=+spanning2d[0+i].v[1-i]
-					inverse.nominator[i]=v //.inverse(spanning2d)
-				}
-				inverse.denominator=0
-				for (let i=0;i<2;i++){				
-					inverse.denominator=spanning2d[0].v[0+i]*spanning2d[1].v[1-i]-inverse.denominator
-				}				
-				// todo: tests from CPU sim
-				// UV
-				for(let i=0;i<2;i++){
-					spanning2d[i]=new Vec([vertex[i+1].point,vertex[0].tex]) // temporary
-				}		
-				let deltas=inverse.mul(spanning2d)
+// 				inverse.nominator[i]=v //.inverse(spanning2d)
+// 			}		
+// 			inverse.denominator=inverse.nominator[0].innerProduct(this.spanning[0])	// count down in the loop above to have the values in registers
+// 		}else{ // imporant for high detail enenmies and affine texture mapping on small triangles
+// 			/*
+// 			2d 
+// 				spanning Points
+// 				invert  . Only place with 2d invert
+// 			*/
+// 			if (affine){ // check if (delta z^2)/2 * (x+y ) < threshold ( value)  or cost : block division?
+// 				let spanning2d=new Array<Vec>(2)
+// 				for(let i=0;i<2;i++){
+// 					spanning2d[i]=new Vec([vertex[i+1].point,vertex[0].point]) // temporary
+// 				}
+// 				let inverse=new Matrix_frac
+// 				for (let i=0;i<2;i++){
+// 					let v=new Vec([[2]])
+// 					v[0+i]=-spanning2d[1-i].v[1-i]
+// 					v[1-i]=+spanning2d[0+i].v[1-i]
+// 					inverse.nominator[i]=v //.inverse(spanning2d)
+// 				}
+// 				inverse.denominator=0
+// 				for (let i=0;i<2;i++){				
+// 					inverse.denominator=spanning2d[0].v[0+i]*spanning2d[1].v[1-i]-inverse.denominator
+// 				}				
+// 				// todo: tests from CPU sim
+// 				// UV
+// 				for(let i=0;i<2;i++){
+// 					spanning2d[i]=new Vec([vertex[i+1].point,vertex[0].tex]) // temporary
+// 				}		
+// 				let deltas=inverse.mul(spanning2d)
 
-				//
+// 				//
 
-			}else{
-				// do I really want this?
-				U=U/Z
-				V=V/Z
-				W=1/Z  // this looks so artificial compared to the other branch
-			}
+// 			}else{
+// 				// do I really want this?
+// 				U=U/Z
+// 				V=V/Z
+// 				W=1/Z  // this looks so artificial compared to the other branch
+// 			}
 			
-		}
-	}
-}
+// 		}
+// 	}
+// }
 
-class Mesh{ // static
-	// Left edge structure
-	// BSP
-	// recursion
-	//// strict BHV
-	//// accelerate rough front to back heap-sort ( or queue sort) 
-}
-class Level{
+// class Mesh{ // static
+// 	// Left edge structure
+// 	// BSP
+// 	// recursion
+// 	//// strict BHV
+// 	//// accelerate rough front to back heap-sort ( or queue sort) 
+// }
+// class Level{
 
-}
-class Enemy{
+// }
+// class Enemy{
 
-}
-class World{ // dynamic
-	camera:Projector
-	level:Level
-	enemy:Enemy
+// }
+// class World{ // dynamic
+// 	camera:Projector
+// 	level:Level
+// 	enemy:Enemy
 
 	
-}
+// }

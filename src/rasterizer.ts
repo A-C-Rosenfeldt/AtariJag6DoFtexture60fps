@@ -1,4 +1,5 @@
-import { Vec3 } from './clipping.js';
+import { Vec3,Matrix } from './clipping.js';
+import {Camera_in_stSpace, Mapper,CV} from './infinite_plane_mapper.js'
 // The rasterizer needs to projected points from the beam tree. The tree is the start, and the polygon only lives in the leaf
 // I think that most polygons in a dense mesh are split by their neighbours. I would need extra code to check for back faces. This does neither fit into the MVP nor the cache
 // So I guess that I can go full tree. Still need to switch cases per vertex: Projected, vs cut of two edges, though do I, both are rationals. Ah, but with one x and y share w. Even this is the same for both.
@@ -114,17 +115,40 @@ class Polygon_in_cameraSpace {
 				case 0: //none outside
 					on_screen.push(v)  // Nothing to insert before   // of course in JRISC this would be in a fixed length pool
 					break;
-			}
 
+				// Doom has not near or far plane. The Jaguar SDK deals with them like with the other planes
+				// For any limits in z precision later on ( interpolation not only with z-buffer ), those planes will help
+				// slope on screen = normal.slice(0,2)
+				// it only truncates vertices on screen (who have passed previous tests)
+				// in many games the camera turns fast, but z does not
+				// I may makes look better to run a delta algorithm and use sperical clipping within LoD
+				// Near plane could be set on the windshield. Anything within the cockpit is a hit => screen goes white
+			}
 		})
 
 		// NDC -> pixel
 		const screen = [320, 200], epsilon = 0.001  // epsilon depends on the number of bits goint into IMUL. We need to factor-- in JRISC . So that floor() will work.
 
+		if (on_screen.length == 0) {
+		let null_egal = (this.corner11 >> 2 & 1) ^ (this.corner11 & 1)
+		if (null_egal == 0) return // polygon completely outside of viewing frustm
+		// viewing frustum piercing through polygon
+		}
+
+		let texturemap=new Camera_in_stSpace()  // I should probably pull the next line into the constructor
+		//let s:Vec3=new Vec3([vertices[0].inSpace])
+		let payload:CV
+		{
+			let t=vertices.slice(0,3).map( v=>(v.inSpace)  ) ;
+			texturemap.transform_into_texture_space_ctr( new Vec3([t[0],t[1]]) ,new Vec3([t[2],t[1]]) )  // My first model will have the s and t vectors on edges 0-1-2  .  for z-comparison and texture maps		
+			payload=texturemap.generate_payload_m(   t[1]   )
+		}
 		if (on_screen.length > 0) {
+			// get z (depth) and texture  . Of course with occlusion culling this may be referenced before
+	
 			// you may rotate by 90° here for walls like in Doom. Also set blitter flag then
 			let pixel_coords = on_screen.map(ndc => [(ndc[0] + 1) * (screen[0] - epsilon), (ndc[1] + 1) * (screen[1] - epsilon)]) // It may be a good idea to skew the pixels before this because even with floats, I uill use 2-complement in JRSIC and use half open interval?. Does the code grow?
-			this.rasterize_onscreen(pixel_coords); return true
+			this.rasterize_onscreen(pixel_coords,payload); return true
 		}
 
 		// trace a single ray for check. But, can I use one of the patterns instead? pattern32=-1 because all vertices are outside. Pattern4 undefined because it is per vertex
@@ -135,11 +159,9 @@ class Polygon_in_cameraSpace {
 		// v0 + s*S + t * T = z * 001  // we only care about the sign
 		// normal = s x t 
 		// ( vo | normal ) /  ( z | normal )      // similar equation to  UVZ mapping for txtures and occlusion
-		let null_egal = (this.corner11 >> 2 & 1) ^ (this.corner11 & 1)
-		if (null_egal == 0) return // polygon completely outside of viewing frustm
-		// viewing frustum piercing through polygon
 
-		this.rasterize_onscreen([[-1,-1],[+1,-1],[+1,+1],[-1,+1]])  // full screen
+
+		this.rasterize_onscreen([[-1,-1],[+1,-1],[+1,+1],[-1,+1]],payload)  // full screen
 		return
 	}
 
@@ -207,7 +229,7 @@ class Polygon_in_cameraSpace {
 		return pattern4 //head[0] && head[1]
 	}
 
-	rasterize_onscreen(vertex: Array<number[]>) {  // may be a second pass like in the original JRISC. Allows us to wait for the backbuffer to become available.
+	rasterize_onscreen(vertex: Array<number[]>,Payload:CV) {  // may be a second pass like in the original JRISC. Allows us to wait for the backbuffer to become available.
 		let l = vertex.length, min = [0, vertex[0][1]]   //weird to proces second component first. Rotate?
 		for (let i = 1; i < l; i++) {
 			if (vertex[i][1] < min[1]) min = [i, vertex[i][1]]
@@ -226,7 +248,8 @@ class Polygon_in_cameraSpace {
 		// 	let v = this.vertices[a[1]]
 		// 	v.outside
 		// })
-		let m=new Mapper()  // our interface to the hardware dependent side
+		let m=new Mapper()   // our interface to the hardware dependent side. Used for the whole mesh
+
 		// this is probably pretty standard code. Just I want to explicitely show how what is essential for the inner loop and what is not
 		// JRISC is slow on branches, but unrolling is easy (for my compiler probably), while compacting code is hard. See other files in this project.
 		let y = Math.floor(v[1])
@@ -269,11 +292,23 @@ class Polygon_in_cameraSpace {
 				}
 			}
 
-			let payload=[[0,0]],anchor=false // todo: parameter owned by the mapper . calculated by infinite_plane_mapper (in a previous pass?)
-			let fragment=[].fill(0,0,payload.length) // malloc (reg)
-			let fralment=[].fill(0,0,payload.length) // malloc (reg)
+			 // Todo : harmonize
+			let payload_w=[]//Payload.nominator.map( v3=> [v3.v[2],v3.v[0],v3.v[1] ]) 
+			payload_w[0]=Payload.cameraPosition.nominator[0][0]  // C is a vertical vector in the Matrix
+			payload_w[0]+=Payload.viewVector.nominator[0][2] // 0 goes to the left and marks 1/z aka w in payload (xy not there, uv behind). 2 goes to the right and accepts z from xyz viewing vector. z=1 
+			// skew onto the pixel coordinates which don't have int[] in the center of the screen
+			payload_w[1]-=Payload.viewVector.nominator[0][0]
+			payload_w[2]-=Payload.viewVector.nominator[0][1]
 
-			let ny = Math.min(...active_vertices.map(a => vertex[a[1]][1])) ,xo:number
+			payload_w[1]=Payload.viewVector.nominator[0][0]/screen[0];
+			payload_w[2]=Payload.viewVector.nominator[0][1]/screen[1];
+
+			let payload=[payload_w]  // UV to come
+
+			let fragment=[].fill(0,0,payload_w.length) // malloc (reg)
+			let fralment=[].fill(0,0,payload_w.length) // malloc (reg)
+
+			let ny = Math.min(...active_vertices.map(a => vertex[a[1]][1])) ,xo:number,anchor=false
 			for (; y < ny; y ++) {  // floating point trick to get from NDC to pixel cooridinates. 256x256px tech demo. Square pixels. Since I don't round, any factor is possible. Easy one is 256  * 5/4-> 320  .. 256 * 3/4 = 192				
 				let a=slope_accu_c.map(sa=>sa[1])
 				a.sort() // Until I debug my sign errors
@@ -287,23 +322,23 @@ class Polygon_in_cameraSpace {
 						let dx=x-xo
 						switch(dx)
 						{
-							case -1:payload.forEach((p,i)=>{fragment[i]+=p[2]-p[1]})	;break
-							case +1:payload.forEach((p,i)=>{fragment[i]+=p[2]+p[1]})	;break
-							case 0	:payload.forEach((p,i)=>{fragment[i]+=p[2]})	;break   // this will speed up all edges clipped at the screen borders
+							case -1:payload_w.forEach((p,i)=>{fragment[i]+=p[2]-p[1]})	;break
+							case +1:payload_w.forEach((p,i)=>{fragment[i]+=p[2]+p[1]})	;break
+							case 0	:payload_w.forEach((p,i)=>{fragment[i]+=p[2]})	;break   // this will speed up all edges clipped at the screen borders
 							default: anchor=false
 						}
 					}
 					if (!anchor){  // too fat for inner loop, but where do I put this?
 						anchor=true,xo=x
 						// 16.16 internals: let fraction=a[0] % 1 // sub-pixel correction for z and Gouraud or the texture to fight PS1 wobble
-						fralment=payload.map(p=> p[0]+p[1]*a[0] + p[2]*y )   // IMAC is fast in JRISC
+						fralment=payload_w.map(p=> p[0]+p[1]*a[0] + p[2]*y )   // IMAC is fast in JRISC
 					}				
 					fragment=fralment // would feel weird to use the fragemt from the other side to "carriage return" like a typeWriter
-					let blitter_slope=payload.map(p=> p[1])
+					let blitter_slope=payload_w.map(p=> p[1])
 					if (fralment.length>2){// Z=0 U=1 V=2 coordinates need perspective correction. Gouraud on this blitter is Z=0 G=1
 						let span_within=integer[1]-x
 						if (span_within>0 && fralment[0]>0.001){  // z>0 safety first
-							let right_side=payload.map((p,i)=>fralment[i]+p[1]*span_within)
+							let right_side=payload_w.map((p,i)=>fralment[i]+p[1]*span_within)
 							let w=1/fralment[0]		// perspective correction  I feel stupid because at 16 bit even the Jaguar has enough RAM for a LUT
 							for (let uv=0;uv<2 ;uv++){
 								let left=fralment[uv+1]*w

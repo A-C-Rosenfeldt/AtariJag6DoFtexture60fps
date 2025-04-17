@@ -18,3 +18,4 @@ for (; i < 64;) {
     pixel[i++] = 255;
 }
 field2Gl("GlCanvas", [{ pixel: pixel, width: 16, height: 16 }]);
+//# sourceMappingURL=TestGl.js.map
