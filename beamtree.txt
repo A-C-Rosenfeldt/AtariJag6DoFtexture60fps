@@ -7,6 +7,12 @@ I can compare ordinates along the dominant axis of the boundary polygon. Split o
 
 This rasterized crossing can also be used for a portal renderer. I guess that portals produce quite a balanced tree on screen. First the current room splits, then the view through the portals split.
 
+To check if an edge cuts through a polygon / is visible behind a portal,
+the rounded vertex positions are taken as rectangles. Then shrinkwrap an outer border around them.
+For all edges passing this, we do nxm edge-edge intersections => rounded pixel.
+Then we see if an edge only touches at a corner ( only reaches into DMZ ), or has one or two crossing pixels somewhere on the existing portal border.
+DMZ only works on a pixel, not an edge. We need to check all pixels (rasterize) along the portal edge, even if the polygon edge entery only slightly.
+
 I seems to be very difficult to find a heuristics for the BSP. Sorting kinda brings up a tree internally. This n*log(n) sorting is what repelled me.
 Also it seems like BSP will often be efficient. I don't know how to iterate on the previous frame in Fight4Life because fighters move so fast.
 Binary trees can be balanced. Does it make sense to balance a tree after we already built it?

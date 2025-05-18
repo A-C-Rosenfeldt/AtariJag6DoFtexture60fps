@@ -4,7 +4,17 @@ Jaguar and plus/4 rather like unrolled code, branches, and parser generators
 I will cherry pick from below.
 */
 
+/*
+Guard band / power of two between screen and NDC
 
+This does not change that much. The screen border still triggers the use of the gradient most of the time.
+I don't use projected vertices for edges so I don't use vertices projected into the guard band for edges.
+The classification of the vertices itself internally takes vertex positions out of the guard band if available.
+This does not even change too much .. but I think some rounding.
+I fail to come up with an alternative to ray polygon intersection test to decide between
+* plane not on screen
+* plane covers whole screen
+*/
 
 /**
  * Regarding occlusion culling I seem to have two alternatives. After clipping to frustum in screen space even older hardware can give me 16 bit per ordinate, so 8.8 fixed point.

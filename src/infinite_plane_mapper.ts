@@ -1,7 +1,18 @@
 /**
  * This is used to map (x,y) to (z(w),u,v)
  * Like the early engine that Looking Glass designed, it goes via (s,t) of two edges of a polygon
- */
+ 
+
+The equations do create a fraction
+
+The nominator does a projection of the view vector onto the plane. This is equivalent to subtracting the normal of the plane
+The denominator directly contains the normal of the plane.
+
+The fraction can be split into a sum. In the minus sum, the view vector normal cancels each other. We end up with a constant.
+The other part stays as it is. That is okay because it is exactly the same now for z and (s,t) as known from literature
+
+
+*/
 
 import { Vec3,Vec } from "./clipping";
 
