@@ -11,9 +11,21 @@ This does not change that much. The screen border still triggers the use of the 
 I don't use projected vertices for edges so I don't use vertices projected into the guard band for edges.
 The classification of the vertices itself internally takes vertex positions out of the guard band if available.
 This does not even change too much .. but I think some rounding.
-I fail to come up with an alternative to ray polygon intersection test to decide between
-* plane not on screen
-* plane covers whole screen
+
+If all vertices and edges are outside of the screen, the polygon is either not visible or covers the whole screen.
+The edge tests may have already utilized the guard band to narrow down to two cases, but the final decision does not depend on it.
+We ray trace the (0,0,1) vector. The camera pointing direction. Alternatively: We check if the camera is above the plane ,xor, the camera points down.
+Mathematically, this is the cross product of the span inner-multiplied with a vector from the camers (0,0) to any of the vertices.
+Very few 32bit multiplications  in trade of extracting the results from one of the corners.
+More a wide calculation instead of a sequence.
+
+What is even the difference to the ray test? Ah, we don't care for all the edges. Ray edge intersection is the same maths. Hmm.
+Readable code? Degenerate this is anyway. Either I choose two spans from the polygon for the normal, or one vertex of the screen.
+Perhaps, based on vertices, I don't check all edges against one screen corner. Shortcuts.
+Even in a BSP, I only need to check the vertices which lie on the splitting plane.
+I could even acknowledge the convex polygon. Then each vertex is checked against each portal edge.
+If we can apply the separating-axis theorem, we don't need to check the polygon edge against the portal corner.
+
 */
 
 /**
