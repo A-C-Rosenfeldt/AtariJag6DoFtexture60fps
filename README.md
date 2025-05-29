@@ -1,3 +1,8 @@
+# Roadmap
+	rotating cube
+		portal davor
+
+
 # Motivation
 One motivation is to check if a beam tree rans smoothly. It is actually not that interesting to build a hybrid which switches to traditional ways for speed.
 Also I could not find clear documentation about the z-buffer and saturation and phrase alignment. And I have no GPU ticks to spare for the Atari two pass texture mapping.
