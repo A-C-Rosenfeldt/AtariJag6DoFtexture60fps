@@ -1,3 +1,87 @@
+Beamtree construction and even portals and rasterisation are kinda complicated.
+I am not able to reason about code if vertices and edges don't line up.
+I don't want the z-coordinate to dominate the render code. Pure direction (screen xy) only needs 16 bits.
+And Jaguar has real 32 bit registers which lets me handle the product easily. Even some overflow bits to spare.
+For the same reason, I'd rather not use NDCs ( rounding errors after re-scaling).
+Instead I use a guardband with power of two field of view in each direction ( for square pixel 320x240 ).
+A portal may have a smaller guard band. shifting and cmp works in 32 bit. So vertices with large z can be compared.
+And I progably have some bits left to narrow down the field of view by SHL camera_space_xy .
+
+Edges with both vertices within the guardband reference their vertices.
+A clipped edge references one vertex and has a slope.
+If both ends are clipped, it has an offset for the implicit function (0,0) needs to sit on a pixel, not screen center.
+So pixel size goes into this calculation (nasty dependency).
+
+Cuts between edges can be calculated at full precision because the denominator is a determinant and DIV accepts 32 bit quotients.
+The thing is, we only get one coordinate per DIV because the mul trick would round.
+This does not tell us if a edge is visible in a portal!
+This is more meant for the rasteriser, which only needs y.
+
+Level geometry needs not to be perfect. Additionally, polygons are not perfectly flat after rotation.
+Backfaces are deterimined by the normal derived from the UV tangents.
+A pragmatic solution is to let te for loop do its magic, and default to 0 iterations if the next y is not bigger.
+We pick min and mix y for the loop starts, so everything will come full circle.
+Edges are in sync with these vertices, so not special trick needed.
+
+Subpixel precision is achived by solving the edge equation on each scanline. This goes like floor((8*16+32) / 16).
+The quotient needs to be checked for zero beforehand. For loop should not have been enterred. Asser!
+I feel like this is already so expensive that a sort_x can run async witht the DIVs. Or use abs() to create a min (uh no).
+Just branch and cull the back-spans here ...
+A third DIV for the increment for the blitter.
+
+Of course for high triangles, we don't want to divide too much.
+Bresenham needs us to divide the slope components to give integer steps. Then Mul,Add to maintain the control value.
+Here again we need to check againtst 0 beforehand.
+Division can be set into fixed-point mode. The (integer) result is shifted 16 bits to the left. 16 fraction bits are added.
+With an edge going over the whole vertical screen distance, this really are only 8 fraction bits.
+So we should try and use all bits we got and shift the dividend 8 bits to the left.
+Now we need to check that the dividen componend is not bigger than screen_width*divisor (instead of zero).
+In this case, the edge can only cover one y scanline. No need for a slope. Assert!
+With all the small triangles in Iron Soldier, I guess that the Bresenham is not only cleaner, but also faster.
+
+So, the remaining question: How to cut (with an edge ) through a polygon?
+The simple case is that we get cuts on fresh pixels (on an existing edge, but between its end x or y depending on direction).
+The vertices of the polygon can be [16,16]. Then just apply this position onto the implicit edge function.
+But what if the vertex of the polygon is a cut?
+Then we know that we only need this for rasterisation, and constraint our evaluation into the box spanned by the (up to 4) pixels positions.
+Ah, if the fresh pixels are inside this box, we are done. When neither edge crosses a scanline, we are done. Actually, same for vertical lines.
+So we have a rectangle (box) with pixels in opposing corners. Implicit functions are easy to evaluate. We could evaluate at the inwards points.
+We know that all cuts are within the pixels. So the inside / outside relation is uniform along the edge crossing the rectangle.
+So if one edge is more inside ( relative to polygon ) as evaluated at the inwards ( relative to rectangle ) point, this edge wins.
+If both edges exit both pixels on the same side, we at least now have a one dimensional problem.
+We have each  values at the corner + (x or y) * slope_(x_y) ) =0
+<=> (x or y)  =  values at the corner / slope_(x_y) 
+compare = subtract 
+discriminator = value_a at the corner * slope_ b - value_b at the corner * slope_ a // so  this is 32*16
+
+Now we could think with 32bit we should just use full 3d values with some less rounding, but after some investigaton: dead end.
+So, this is not pure. Another synergy would be to allow more than two edges per sanline (also for non-monotonous y). Then bubble-sort by x. Backface determined by normal beforehand.
+
+
+z values similar to the texturemapping don't influence loops and algorithms. A call to the z-function gives me a bolean once in a while. Sort-independet translucency would work without.
+Nonetheless, z calcuations are a big burden on JRISC because they do need 32x16 or worse.
+z cuts ( diving into water) send a screen edge ( floated [16,16] slope + offset ) to the beam tree. This is clearly more expensive and should be optional.
+I need to catch bugs when the horizon enters the polygon. The texture will also jump around. I am broken now, but originally wanted perfect guards within the texture atlas.
+Now I can optionally ( beause costly ) check that UV coords are inside a polygon (with rounding) before transmitting them to the blitter.
+
+
+
+
+
+
+
+So it looks like that sub-pixel precision edges live within constraints given by pixel precise 2px wide edges. Beam construction might be different, but the rasterizer works this way.
+This means that I have to calculate edges twice.
+Rounding errors do make the polygons non-convex. I don't care in x direction, but very much in y. The effect is small below epsilon, but might trigger the need to consider more than two edges within a scanline.
+
+So the parallel instead of sequentiel information flow is really only for repeated cuts. Anything 1. Frustum, 2. Portal : the portal cut starts from the same coeeficients. Same for z,u,v .
+For N64 with floats there is no problem with the cascade (pure fixed point, no need for floor()), but on JRISC (and even PS1) there may be a visible difference in glitch density. 
+Beam trees ( and even portal renderers) would apply multiple cuts. John Carmack went for zero glitches in Doom, IMHO. I don't want large levels to become glitchy, only slow.
+Same rendering engine should be useful for stills.
+
+
+
+
 Perspective correction is slower than affine texturemapping because I need to also fill the increment register.
 I may need to check the SDK code, but please, don't change horizontal increment for affine triangles.
 Small area triangles need to be affine. Slithers are extremely slow with correction. Also check z-dynamic to apply this render path on as much triangles as possible.
