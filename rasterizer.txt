@@ -40,6 +40,28 @@ In this case, the edge can only cover one y scanline. No need for a slope. Asser
 With all the small triangles in Iron Soldier, I guess that the Bresenham is not only cleaner, but also faster.
 
 So, the remaining question: How to cut (with an edge ) through a polygon?
+
+Let's look at a vertex (pixel) with two edges (16 bit fraction implicit slopw).
+The cut would also be an edge of same precision. We get then calculate the two cut pixels. 
+We can compare slopes and these with the corner vertex to check if the cut pixels are on the polygon edge or just on the line somewhere else.
+Indeed we need to check one more pixel-vertex of the polygon to see if the cut hit us.
+So how do we do this efficently?
+The implicit function of the cut can be calculated easily. Do it on all pixels and all their corners?
+Then we know which cuts with the edges are even interesting. We only need pixel cuts here, too. So there will be a final integer division.
+But before that, we need 32 bit math. Two implicit equations are like coords * 2x2Matrix16 = 2x2 bias32.
+To get the coords, we need to invert the MAtrix. For this we need to 
+- calcualte the determinant: 16x16 = 32 . Good!
+- Multiply bias32 * other_transpose(Matrix) .  Oh 32 bit math. Bad. Don't do too often!
+So even though we only want a pixel, before the DIV we need full 32 bit.
+This is integer div, so we only need to check against zero beforehand. And afterwards check against visible screen generally before adding a fraction(for what ?), but specificaly here: Check against the vertex pixels to cull.
+I feel like I keep division unit in integer mode for edges? Ah, only once per edge start. I could even use SAR to cut off bits later. Uh, but then need to check for overflow. Store slopes in edges before rasterisation?
+I feel like perspecitve correction for texture and with it the z value need to be fixed point throughout.
+
+
+Also it looks like I should not use full 16bit for coords. Even if I center 0,0 roughly, deltas will be 16+1 bit.
+MAC needs another bit. So effectively within the guardband, projected screen coords are 14:14 .
+
+old version:
 The simple case is that we get cuts on fresh pixels (on an existing edge, but between its end x or y depending on direction).
 The vertices of the polygon can be [16,16]. Then just apply this position onto the implicit edge function.
 But what if the vertex of the polygon is a cut?
