@@ -57,6 +57,19 @@ This is integer div, so we only need to check against zero beforehand. And after
 I feel like I keep division unit in integer mode for edges? Ah, only once per edge start. I could even use SAR to cut off bits later. Uh, but then need to check for overflow. Store slopes in edges before rasterisation?
 I feel like perspecitve correction for texture and with it the z value need to be fixed point throughout.
 
+When I float the slope anyway, why use fractions? I use floats for clipped edges. I need fractions if both endpoints are on screen to securely meet them. I cannot adjust a vertex because it ends multiple edges,
+but I can adjust the cut pixel with the screen. And I could check the rounding of the slope. So I check the reminder ( which is a bit difficult, but I need to affect flags anyway)
+If not zero, the quotient can be in ther interval of the lsb. I know the end vertices. For float slope I need to store x fractions in one of the vertices.
+Now with the given quotient, I can calculate x fixed point on the other pixel. Actually, I use the DMZ inbetween the pixels usually.
+So for float, I don't use the center of the DMZ, but top-left pixel. So I get x on all y for rasterization.
+To have a good feeling while doing cuts, I want to hit DMZs. So on the reciever side of the other DMZ, I calculate x.
+I could try manipulate the startx, but why not stick to the quotient at hand and try out floor and ceil. With the given precisions, one of these should hit the receiving side (along x) of the DMZ square. Easy.
+Divide by zero should look like overflow ( DIV is unsigned ). It gives us a slope which is wider than our screen. No rounding done here, just limit to the pixels far side.
+
+Jaguar address generator has 10.16 precision. This matchens fixed point DIV quite well. Just this makes me want to use 32bit math for textures. The rasterizer always multiplies with 8 bit, so it is not so expensive.
+Along long edges I need on MUL to calculate the delta. One Add for the other Delta.
+Full math ( 16 bit mantissa float might not be good enough for flying low on repeated flow texture ) might need 32x32, but is only done once per polygon.
+Perhaps have 3 render paths: very low delta-z : affine. Medium delta-z: floats. Large delta-z: 32 bit.
 
 Also it looks like I should not use full 16bit for coords. Even if I center 0,0 roughly, deltas will be 16+1 bit.
 MAC needs another bit. So effectively within the guardband, projected screen coords are 14:14 .
