@@ -49,6 +49,7 @@ class Vertex_in_cameraSpace {
 	onScreen: Array<number>
 }
 
+enum modes{NDC,guard_band};
 
 
 class Polygon_in_cameraSpace {
@@ -64,6 +65,12 @@ class Polygon_in_cameraSpace {
 	vertices: Array<Vertex_in_cameraSpace>  // Inheritance or templates?
 	outside: boolean[]
 	corner11: number;
+
+	mode:modes=modes.NDC  ; // This is public. Change it to GuardBand to compare both versions ( artefacts, instruction count )
+
+		// NDC -> pixel
+	const screen = [320, 200], epsilon = 0.001  // epsilon depends on the number of bits goint into IMUL. We need to factor-- in JRISC . So that floor() will work.
+
 
 	project(vertices: Array<Vertex_in_cameraSpace>): boolean {
 		this.outside = [false, false]; let pattern32 = 0
@@ -94,23 +101,27 @@ class Polygon_in_cameraSpace {
 		// Edges
 		let on_screen = [], cut = [], l = vertices.length
 		this.corner11 = 0 // ref bitfield in JRISC ( or C# ) cannot do in JS
-		vertices.forEach((v, i) => {
+		vertices.forEach((v, i) => {// edge stage. In a polygon an edge follows every vertex while circulating. In mesh it does not.
+
 			let k = (i + 1) % vertices.length
 			switch ((pattern32 >> i) & 2) {
-				case 3: // both outside, check if the edge is visble
+				case 3: // both outside, check if the edge is visble. In case of a guard band I need this code to avoid overflow later on
+
 					let pattern4 = 0
 					if (0 == (pattern4 = this.isEdge_visible([vertices[i], vertices[k]]))) break;
 					this.edge_crossing_two_borders(vertices, pattern4, on_screen);
 					//on_screen is pointer to collection:  on_screen.push(...cuts)
 					break;
 				case 1:
-					on_screen.push(v)
+					on_screen.push(v)  // this push order is for a single polygon. In a mesh there would be references
+
 					cut = this.edge_fromVertex_toBorder([vertices[i], vertices[k]], l);
 					on_screen.push(cut)
 					break
 				case 2:
 					cut = this.edge_fromVertex_toBorder([vertices[k], vertices[i]], l);
-					on_screen.push(cut)
+					on_screen.push(cut)// The asymmetry fits the counting: When the borders cut a corner of the polygon, the vertex count++ , but we have cuts=2
+
 					break
 				case 0: //none outside
 					on_screen.push(v)  // Nothing to insert before   // of course in JRISC this would be in a fixed length pool
@@ -129,14 +140,20 @@ class Polygon_in_cameraSpace {
 			}
 		})
 
-		// NDC -> pixel
-		const screen = [320, 200], epsilon = 0.001  // epsilon depends on the number of bits goint into IMUL. We need to factor-- in JRISC . So that floor() will work.
 
 		if (on_screen.length == 0) {
 		let null_egal = (this.corner11 >> 2 & 1) ^ (this.corner11 & 1)
 		if (null_egal == 0) return // polygon completely outside of viewing frustm
 		// viewing frustum piercing through polygon
 		}
+
+
+
+		// screen as floats
+		
+		if (mode ==modes.NDC){}       // NDC -> pixel   . Rounding errors! Do this before beam tree. So beam tree is 2d and has no beams
+		else   {}  // Guard band  . Faster rejection at portals ( no MUL needed with its many register fetches). Still no 3d because we operate on 16 bit rounded screen coordinates after projection and rotation!!
+
 
 		let texturemap=new Camera_in_stSpace()  // I should probably pull the next line into the constructor
 		//let s:Vec3=new Vec3([vertices[0].inSpace])
@@ -393,18 +410,74 @@ class Polygon_in_cameraSpace {
 	}
 
 	private edge_fromVertex_toBorder(vs: Vertex_in_cameraSpace[], l: number) {
-		let slope = this.get_edge_slope_onScreen(vs).slice(0, 2);
-		if (slope[0] < slope[1]) { // slope tells us that the edge comes from above
+		let slope = this.get_edge_slope_onScreen(vs).slice(0, 2); // 3d cros  product with meaningful sign. Swap x,y to get a vector pointint to the outside vertex
+
+		var abs=slope.map(s=>Math.abs(s))
+
+		switch( this.mode){
+			case modes.NDC:
+				var swap=abs[0] > abs[1]
+				if (swap) { slope.reverse() }				
+
+				if (slope[0]==0) return
+				break
+			case modes.guard_band:
+				// I guess that this is not really about guard bands, but the second version of my code where roudning of slope can have ( polymorphism, will need a branch ) with positions.
+				if ( Math.abs(slope[0]) * this.screen[0] < Math.abs(slope[1]) ) return
+				break
+		}
+
+		// check the top screen corners. Why not check all corners (ah that is the case if both vertices are outside) ? Or rather one!
+		// similar code for both cases
+		vs[1].onScreen = vs[0].onScreen.slice()
+		var si=slope.map(l=>Math.sign(l))  // sign bitTest in JRISC
+
+		vs[0].onScreen
+		// Rasterizer sub pixel-precision start value. No NDC or GuardBand here. Just full 32bit maths
+		let scanline=(vs[0].onScreen[1] * this.screen[1]  ) 
+		let flip=false;if (slope[1]<0) {slope[1]=-slope[1]; scanline=-scanline;flip=true}
+		let fraction=scanline % 1
+		let integer=Math.floor(scanline)
+
+		// To avoid overflow, I also need x
+		let x=vs[0].onScreen[0] ,mirror=false;if (slope[0]<0) { slope[0]=-slope[0];x=-x;mirror=true }
+
+		let implicit=(this.screen[0]/2-x )*slope[1]+fraction*slope[0]
+		if (implicit <0 ) { return }  //edge leaves screen (to the side) before next scanlinline
+		
+		// no overflow will happen
+		let slope_float=vs[1].onScreen[1] / vs[1].onScreen[0] // 16.8 bits. => two MUL instructions . Difficult to calculate cuts ( 48 bits ? )
+		// Or is it: For cut DMZs I only calcualte on scanlines. Subract 24 bits from eacht other. Integer result .
+		// How do I calculate DMZ with light slopes? So where x needs the higher precision?
+
+		let corner=implicit+integer*slope[0] // I reuse implict because JRISC only accepts 16 bit factors in  singe instruction  
+		if (corner < 0 ) {} // edge passes through vertical border. Use this to start beam tree.
+		
+
+		if (si[1]<0) 
+
+		if (slope[0]==0) {vs[1].onScreen[1] = sl[1]*this.screen[1] }  // I cannot use epsilon here because the vertex could have a fraction of (0) or (F)
+
+
+
+		if (  slope[0] > slope[1]) { // Nonsense  slope tells us that the edge comes from above.  This is branching only for NDC
 			// correct order . At least every other vertex need to be on inside for this function
 
-			// check the top screen corners
+			 
 			let cc = 0;
 
 			for (let corner = -1; corner <= +1; corner += 2) {
 				if ((corner - vs[0].onScreen[0]) * slope[1] > (-1 - vs[0].onScreen[1]) * slope[0]) {
 					vs[1].onScreen[0] = corner;
-					vs[1].onScreen[1] = vs[0].onScreen[1] + (corner - vs[0].onScreen[0]) * slope[1] / slope[0];
-
+					switch (this.mode){ // todo: different edge clases?
+						case modes.NDC:	
+							vs[1].onScreen[1] = vs[0].onScreen[1] + (corner - vs[0].onScreen[0]) * slope[1] / slope[0];
+							break;
+						case modes.guard_band: // The displacement is given by the other vertex. We store the float 
+							// check for overflow
+							vs[1].onScreen[1]=slope[1]*(2<<16) / slope[0] // JRISC fixed point
+							break;						
+					}
 					cc++;
 					break;
 				}
