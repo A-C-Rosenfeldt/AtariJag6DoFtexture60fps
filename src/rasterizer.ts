@@ -51,6 +51,21 @@ class Vertex_in_cameraSpace {
 
 enum modes{NDC,guard_band};
 
+class Edge_on_Screen {
+	startingVertex: Array<number>  // I go around the polygon for clipping. Later, I go down on both sides. So, on the wrong side, data acces is a bit nasty
+	// On screen for subpixel precision, 
+	counter_rotation=false
+	get_startingVertex():Array<number>{
+		if (this.counter_rotation) return null  // double linked list?
+		return this.startingVertex
+	}
+	slope: Array<number>  
+	slope_as_fixed=0   // so actually, the rasterizer needs to calculate this if it insists on doing the sub-pixel precsion ( which might overflow )
+}
+// do it in rasterizer?
+class Cyclic_Collection<T>{
+	get_startingVertex()  //via index and lenght?
+}
 
 class Polygon_in_cameraSpace {
 	near_plane = 0.001
@@ -78,6 +93,14 @@ class Polygon_in_cameraSpace {
 
 	}
 
+	// So to fight rounding errors, every culling will happen twice. Can I reuse code? Virtual functions for do_vertex do_edge do_face
+	// Once in 3d to a power of two viewing frustum
+	// reverse: cull unreferenced (count it) vertices and edges
+	// then in 2d to a bounding rectangle.16 and later a BSP
+	// In the second pass, vertices can move outside, edges can lose a vertex or become invisible. For faces depend on this. The face without-edges screen-filler stays.
+	// corners of the rectangle!
+
+
 	project(vertices: Array<Vertex_in_cameraSpace>): boolean {
 		this.outside = [false, false]; let pattern32 = 0
 		vertices.forEach(v => {
@@ -104,7 +127,10 @@ class Polygon_in_cameraSpace {
 		})
 
 		pattern32 = pattern32 << vertices.length | pattern32// pattern allows look ahead
-		// Edges
+		// Cull invisble Edges. Faces pull their z,s,t from 3d anyway. I cannot really clip edges here because it lets data explode which will be needed by the rasterizer (not for face culling)
+		// I am unhappy about the need to basically repeat this step on the 2dBSP (for guard_band and portals).
+		// MVP: Get code running on 256x256 with one polygon. Guard == NDC 
+		// Optimized clipping on rectangle because one factor is zero. The other still need
 		let on_screen = [], cut = [], l = vertices.length
 		this.corner11 = 0 // ref bitfield in JRISC ( or C# ) cannot do in JS
 		vertices.forEach((v, i) => {// edge stage. In a polygon an edge follows every vertex while circulating. In mesh it does not.
@@ -119,9 +145,10 @@ class Polygon_in_cameraSpace {
 					//on_screen is pointer to collection:  on_screen.push(...cuts)
 					break;
 				case 1:
+					if (this.mode==modes.guard_band && vertices[i][0] > this.screen[0]/2 && slope[0]>0 ) { } // edge only in guardband 
 					on_screen.push(v)  // this push order is for a single polygon. In a mesh there would be references
 
-					cut = this.edge_fromVertex_toBorder([vertices[i], vertices[k]], l);
+					cut = this.edge_fromVertex_toBorder([vertices[i], vertices[k]], l);  // todo: Cuts will be managed by the rasterizer
 					on_screen.push(cut)
 					break
 				case 2:
@@ -169,7 +196,17 @@ class Polygon_in_cameraSpace {
 			texturemap.transform_into_texture_space_ctr( new Vec3([t[0],t[1]]) ,new Vec3([t[2],t[1]]) )  // My first model will have the s and t vectors on edges 0-1-2  .  for z-comparison and texture maps		
 			payload=texturemap.generate_payload_m(   t[1]   )
 		}
-		if (on_screen.length > 0) {
+
+
+		// Todo: The following code is wrong about corners
+		// Any corner whose beam passes through the face, adds a new on_screen vertex ( to the array )
+		// This happens with both an empty or a full on_screen list up to this point
+		// So I indeed need to know through which border an edge leaves the screen
+		// so that we can insert the screen corners after it into the list.
+		// so this code sits inside the rasterizer because the rasterizer inserst? For debugging I should do it before!
+		// It makes no sense so send [-1,-1]... placeholder corners
+
+		if (on_screen.length > 0) { // at least one vertex or even edge is visible on screen. NDC scales. GuardBand/2dBSP 
 			// get z (depth) and texture  . Of course with occlusion culling this may be referenced before
 	
 			// you may rotate by 90° here for walls like in Doom. Also set blitter flag then
@@ -194,9 +231,10 @@ class Polygon_in_cameraSpace {
 	private edge_crossing_two_borders(vertex: Vertex_in_cameraSpace[], pattern4: number, on_screen) {
 		let slope = this.get_edge_slope_onScreen(vertex);
 
-		for (let border = 0; border < 4; border++) {
-			if ((pattern4 >> border & 1) != (pattern4 >> (border + 1) & 1)) {
+		for (let border = 0; border < 4; border++) {  // go over all screen borders
+			if ((pattern4 >> border & 1) != (pattern4 >> (border + 1) & 1)) {   // check if vertices lie on different sides of the 3d frustum plane
 
+				// Calculate pixel cuts for the rasterizer . we don't care for cuts .. I mean we do, we need them for the beam tree. But with a single polygon we only need y_pixel
 				// code duplicated from v->edge
 				let coords = [0, 0]
 				coords[border & 1] = (border & 2) - 1;
@@ -440,12 +478,14 @@ class Polygon_in_cameraSpace {
 
 		vs[0].onScreen
 		// Rasterizer sub pixel-precision start value. No NDC or GuardBand here. Just full 32bit maths
+		// I use a lot of 32 bit math here. It would be a shame to meddle with the results. So why NDC which rounds the lsb? Why a guard band
+		// This code will be called by the rasterizer
 		let scanline=(vs[0].onScreen[1] * this.screen[1]  ) 
 		let flip=false;if (slope[1]<0) {slope[1]=-slope[1]; scanline=-scanline;flip=true}
 		let fraction=scanline % 1
 		let integer=Math.floor(scanline)
 
-		// To avoid overflow, I also need x
+		// To avoid overflow, I also need x .
 		let x=vs[0].onScreen[0] ,mirror=false;if (slope[0]<0) { slope[0]=-slope[0];x=-x;mirror=true }
 
 		let implicit=(this.screen[0]/2-x )*slope[1]+fraction*slope[0]
@@ -517,6 +557,15 @@ class Polygon_in_cameraSpace {
 		let list=normal.v.slice(0,2). map(s=> Math.ceil(Math.log2(s))  )  ; // z = bias and can stay 32 bit because FoV ( Sniper view? ) will always keep z-viewing compontenc < 16 bits for 8 bit pixel coords 
 		let f=Math.pow(2,16-Math.max(...list)), n=normal.v.map(c=>c*f)   ; // Bitshift in JRISC. SHA accepts sign shifter values!   
 
+		// Even for a float slope 16.8 I would float the fraction before-hand
+		// I cannot have two inner loops. So vertex-vertex needs to use floats and may hit the border before the vertex due to rounding
+		// likewise rounding could change the side we pass a corner
+		// I want texture mapping. Along the edges, I want perspective correction for any larger delta_Z . So I need branches for the Bresenham condition anyway
+		// So why not stick to it? Gouraud would only have one add: Second render path for small gouraud with 1px away from edge? Real, 1px guradband in hardware?
+		// slopes which miss create a non-convex shape. How does this even work with a BSP? Even if the cuts are correct, the algorithm might glitch
+		// This has nothing to do with NDC vs GuardBand, though rounding errors in NDC start vertex worsen this effect
+		// NDC cannot use slopes. Before scaling to pixels, the cuts need to be set on the borders. Slopes might not pass on the correct side of the corner. 
+		// Yeah, how does NDC work with the slopes in a BSP? The wobble due to scaling changes everything
 		return n
 	}
 }
