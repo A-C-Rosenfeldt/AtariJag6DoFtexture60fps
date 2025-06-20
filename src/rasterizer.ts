@@ -69,8 +69,14 @@ class Polygon_in_cameraSpace {
 	mode:modes=modes.NDC  ; // This is public. Change it to GuardBand to compare both versions ( artefacts, instruction count )
 
 		// NDC -> pixel
-	const screen = [320, 200], epsilon = 0.001  // epsilon depends on the number of bits goint into IMUL. We need to factor-- in JRISC . So that floor() will work.
+	screen = [320, 200]
+	epsilon = 0.001  // epsilon depends on the number of bits goint into IMUL. We need to factor-- in JRISC . So that floor() will work.
 
+	constructor(){
+		// for rasterization of clipped edges ( potentially very long) we want max precision (similar to vertices on opposed corners). So we expand the fraction
+		let whyDoWeCareBelo16=this.screen.map(s=> Math.ceil(Math.log2(s))  )   // the function is a native instruction in JRISC. Okay , two instructions. need to adjust the bias
+
+	}
 
 	project(vertices: Array<Vertex_in_cameraSpace>): boolean {
 		this.outside = [false, false]; let pattern32 = 0
@@ -410,7 +416,7 @@ class Polygon_in_cameraSpace {
 	}
 
 	private edge_fromVertex_toBorder(vs: Vertex_in_cameraSpace[], l: number) {
-		let slope = this.get_edge_slope_onScreen(vs).slice(0, 2); // 3d cros  product with meaningful sign. Swap x,y to get a vector pointint to the outside vertex
+		let slope = this.get_edge_slope_onScreen(vs).slice(0, 2); // 3d cros  product with meaningful sign. Swap x,y to get a vector pointint to the outside vertex. float the fractions
 
 		var abs=slope.map(s=>Math.abs(s))
 
@@ -449,6 +455,8 @@ class Polygon_in_cameraSpace {
 		let slope_float=vs[1].onScreen[1] / vs[1].onScreen[0] // 16.8 bits. => two MUL instructions . Difficult to calculate cuts ( 48 bits ? )
 		// Or is it: For cut DMZs I only calcualte on scanlines. Subract 24 bits from eacht other. Integer result .
 		// How do I calculate DMZ with light slopes? So where x needs the higher precision?
+		// No Problem: insert the result for y ( 16/24 ) into the linear equation : 32/24
+		// With fractions this would be 16(bias)*16(transpose') / 32(det) .. the same
 
 		let corner=implicit+integer*slope[0] // I reuse implict because JRISC only accepts 16 bit factors in  singe instruction  
 		if (corner < 0 ) {} // edge passes through vertical border. Use this to start beam tree.
@@ -500,9 +508,16 @@ class Polygon_in_cameraSpace {
 		 */
 		let view = new Vec3([vertex[0].inSpace])
 		let edge = new Vec3([vertex[0].inSpace, vertex[1].inSpace])
-		let normal = view.crossProduct(edge)
+		let normal = view.crossProduct(edge)  // The sign has a meaning 
 
-		return normal.v
+		// normalize for jrisc
+		// mul.w will be applied to x and y components only . 
+		// I need to know the screen expontent . x and y on screen need the same exponent to match bias in implicict function.
+		// Ah, basicall 16.16
+		let list=normal.v.slice(0,2). map(s=> Math.ceil(Math.log2(s))  )  ; // z = bias and can stay 32 bit because FoV ( Sniper view? ) will always keep z-viewing compontenc < 16 bits for 8 bit pixel coords 
+		let f=Math.pow(2,16-Math.max(...list)), n=normal.v.map(c=>c*f)   ; // Bitshift in JRISC. SHA accepts sign shifter values!   
+
+		return n
 	}
 }
 
