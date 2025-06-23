@@ -42,11 +42,16 @@ class Span {
 	}
 }
 
+class pointPointing{
+	postion: Array<number>
+	vector: Array<number>
+}
+
 // Even without lazy precision, clipping and mapping tends to go back to the rotated vertex
 class Vertex_in_cameraSpace {
 	inSpace: Array<number>
 	outside: boolean
-	onScreen: Array<number>
+	onScreen: pointPointing
 }
 
 enum modes{NDC,guard_band};
@@ -133,22 +138,55 @@ class Polygon_in_cameraSpace {
 		// Optimized clipping on rectangle because one factor is zero. The other still need
 		let on_screen = [], cut = [], l = vertices.length
 		this.corner11 = 0 // ref bitfield in JRISC ( or C# ) cannot do in JS
+
+		// no synergz with polygons with vertex.count > 3 . we don't look at the faces here
 		vertices.forEach((v, i) => {// edge stage. In a polygon an edge follows every vertex while circulating. In mesh it does not.
 
 			let k = (i + 1) % vertices.length
-			switch ((pattern32 >> i) & 2) {
+			let w=pattern32 >> i
+			if (( w&7) == 2) {  // edge going outside, back inside
+				let c=this.fincCut(i,k); // find cut because rounding may have put it inside the screen again. This is a problem with all clipping algorithms
+				if (c) pattern32=~((~pattern32) | 1<< i)  // set vertex to inside 
+			}
+		})
+
+		vertices.forEach((v, i) => {// edge stage. In a polygon an edge follows every vertex while circulating. In mesh it does not.
+
+			let k = (i + 1) % vertices.length
+			switch ((pattern32 >> i) & 3) {
 				case 3: // both outside, check if the edge is visble. In case of a guard band I need this code to avoid overflow later on
 
 					let pattern4 = 0
 					if (0 == (pattern4 = this.isEdge_visible([vertices[i], vertices[k]]))) break;
-					this.edge_crossing_two_borders(vertices, pattern4, on_screen);
+					let cuts=this.edge_crossing_two_borders(vertices, pattern4) //, on_screen);
+					
+					// find cuts with slopes before ( after looks at us )
+					let j=(i-1 + vertices.length)% vertices.length
+					let c=this.fincCut(i,j)
+					if (c) {on_screen.push(c);pattern32=~((~pattern32) | 1<< i) } // set vertex to inside }
+					else {on_screen.push(cuts)}
+					
+
 					//on_screen is pointer to collection:  on_screen.push(...cuts)
 					break;
 				case 1:
+					// don't push yet
+					// due to rounding, a 1001 pattern may lead to a cut inside the screen
+
+
 					if (this.mode==modes.guard_band && vertices[i][0] > this.screen[0]/2 && slope[0]>0 ) { } // edge only in guardband 
 					on_screen.push(v)  // this push order is for a single polygon. In a mesh there would be references
 
-					cut = this.edge_fromVertex_toBorder([vertices[i], vertices[k]], l);  // todo: Cuts will be managed by the rasterizer
+					cut = this.edge_fromVertex_toBorder([vertices[i], vertices[k]], l);  //   vertex+slop from out-going and in-going might (due to rounding) think that the vertex is actually inside the viewing frustum.
+					// This is like a non-planar polygon after 3d clipping. And like for all non-planar polygons, to keept the mesh air-tight, we need to no cull back-faces, but back-spans. Should work here. Edges are shared.
+					// So when a vertex has 6 edges leading to it and all the cuts disagree, what happens? Vertex sits 1 px outside of the viewing frustum ( like: we could have a guard band, but we didn't)
+					// How can this be air tight?
+					// I thought about this for float slopes with fixed scanlines: Do back-face scanes
+					// Here we have the fixed screen border. If it is the side border, we need to act like doing scan rows? We know the faces which meet the border before and after ( rotation around the borders ). So within this it needs be forth (Draw) and back and forth (overdraw)
+					// Intersting version is the screen corner. Rows or columns? So actually we need to determine back by the cuts which veered into the screen. => don't draw behind them, but do if real face is back?
+					// Once I wanted pure code, but now I calculate cuts for the beam tree. For a non-planar polygon I can also calculate cuts. I shuold do this before I insert the convex parts into the beam tree.
+					// It doesn't even matter if NDC. NDC keeps vertices on the same side of the frustum border. vertex-vertex slopes can be calcualted after NDC -mul-> px . Clipped edges have rounded slopes anyway          
+					// After the screen list is debugged: todo: Cuts will be managed by the rasterizer
 					on_screen.push(cut)
 					break
 				case 2:
@@ -159,8 +197,11 @@ class Polygon_in_cameraSpace {
 				case 0: //none outside
 					on_screen.push(v)  // Nothing to insert before   // of course in JRISC this would be in a fixed length pool
 					break;
+				// For a single poylgon rasterizer her I may want to check if this vertex is convex: All edge 2d cross products should have the same sign.
+				// To insert in beam tree, first use the "flipped" vertex to cut into two convext sectors
+				// Check for Self-intersection!
 
-				// Doom has not near or far plane. The Jaguar SDK deals with them like with the other planes
+				// Doom has no near nor far plane. The Jaguar SDK deals with them like with the other planes
 				// For any limits in z precision later on ( interpolation not only with z-buffer ), those planes will help
 				// slope on screen = normal.slice(0,2)
 				// it only truncates vertices on screen (who have passed previous tests)
@@ -173,6 +214,24 @@ class Polygon_in_cameraSpace {
 			}
 		})
 
+		// corners. The code above does not know if trianle or more. The code below still does not care
+		vertices.forEach((v, i) => {
+			let p=pattern32 >> i , t=-1
+			switch(p&3){
+				case 1:
+					t=i  // remember when we left the screen
+					break
+				case 2:
+					// back into screen. The cuts above make sure that our front faces follow the sense of rotation
+					// due to rounding, we cannot deduce the side from the vertex. And it is costly
+					let b=[t,i].map(j=> this.which_border(vertices[j]) )
+					if (b[0]>b[1]) b[0]+=vertices.length
+					for(let k=b[0];k<b[1];k++){ // 0 iterations has the highest chance
+						on_screen.push( new vertices(k) )
+					}
+					break
+			}
+		})
 
 		if (on_screen.length == 0) {
 		let null_egal = (this.corner11 >> 2 & 1) ^ (this.corner11 & 1)
@@ -226,6 +285,17 @@ class Polygon_in_cameraSpace {
 
 		this.rasterize_onscreen([[-1,-1],[+1,-1],[+1,+1],[-1,+1]],payload)  // full screen
 		return
+	}
+
+	which_border(arg0: Vertex_in_cameraSpace): any {
+		let v=arg0.onScreen.vector[0]
+		let si=v.map(s=>Math.sign(s))
+		// join position and vector then flip signs. Code is in this file. Write as MatrixMul?
+		if (arg0.onScreen.vector[0]<0)   {} //
+		
+		let dis=arg0.onScreen.vector[0].cross(this.screen[0]-1)/2 - arg0.onScreen.postion)
+		
+		throw new Error('Method not implemented.');
 	}
 
 	private edge_crossing_two_borders(vertex: Vertex_in_cameraSpace[], pattern4: number, on_screen) {
@@ -293,6 +363,8 @@ class Polygon_in_cameraSpace {
 		return pattern4 //head[0] && head[1]
 	}
 
+	// The beam tree will make everything convex and trigger a lot of MUL 16*16 in the process. Code uses Exception patter: First check if all vertices are convex -> break . Then check for self-cuts => split, goto first . ZigZag concave vertices. Find nearest for last. Zig-zag schould not self cut? 
+	// For the MVP, we do best effort for polygons with nore than 3 edges: Ignore up slopes. Do backface culling per span. 
 	rasterize_onscreen(vertex: Array<number[]>,Payload:Matrix) {  // may be a second pass like in the original JRISC. Allows us to wait for the backbuffer to become available.
 		let l = vertex.length, min = [0, vertex[0][1]]   //weird to proces second component first. Rotate?
 		for (let i = 1; i < l; i++) {
@@ -351,6 +423,8 @@ class Polygon_in_cameraSpace {
 					slope_accu_c[k][1]= slope_accu_c[k][0] * (y-v_val[0][1])
 
 					// Do I allow back faces ? I cannot belive that I want to support non-planar poylgons in any way. Use this as assert / for initial debugging?
+					// Clipping leads to polygons with more than 3 vertices. And in both ways: Serially with new vertices in 3d, or (my way) parallel with slopes, those can be non-planar
+					// To keep a mesh air-tight, I need (be able) to  cull back-spans 
 					//let no_mirror= slope_accu_c[0][0]<slope_accu_c[1][0]  
 					//for_mapper.sort()  // non-planar poylgons will vanish. Once again: 16.16 will eliminate this glitch to 1 px every hour. 16.16 still fast than guarding IF commands here! Level is checked for planarity. Keyframe animated characters use triangles. Only stuff like head or armor has poylgons.
 				}
