@@ -119,6 +119,19 @@ class Polygon_in_cameraSpace {
 			if (!outside && z > this.near_plane) {  // "pure" z checks last because they are not really specific. I need a near plane for z comparison. Far plane might be the level size as in Doom?
 				v.onScreen = v.inSpace.slice(0, -1).map(c => c / z)
 				// symmetric NDC. For Jaguar with its 2-port register file it may makes sense to skew and check for the sign bit (AND r0,r0 sets N-flag). Jaguar has abs()				
+
+				
+				
+				switch( this.mode){
+					case  modes.guard_band :  // So for guardband, we now project and once again check if a vertex is outside ( this duplicated check looks so silly, but I blame JRISC ).
+						if  ( !outside && Math.abs(v.onScreen.postion[0]) > this.screen[0] ) outside=true ;  // 
+						break;
+					case modes.NDC:  //  So for NDC this result is perfect. Now go from NDC -> pixels ( this pointless mul looks so silly )
+						v.onScreen.postion.forEach( (p,j)=> {  v.onScreen.postion[j]+=(p>>8) * this.screen[j] } )  // only normalizesd mantissa of this.screen[j] ( 24 bit due to 16.16 DIV ). ADD is onyl single cycle because it feeds on the result of the previous MUL
+						v.onScreen.vector.forEach( (p,j)=> {  v.onScreen.postion[j]+=(p>>8) * this.screen[j] } )  // renormalize?
+						break;
+				}
+								
 			} else { // else is expensive in JRISC, but perhaps I need special code here. Otherwise Todo: remove
 				v.onScreen = null // null does exist on Jaguar, but for value type vertices I will have to use a flag field
 			}
@@ -139,9 +152,10 @@ class Polygon_in_cameraSpace {
 		let on_screen = [], cut = [], l = vertices.length
 		this.corner11 = 0 // ref bitfield in JRISC ( or C# ) cannot do in JS
 
+		// check if vertices are still outside if we use the (rounded) edge slopes
+		// This has to be done after NDC -> px ( rounding!!) . We do this to iterate over the corners. Of course a serial splitter does not care. We don't need the exact cut, only need to know if sense of rotation changes.
 		// no synergz with polygons with vertex.count > 3 . we don't look at the faces here
-		vertices.forEach((v, i) => {// edge stage. In a polygon an edge follows every vertex while circulating. In mesh it does not.
-
+		vertices.forEach((v, i) => {
 			let k = (i + 1) % vertices.length
 			let w=pattern32 >> i
 			if (( w&7) == 2) {  // edge going outside, back inside
