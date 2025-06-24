@@ -313,16 +313,43 @@ class Polygon_in_cameraSpace {
 	}
 
 	private edge_crossing_two_borders(vertex: Vertex_in_cameraSpace[], pattern4: number, on_screen) {
-		let slope = this.get_edge_slope_onScreen(vertex);
+		let slope = this.get_edge_slope_onScreen(vertex), border=0
 
+		// with zero border crossing, no edge is visible. Or when both vertices are in front of the near plane. For speed
+		if (vertex[0].inSpace[2]<this.near_plane && vertex[1].inSpace[2]<this.near_plane) return false
+
+		// some borders cannot be crossed and all corners are on the same side, but which? Sign does not make much sense here
 		for (let border = 0; border < 4; border++) {  // go over all screen borders
 			if ((pattern4 >> border & 1) != (pattern4 >> (border + 1) & 1)) {   // check if vertices lie on different sides of the 3d frustum plane
+				border++
+			}
+		}
 
+		// check if crossing in front of us
+		let qp:Vec3=vertex[1].inSpace - vertex[0].inSpace
+		let nearest_point= vertex[0].inSpace * qp.innerProduct(qp) - qp.scalarProduct(qp.innerProduct(vertex[0].inSpace))  // this is in 3d so 32 bit. A lot of MUL.32.32 :-( . Similar to: face in front of me = z   or also: texture   . Log for performance.
+		let z= vertex[0].inSpace[2] * qp.innerProduct(qp) - qp.v[2]*(qp.innerProduct(vertex[0].inSpace)) 
+		if (z<0) return false
+
+		for (let corner=0;corner<4;corner++){
+			let side= (slope[2] + ((border & 2) - 1) * slope[border & 1])
+		}
+		// there are zero or two side changes 		
+
+
+		switch( border)
+		{
+			case 2: // 
+				
+		}
+
+		{ 
+			{
 				// Calculate pixel cuts for the rasterizer . we don't care for cuts .. I mean we do, we need them for the beam tree. But with a single polygon we only need y_pixel
 				// code duplicated from v->edge
 				let coords = [0, 0]
 				coords[border & 1] = (border & 2) - 1;
-				coords[~border & 1] = (slope[2] + ((border & 2) - 1) * slope[border & 1]) / slope[~border & 1];
+				coords[~border & 1] = (slope[2] + ((border & 2) - 1) * slope[border & 1]) / slope[~border & 1];  // I do have to check for divide by zero. I already rounded to 16 bit. So MUL on corners is okay.
 
 				on_screen.push(coords)
 			}
@@ -433,6 +460,9 @@ class Polygon_in_cameraSpace {
 					}
 					if  (d[1]!=0)	slope_accu_c[k][0]=d[0]/d[1]  // we only care for edges with actual height on screen. And exact vertical will not glitch too badly
 					// I am going all in to floats / fixed point. No rounding => No DAA  aka  Bresenham. Let the glitches come. 4 kB might be enough code to have a macro to convert all MUL to 16.16*16 muls. I want to check that!
+					// Bresenham has an IF. But I need an if for all gradients anyway and the condition and register usage is not better with fixed.point.
+					// Fixed point only works better with edge interpolation (no master spanning vectors)- But then Subpixel correcton then needs one MUL per line. Division looks less degenerated though because span length is 16.16 in that case.
+					// But what about beam trees? The interpolation is a hack in screen space. It does not work for edges projected from occluding polygons.
 					// sub-pixel correction against PlayStation1 (TM) wobble
 					slope_accu_c[k][1]= slope_accu_c[k][0] * (y-v_val[0][1])
 
