@@ -42,11 +42,47 @@ class Span {
 	}
 }
 
+// I tried nullable properties ...
 class PointPointing{
 	position: Array<number>
 	vector: Vec2
 	reverse:boolean
 	border: any;
+}
+
+// but ...Aparently, with parallel consideration, I need polymorphism very badly
+class Item{
+
+}
+
+class Edge_on_Screen extends Item{
+
+}
+
+class Edge_hollow extends Edge_on_Screen{
+
+}
+
+class Edge_w_slope extends Edge_hollow{
+	slope:Vec2
+}
+
+class Point extends Item{
+
+}
+
+// Just as projected
+class Vertex_OnScreen extends Point{
+	postion:number[]
+}
+
+class Corner extends Point{
+	corner:number
+}
+
+class Onthe_edge extends Corner{
+	// the edge after the corner in mathematical sense of rotation
+	pixel_ordinate_int: number
 }
 
 // Even without lazy precision, clipping and mapping tends to go back to the rotated vertex
@@ -58,6 +94,7 @@ class Vertex_in_cameraSpace {
 
 enum modes{NDC,guard_band};
 
+/*
 class Edge_on_Screen {
 	startingVertex: Array<number>  // I go around the polygon for clipping. Later, I go down on both sides. So, on the wrong side, data acces is a bit nasty
 	// On screen for subpixel precision, 
@@ -69,8 +106,10 @@ class Edge_on_Screen {
 	slope: Array<number>  
 	slope_as_fixed=0   // so actually, the rasterizer needs to calculate this if it insists on doing the sub-pixel precsion ( which might overflow )
 }
+*/
+
 // do it in rasterizer?
-class Cyclic_Collection<T extends any[]> {
+class Cyclic_Collection<T extends any[]>  {
 	a:T
 	get_startingVertex(i:number){
  		//via index and lenght?
@@ -78,6 +117,7 @@ class Cyclic_Collection<T extends any[]> {
 		let j= ((i % n) + n) % n
 		return this.a[j]
 	} 
+	
 }
 
 class Polygon_in_cameraSpace {
@@ -157,7 +197,7 @@ class Polygon_in_cameraSpace {
 		// I am unhappy about the need to basically repeat this step on the 2dBSP (for guard_band and portals).
 		// MVP: Get code running on 256x256 with one polygon. Guard == NDC 
 		// Optimized clipping on rectangle because one factor is zero. The other still need
-		let on_screen = new Array<PointPointing>(), cut = [], l = vertices.length
+		let on_screen = new Array<Item>(), cut = [], l = vertices.length
 		this.corner11 = 0 // ref bitfield in JRISC ( or C# ) cannot do in JS
 
 		/* too expensive
@@ -179,6 +219,7 @@ class Polygon_in_cameraSpace {
 		})
 		*/
 
+		// 2 vertices -> edge
 		vertices.forEach((v, i) => {// edge stage. In a polygon an edge follows every vertex while circulating. In mesh it does not.
 
 			let k = (i + 1) % vertices.length
@@ -244,9 +285,16 @@ class Polygon_in_cameraSpace {
 			}
 		})
 
+		let on_screen_read=new Cyclic_Collection<Item[]>(on_screen)
+
+		// check: edges -> vertices ( happy path: add corners, Rounding Exception: remove edges)
 		// corners. The code above does not know if trianle or more. The code below still does not care. 
+		// funny that we need two passes to add and remove items
 		on_screen.forEach((v, i) => {
 			// 
+			let neighbours=on_screen_read.get_startingVertex(i)
+
+			if (neighbours[0] instanceof Vertex_OnScreen) {}
 
 			let p=pattern32 >> i , t=-1
 			switch(p&3){
@@ -273,8 +321,12 @@ class Polygon_in_cameraSpace {
 					// Don't actually calculat the cut
 					// it is enough to not draw inverse spans ( should be implied with a for loop which we already need for x_left=x_rigth)
 					// A cut may be needed for the beam tree- through
-					// Anyways: Don't add corners in this case!
-				}
+					// Anyways: Don't add corners in this case! The flipped x-spans don't need to fill the corner
+					
+					// Two vertices without an edge between them cannot be filled, unless, I only rasterize x-convex
+					// So if the top vertex has only one edge, go down until we find another
+					// if we now find a dangling vertex, it is expected that there is y-overlap due to the crossing. So we can just jump onto the next slope.
+					}
 					else{
 
 
