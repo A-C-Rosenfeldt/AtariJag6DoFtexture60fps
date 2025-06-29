@@ -1,4 +1,4 @@
-import { Vec3,Matrix } from './clipping.js';
+import { Vec3,Matrix, Matrix2, Vec2 } from './clipping.js';
 import {Camera_in_stSpace, Mapper,CV} from './infinite_plane_mapper.js'
 // The rasterizer needs to projected points from the beam tree. The tree is the start, and the polygon only lives in the leaf
 // I think that most polygons in a dense mesh are split by their neighbours. I would need extra code to check for back faces. This does neither fit into the MVP nor the cache
@@ -42,16 +42,18 @@ class Span {
 	}
 }
 
-class pointPointing{
-	postion: Array<number>
-	vector: Array<number>
+class PointPointing{
+	position: Array<number>
+	vector: Vec2
+	reverse:boolean
+	border: any;
 }
 
 // Even without lazy precision, clipping and mapping tends to go back to the rotated vertex
 class Vertex_in_cameraSpace {
 	inSpace: Array<number>
 	outside: boolean
-	onScreen: pointPointing
+	onScreen: PointPointing
 }
 
 enum modes{NDC,guard_band};
@@ -68,8 +70,14 @@ class Edge_on_Screen {
 	slope_as_fixed=0   // so actually, the rasterizer needs to calculate this if it insists on doing the sub-pixel precsion ( which might overflow )
 }
 // do it in rasterizer?
-class Cyclic_Collection<T>{
-	get_startingVertex()  //via index and lenght?
+class Cyclic_Collection<T extends any[]> {
+	a:T
+	get_startingVertex(i:number){
+ 		//via index and lenght?
+		let n=  this.a.length
+		let j= ((i % n) + n) % n
+		return this.a[j]
+	} 
 }
 
 class Polygon_in_cameraSpace {
@@ -117,18 +125,18 @@ class Polygon_in_cameraSpace {
 			}
 
 			if (!outside && z > this.near_plane) {  // "pure" z checks last because they are not really specific. I need a near plane for z comparison. Far plane might be the level size as in Doom?
-				v.onScreen = v.inSpace.slice(0, -1).map(c => c / z)
+				v.onScreen.position = v.inSpace.slice(0, -1).map(c => c / z)
 				// symmetric NDC. For Jaguar with its 2-port register file it may makes sense to skew and check for the sign bit (AND r0,r0 sets N-flag). Jaguar has abs()				
 
 				
 				
 				switch( this.mode){
 					case  modes.guard_band :  // So for guardband, we now project and once again check if a vertex is outside ( this duplicated check looks so silly, but I blame JRISC ).
-						if  ( !outside && Math.abs(v.onScreen.postion[0]) > this.screen[0] ) outside=true ;  // 
+						if  ( !outside && Math.abs(v.onScreen.position[0]) > this.screen[0] ) outside=true ;  // 
 						break;
 					case modes.NDC:  //  So for NDC this result is perfect. Now go from NDC -> pixels ( this pointless mul looks so silly )
-						v.onScreen.postion.forEach( (p,j)=> {  v.onScreen.postion[j]+=(p>>8) * this.screen[j] } )  // only normalizesd mantissa of this.screen[j] ( 24 bit due to 16.16 DIV ). ADD is onyl single cycle because it feeds on the result of the previous MUL
-						v.onScreen.vector.forEach( (p,j)=> {  v.onScreen.postion[j]+=(p>>8) * this.screen[j] } )  // renormalize?
+						v.onScreen.position.forEach( (p,j)=> {  v.onScreen.position[j]+=(p>>8) * this.screen[j] } )  // only normalizesd mantissa of this.screen[j] ( 24 bit due to 16.16 DIV ). ADD is onyl single cycle because it feeds on the result of the previous MUL
+						v.onScreen.vector.v.forEach( (p,j)=> {  v.onScreen.vector.v[j]+=(p>>8) * this.screen[j] } )  // renormalize?
 						break;
 				}
 								
@@ -149,9 +157,10 @@ class Polygon_in_cameraSpace {
 		// I am unhappy about the need to basically repeat this step on the 2dBSP (for guard_band and portals).
 		// MVP: Get code running on 256x256 with one polygon. Guard == NDC 
 		// Optimized clipping on rectangle because one factor is zero. The other still need
-		let on_screen = [], cut = [], l = vertices.length
+		let on_screen = new Array<PointPointing>(), cut = [], l = vertices.length
 		this.corner11 = 0 // ref bitfield in JRISC ( or C# ) cannot do in JS
 
+		/* too expensive
 		// check if vertices are still outside if we use the (rounded) edge slopes
 		// This has to be done after NDC -> px ( rounding!!) . We do this to iterate over the corners. Of course a serial splitter does not care. We don't need the exact cut, only need to know if sense of rotation changes.
 		// no synergz with polygons with vertex.count > 3 . we don't look at the faces here
@@ -159,10 +168,16 @@ class Polygon_in_cameraSpace {
 			let k = (i + 1) % vertices.length
 			let w=pattern32 >> i
 			if (( w&7) == 2) {  // edge going outside, back inside
-				let c=this.fincCut(i,k); // find cut because rounding may have put it inside the screen again. This is a problem with all clipping algorithms
-				if (c) pattern32=~((~pattern32) | 1<< i)  // set vertex to inside 
+
+				// It wuould really be faster to delay this
+				// find cut with screen border
+				//
+
+				let pixels=this.findCut(vertices[i], vertices[k]); // find cut because rounding may have put it inside the screen again. This is a problem with all clipping algorithms
+				if ( pixels.reduce((p,c,j)=>p|| (c<0 || c>this.screen[j]),false ) ) pattern32=~((~pattern32) | 1<< i)  // set vertex to inside 
 			}
 		})
+		*/
 
 		vertices.forEach((v, i) => {// edge stage. In a polygon an edge follows every vertex while circulating. In mesh it does not.
 
@@ -174,11 +189,12 @@ class Polygon_in_cameraSpace {
 					if (0 == (pattern4 = this.isEdge_visible([vertices[i], vertices[k]]))) break;
 					let cuts=this.edge_crossing_two_borders(vertices, pattern4) //, on_screen);
 					
+					/* too expensive
 					// find cuts with slopes before ( after looks at us )
 					let j=(i-1 + vertices.length)% vertices.length
-					let c=this.fincCut(i,j)
+					let c=this.findCut(vertices[i], vertices[j])
 					if (c) {on_screen.push(c);pattern32=~((~pattern32) | 1<< i) } // set vertex to inside }
-					else {on_screen.push(cuts)}
+					else */ {on_screen.push(cuts)}
 					
 
 					//on_screen is pointer to collection:  on_screen.push(...cuts)
@@ -191,7 +207,7 @@ class Polygon_in_cameraSpace {
 					if (this.mode==modes.guard_band && vertices[i][0] > this.screen[0]/2 && slope[0]>0 ) { } // edge only in guardband 
 					on_screen.push(v)  // this push order is for a single polygon. In a mesh there would be references
 
-					cut = this.edge_fromVertex_toBorder([vertices[i], vertices[k]], l);  //   vertex+slop from out-going and in-going might (due to rounding) think that the vertex is actually inside the viewing frustum.
+					let cut = this.edge_fromVertex_toBorder([vertices[i], vertices[k]], l);  //   vertex+slop from out-going and in-going might (due to rounding) think that the vertex is actually inside the viewing frustum.
 					// This is like a non-planar polygon after 3d clipping. And like for all non-planar polygons, to keept the mesh air-tight, we need to no cull back-faces, but back-spans. Should work here. Edges are shared.
 					// So when a vertex has 6 edges leading to it and all the cuts disagree, what happens? Vertex sits 1 px outside of the viewing frustum ( like: we could have a guard band, but we didn't)
 					// How can this be air tight?
@@ -203,10 +219,10 @@ class Polygon_in_cameraSpace {
 					// After the screen list is debugged: todo: Cuts will be managed by the rasterizer
 					on_screen.push(cut)
 					break
-				case 2:
-					cut = this.edge_fromVertex_toBorder([vertices[k], vertices[i]], l);
+				case 2: {
+					let cut = this.edge_fromVertex_toBorder([vertices[k], vertices[i]], l);
 					on_screen.push(cut)// The asymmetry fits the counting: When the borders cut a corner of the polygon, the vertex count++ , but we have cuts=2
-
+				}
 					break
 				case 0: //none outside
 					on_screen.push(v)  // Nothing to insert before   // of course in JRISC this would be in a fixed length pool
@@ -228,8 +244,10 @@ class Polygon_in_cameraSpace {
 			}
 		})
 
-		// corners. The code above does not know if trianle or more. The code below still does not care
-		vertices.forEach((v, i) => {
+		// corners. The code above does not know if trianle or more. The code below still does not care. 
+		on_screen.forEach((v, i) => {
+			// 
+
 			let p=pattern32 >> i , t=-1
 			switch(p&3){
 				case 1:
@@ -238,12 +256,36 @@ class Polygon_in_cameraSpace {
 				case 2:
 					// back into screen. The cuts above make sure that our front faces follow the sense of rotation
 					// due to rounding, we cannot deduce the side from the vertex. And it is costly
-					let b=[t,i].map(j=> this.which_border(vertices[j]) )
-					if (b[0]>b[1]) b[0]+=vertices.length
+					let b=[t,i].map(j=> on_screen[j].border  ) //this.which_border(vertices[j]) )
+
+			// with two cuts due to a single vertex outside, it could happen that these cuts cross inside screen after rounding
+			// this would make this algorithm cover all ohter corners of the screen
+			// this only happens with the outside vertex behind the near plane ( otherwise, edges divert)
+			// only a single corner can be spanned at max
+				if (i-t <2 && v.z > this.near_plane ){
+					if ( !v.reverse ) break 
+					if (on_screen[t].reverse) break
+					b=b // duplicated code to calculate b . the function to give us pixel ordinate along the border needs to know the border
+					// if b[0] b[1] encompass one corner, this is it. Not all the others. If order is reversed, calculate cut for clean display list. Exception -> log
+					// if b[0] b[1] encompass zero corner, we got the ordinate along this border.
+					//// if ordinate1 is not > ordinate0 then calculateCut  (slow and throws the old results away). Exception -> log
+
+					// Don't actually calculat the cut
+					// it is enough to not draw inverse spans ( should be implied with a for loop which we already need for x_left=x_rigth)
+					// A cut may be needed for the beam tree- through
+					// Anyways: Don't add corners in this case!
+				}
+					else{
+
+
+					if (b[0]>b[1]) b[1]+=vertices.length
+
+
 					for(let k=b[0];k<b[1];k++){ // 0 iterations has the highest chance
 						on_screen.push( new vertices(k) )
 					}
 					break
+				}
 			}
 		})
 
@@ -272,7 +314,7 @@ class Polygon_in_cameraSpace {
 
 
 		// Todo: The following code is wrong about corners
-		// Any corner whose beam passes through the face, adds a new on_screen vertex ( to the array )
+		// Any corner whose beam passes through the face, adds a new on_screen vertex (to the array )
 		// This happens with both an empty or a full on_screen list up to this point
 		// So I indeed need to know through which border an edge leaves the screen
 		// so that we can insert the screen corners after it into the list.
@@ -301,16 +343,38 @@ class Polygon_in_cameraSpace {
 		return
 	}
 
+	// This may be useful for beam tree and non-convex polygons
+	// I don't think that it is light enough to double check clipping after rounding errors
+	findCut(v0: Vertex_in_cameraSpace, v1: Vertex_in_cameraSpace): Array<number> {
+		// find cut between two vertices. This is a 2d cut, so it is not a 3d cut. It is a 2d cut in the viewing frustum
+		let p0 = v0.onScreen.position
+		let p1 = v1.onScreen.position
+		let d =  new Vec2([p0,p1])  //p0.map((c, j) => p1[j]-c)  // vector from p0 to p1
+		//  [v0,v1] &* [s,t]  = d
+		// <=> [s,t] = inv([v0,v1]]
+		let m=new Matrix2()
+		m.nominator=[v0.onScreen.vector, v1.onScreen.vector]
+		let fac=m.inverse_rn(0)
+		let s=fac.innerProduct(d)
+		let xy=v0.onScreen.vector.scalarProduct(s).subtract(new Vec2([p0]).scalarProduct(-fac.den))  // 16*16 -> 32 bit
+		// no rounding errors allowed here
+		let pixels=xy.v.map(c => c / fac.den )  // 32/32 -> 8bit .  this feels wrong to do on the frustum. There we should use a while loop 
+
+		return pixels
+	}
+
+	/* When we no the border, lets go ahead and calculate the pixel. So: see edge from vertex to border
 	which_border(arg0: Vertex_in_cameraSpace): any {
 		let v=arg0.onScreen.vector[0]
 		let si=v.map(s=>Math.sign(s))
 		// join position and vector then flip signs. Code is in this file. Write as MatrixMul?
 		if (arg0.onScreen.vector[0]<0)   {} //
 		
-		let dis=arg0.onScreen.vector[0].cross(this.screen[0]-1)/2 - arg0.onScreen.postion)
+		let dis=arg0.onScreen.vector[0].cross(this.screen[0]-1)/2 - arg0.onScreen.position)
 		
 		throw new Error('Method not implemented.');
 	}
+		*/
 
 	private edge_crossing_two_borders(vertex: Vertex_in_cameraSpace[], pattern4: number, on_screen) {
 		let slope = this.get_edge_slope_onScreen(vertex), border=0
@@ -571,7 +635,7 @@ class Polygon_in_cameraSpace {
 		} while (active_vertices[0][1] != active_vertices[1][1]) // full circle, bottom vertex found on the fly
 	}
 
-	private edge_fromVertex_toBorder(vs: Vertex_in_cameraSpace[], l: number) {
+	private edge_fromVertex_toBorder(vs: Vertex_in_cameraSpace[], l: number):PointPointing {
 		let slope = this.get_edge_slope_onScreen(vs).slice(0, 2); // 3d cros  product with meaningful sign. Swap x,y to get a vector pointint to the outside vertex. float the fractions
 
 		var abs=slope.map(s=>Math.abs(s))
@@ -589,6 +653,7 @@ class Polygon_in_cameraSpace {
 				break
 		}
 
+		/*
 		// check the top screen corners. Why not check all corners (ah that is the case if both vertices are outside) ? Or rather one!
 		// similar code for both cases
 		vs[1].onScreen = vs[0].onScreen.slice()
@@ -624,7 +689,10 @@ class Polygon_in_cameraSpace {
 
 		if (slope[0]==0) {vs[1].onScreen[1] = sl[1]*this.screen[1] }  // I cannot use epsilon here because the vertex could have a fraction of (0) or (F)
 
+		*/
 
+		// todo unify with
+		//this.which_border(vs[0])
 
 		if (  slope[0] > slope[1]) { // Nonsense  slope tells us that the edge comes from above.  This is branching only for NDC
 			// correct order . At least every other vertex need to be on inside for this function
@@ -634,7 +702,7 @@ class Polygon_in_cameraSpace {
 
 			for (let corner = -1; corner <= +1; corner += 2) {
 				if ((corner - vs[0].onScreen[0]) * slope[1] > (-1 - vs[0].onScreen[1]) * slope[0]) {
-					vs[1].onScreen[0] = corner;
+					vs[1].onScreen[0] = corner, vs[1].onScreen.border=corner // Todo: I need corners with rotation sense to fill the polygon
 					switch (this.mode){ // todo: different edge clases?
 						case modes.NDC:	
 							vs[1].onScreen[1] = vs[0].onScreen[1] + (corner - vs[0].onScreen[0]) * slope[1] / slope[0];
@@ -650,9 +718,9 @@ class Polygon_in_cameraSpace {
 			}
 			if (cc == 0) {
 				vs[1].onScreen[1] = -1;
-				vs[1].onScreen[1] = vs[0].onScreen[0] + (-1 - vs[0].onScreen[1]) * slope[0] / slope[1];
+				vs[1].onScreen[1] = ( vs[0].onScreen[0] * slope[1]+ (-1 - vs[0].onScreen[1]) * slope[0] ) / slope[1]; // no rounding error allowed
 			}
-			vs[1].onScreen[1] = -1;
+			vs[1].onScreen[1] = -1;  
 		}
 		return vs[1].onScreen;
 	}

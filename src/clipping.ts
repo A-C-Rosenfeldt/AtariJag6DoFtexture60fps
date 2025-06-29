@@ -107,6 +107,14 @@ export class Vec{ // looks like I need 2 and 3 dimensions to show off this (adap
 	
 }
 
+export class Vec2 extends Vec{
+
+	
+	wedgeProduct(o:Vec2):number{
+		return this.v[0]*o.v[1]-this.v[1]*o.v[0]
+	}
+}
+
 export class Vec3 extends Vec{
 
 
@@ -117,6 +125,14 @@ export class Vec3 extends Vec{
 		}
 		return v
 	}
+}
+
+export class Vec2_den extends Vec2{
+	constructor(v: number[], den: number) {
+		super( [v] );
+		this.den = den;
+	}
+	den:number
 }
 
 class Frac{
@@ -183,6 +199,19 @@ export class Matrix{
 	}
 		return res
 	}	
+}
+
+export class Matrix2 extends Matrix{
+	override nominator: Vec2[]
+	inverse_rn(result_row:number): Vec2_den {
+		let m=this.nominator
+		let det = m[0].wedgeProduct(m[1]);
+		if (det === 0) throw new Error("Matrix is not invertible");
+
+		let vd=new Vec2_den( [m[1-result_row].v[result_row] , m[result_row].v[1-result_row] ], det) ;  // Vectors are always vertical. Otherwise my head would hurt
+		return vd;
+
+	}
 }
 
 // So some engines don't seem to care, but I care about rounding
