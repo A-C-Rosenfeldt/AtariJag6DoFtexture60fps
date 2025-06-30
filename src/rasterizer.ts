@@ -80,9 +80,11 @@ class Corner extends Point{
 	corner:number
 }
 
-class Onthe_edge extends Corner{
+class Onthe_border extends Corner{
 	// the edge after the corner in mathematical sense of rotation
+	border :number
 	pixel_ordinate_int: number
+	z_gt_nearplane:boolean
 }
 
 // Even without lazy precision, clipping and mapping tends to go back to the rotated vertex
@@ -111,6 +113,9 @@ class Edge_on_Screen {
 // do it in rasterizer?
 class Cyclic_Collection<T extends any[]>  {
 	a:T
+	constructor(a:T){
+		this.a=a
+	}
 	get_startingVertex(i:number){
  		//via index and lenght?
 		let n=  this.a.length
@@ -219,16 +224,22 @@ class Polygon_in_cameraSpace {
 		})
 		*/
 
+		let v_w_n=new Cyclic_Collection<Array<Vertex_in_cameraSpace>>( vertices ) //new Array<Vertex_OnScreen>
+
+
 		// 2 vertices -> edge
 		vertices.forEach((v, i) => {// edge stage. In a polygon an edge follows every vertex while circulating. In mesh it does not.
+			let neighbours=on_screen_read.get_startingVertex(i)
+
+			if (neighbours[0] instanceof Vertex_OnScreen ) {}
 
 			let k = (i + 1) % vertices.length
-			switch ((pattern32 >> i) & 3) {
+			switch ((pattern32 >> i) & 3) {  // todo: rewrite as above
 				case 3: // both outside, check if the edge is visble. In case of a guard band I need this code to avoid overflow later on
 
 					let pattern4 = 0
 					if (0 == (pattern4 = this.isEdge_visible([vertices[i], vertices[k]]))) break;
-					let cuts=this.edge_crossing_two_borders(vertices, pattern4) //, on_screen);
+					let cuts:Item[]=this.edge_crossing_two_borders(vertices, pattern4) //, on_screen);
 					
 					/* too expensive
 					// find cuts with slopes before ( after looks at us )
@@ -246,9 +257,20 @@ class Polygon_in_cameraSpace {
 
 
 					if (this.mode==modes.guard_band && vertices[i][0] > this.screen[0]/2 && slope[0]>0 ) { } // edge only in guardband 
-					on_screen.push(v)  // this push order is for a single polygon. In a mesh there would be references
+					on_screen.push(v.onScreen)  // this push order is for a single polygon. In a mesh there would be references
 
-					let cut = this.edge_fromVertex_toBorder([vertices[i], vertices[k]], l);  //   vertex+slop from out-going and in-going might (due to rounding) think that the vertex is actually inside the viewing frustum.
+					// todo move into following method
+					let cut_r = this.edge_fromVertex_toBorder([vertices[k], vertices[i]], l);
+					let edge=new Edge_w_slope()
+					edge.slope=cut_r.vector
+					on_screen.push(edge)
+					let border=new Onthe_border()
+					border.border=cut_r.border
+					border.pixel_ordinate_int=cut_r.position[cut_r.border & 1]
+					border.z_gt_nearplane=vertices[k].inSpace[2]>this.near_plane
+
+					if (vertices[k].inSpace[2]>this.near_plane) {} // keep outside vertex
+					
 					// This is like a non-planar polygon after 3d clipping. And like for all non-planar polygons, to keept the mesh air-tight, we need to no cull back-faces, but back-spans. Should work here. Edges are shared.
 					// So when a vertex has 6 edges leading to it and all the cuts disagree, what happens? Vertex sits 1 px outside of the viewing frustum ( like: we could have a guard band, but we didn't)
 					// How can this be air tight?
@@ -261,12 +283,13 @@ class Polygon_in_cameraSpace {
 					on_screen.push(cut)
 					break
 				case 2: {
+					// like in 3
 					let cut = this.edge_fromVertex_toBorder([vertices[k], vertices[i]], l);
 					on_screen.push(cut)// The asymmetry fits the counting: When the borders cut a corner of the polygon, the vertex count++ , but we have cuts=2
 				}
 					break
 				case 0: //none outside
-					on_screen.push(v)  // Nothing to insert before   // of course in JRISC this would be in a fixed length pool
+					on_screen.push(v.onScreen)  // Nothing to insert before   // of course in JRISC this would be in a fixed length pool
 					break;
 				// For a single poylgon rasterizer her I may want to check if this vertex is convex: All edge 2d cross products should have the same sign.
 				// To insert in beam tree, first use the "flipped" vertex to cut into two convext sectors
@@ -294,7 +317,11 @@ class Polygon_in_cameraSpace {
 			// 
 			let neighbours=on_screen_read.get_startingVertex(i)
 
-			if (neighbours[0] instanceof Vertex_OnScreen) {}
+			// two cases without edge between vertices. Add edge to ease drawing
+			if ((neighbours[0] instanceof Onthe_border && v instanceof vertex_behind_nearPlane && neighbours[0] instanceof Onthe_border) ) {}
+			if ((v instanceof Onthe_border && neighbours[1] instanceof Onthe_border) ) {}
+
+			if (v.z_gt_nearplane) { } // short path
 
 			let p=pattern32 >> i , t=-1
 			switch(p&3){
@@ -428,11 +455,11 @@ class Polygon_in_cameraSpace {
 	}
 		*/
 
-	private edge_crossing_two_borders(vertex: Vertex_in_cameraSpace[], pattern4: number, on_screen) {
+	private edge_crossing_two_borders(vertex: Vertex_in_cameraSpace[], pattern4: number):Item[] {
 		let slope = this.get_edge_slope_onScreen(vertex), border=0
 
 		// with zero border crossing, no edge is visible. Or when both vertices are in front of the near plane. For speed
-		if (vertex[0].inSpace[2]<this.near_plane && vertex[1].inSpace[2]<this.near_plane) return false
+		if (vertex[0].inSpace[2]<this.near_plane && vertex[1].inSpace[2]<this.near_plane) return [] //false
 
 		// some borders cannot be crossed and all corners are on the same side, but which? Sign does not make much sense here
 		for (let border = 0; border < 4; border++) {  // go over all screen borders
@@ -445,7 +472,7 @@ class Polygon_in_cameraSpace {
 		let qp:Vec3=vertex[1].inSpace - vertex[0].inSpace
 		let nearest_point= vertex[0].inSpace * qp.innerProduct(qp) - qp.scalarProduct(qp.innerProduct(vertex[0].inSpace))  // this is in 3d so 32 bit. A lot of MUL.32.32 :-( . Similar to: face in front of me = z   or also: texture   . Log for performance.
 		let z= vertex[0].inSpace[2] * qp.innerProduct(qp) - qp.v[2]*(qp.innerProduct(vertex[0].inSpace)) 
-		if (z<0) return false
+		if (z<0) return []
 
 		for (let corner=0;corner<4;corner++){
 			let side= (slope[2] + ((border & 2) - 1) * slope[border & 1])
@@ -459,7 +486,9 @@ class Polygon_in_cameraSpace {
 				
 		}
 
+		let on_screen=new Array<Item>()
 		{ 
+			for(let j=0;j<2;j++)
 			{
 				// Calculate pixel cuts for the rasterizer . we don't care for cuts .. I mean we do, we need them for the beam tree. But with a single polygon we only need y_pixel
 				// code duplicated from v->edge
@@ -467,7 +496,14 @@ class Polygon_in_cameraSpace {
 				coords[border & 1] = (border & 2) - 1;
 				coords[~border & 1] = (slope[2] + ((border & 2) - 1) * slope[border & 1]) / slope[~border & 1];  // I do have to check for divide by zero. I already rounded to 16 bit. So MUL on corners is okay.
 
-				on_screen.push(coords)
+				let o=new Onthe_border()
+				o.border=border
+				o.pixel_ordinate_int=coords[~border & 1]
+				on_screen.push(o)
+				let e=new Edge_w_slope()
+				e.slope=new Vec2([slope])
+				if (j==0) on_screen.push(e)
+
 			}
 		}
 		return on_screen
