@@ -51,11 +51,11 @@ class PointPointing{
 }
 
 // but ...Aparently, with parallel consideration, I need polymorphism very badly
-class Item{
+interface Item{
 
 }
 
-class Edge_on_Screen extends Item{
+class Edge_on_Screen implements Item{
 
 }
 
@@ -67,17 +67,24 @@ class Edge_w_slope extends Edge_hollow{
 	slope:Vec2
 }
 
-class Point extends Item{
+interface Point extends Item{
+	get_y():number;
+}
 
+class vertex_behind_nearPlane implements Item{
+	// this could be an enum?
 }
 
 // Just as projected
-class Vertex_OnScreen extends Point{
+class Vertex_OnScreen implements Point{
 	postion:number[]
+	get_y(){return Math.floor(this.postion[0])}
 }
 
-class Corner extends Point{
+class Corner implements Point{
+	static screen:number[]
 	corner:number
+	get_y(){return screen[this.corner & 1]*( 1-(this.corner & 2)) }
 }
 
 class Onthe_border extends Corner{
@@ -85,6 +92,10 @@ class Onthe_border extends Corner{
 	border :number
 	pixel_ordinate_int: number
 	z_gt_nearplane:boolean
+
+	get_y(){
+		return this.border & 1 ? this.pixel_ordinate_int: screen[this.corner & 1]*( 1-(this.corner & 2)) 
+	}
 }
 
 // Even without lazy precision, clipping and mapping tends to go back to the rotated vertex
@@ -111,12 +122,12 @@ class Edge_on_Screen {
 */
 
 // do it in rasterizer?
-class Cyclic_Collection<T extends any[]>  {
-	a:T
-	constructor(a:T){
+class Cyclic_Collection<T extends any>  {
+	a:T[]
+	constructor(a:T[]){
 		this.a=a
 	}
-	get_startingVertex(i:number){
+	get_startingVertex(i:number): T {
  		//via index and lenght?
 		let n=  this.a.length
 		let j= ((i % n) + n) % n
@@ -142,7 +153,8 @@ class Polygon_in_cameraSpace {
 	mode:modes=modes.NDC  ; // This is public. Change it to GuardBand to compare both versions ( artefacts, instruction count )
 
 		// NDC -> pixel
-	screen = [320, 200]
+	screen = [320, 200];
+
 	epsilon = 0.001  // epsilon depends on the number of bits goint into IMUL. We need to factor-- in JRISC . So that floor() will work.
 
 	constructor(){
@@ -160,6 +172,7 @@ class Polygon_in_cameraSpace {
 
 
 	project(vertices: Array<Vertex_in_cameraSpace>): boolean {
+		Corner.screen=this.screen
 		this.outside = [false, false]; let pattern32 = 0
 		vertices.forEach(v => {
 			let z = v.inSpace[v.inSpace.length - 1], outside = false  // sometimes string would be easier: -1
@@ -308,69 +321,54 @@ class Polygon_in_cameraSpace {
 			}
 		})
 
-		let on_screen_read=new Cyclic_Collection<Item[]>(on_screen)
+		let on_screen_read=new Cyclic_Collection<Item>(on_screen)
+		const n=4
 
+		let with_corners=new Array<Item>
 		// check: edges -> vertices ( happy path: add corners, Rounding Exception: remove edges)
 		// corners. The code above does not know if trianle or more. The code below still does not care. 
 		// funny that we need two passes to add and remove items
 		on_screen.forEach((v, i) => {
 			// 
-			let neighbours=on_screen_read.get_startingVertex(i)
-
+			let neighbours=[-1,+1].map(d=> on_screen_read.get_startingVertex(i+d) )
+			
 			// two cases without edge between vertices. Add edge to ease drawing
-			if ((neighbours[0] instanceof Onthe_border && v instanceof vertex_behind_nearPlane && neighbours[0] instanceof Onthe_border) ) {}
-			if ((v instanceof Onthe_border && neighbours[1] instanceof Onthe_border) ) {}
-
-			if (v.z_gt_nearplane) { } // short path
-
-			let p=pattern32 >> i , t=-1
-			switch(p&3){
-				case 1:
-					t=i  // remember when we left the screen
-					break
-				case 2:
-					// back into screen. The cuts above make sure that our front faces follow the sense of rotation
-					// due to rounding, we cannot deduce the side from the vertex. And it is costly
-					let b=[t,i].map(j=> on_screen[j].border  ) //this.which_border(vertices[j]) )
-
-			// with two cuts due to a single vertex outside, it could happen that these cuts cross inside screen after rounding
-			// this would make this algorithm cover all ohter corners of the screen
-			// this only happens with the outside vertex behind the near plane ( otherwise, edges divert)
-			// only a single corner can be spanned at max
-				if (i-t <2 && v.z > this.near_plane ){
-					if ( !v.reverse ) break 
-					if (on_screen[t].reverse) break
-					b=b // duplicated code to calculate b . the function to give us pixel ordinate along the border needs to know the border
-					// if b[0] b[1] encompass one corner, this is it. Not all the others. If order is reversed, calculate cut for clean display list. Exception -> log
-					// if b[0] b[1] encompass zero corner, we got the ordinate along this border.
-					//// if ordinate1 is not > ordinate0 then calculateCut  (slow and throws the old results away). Exception -> log
-
-					// Don't actually calculat the cut
-					// it is enough to not draw inverse spans ( should be implied with a for loop which we already need for x_left=x_rigth)
-					// A cut may be needed for the beam tree- through
-					// Anyways: Don't add corners in this case! The flipped x-spans don't need to fill the corner
-					
-					// Two vertices without an edge between them cannot be filled, unless, I only rasterize x-convex
-					// So if the top vertex has only one edge, go down until we find another
-					// if we now find a dangling vertex, it is expected that there is y-overlap due to the crossing. So we can just jump onto the next slope.
-					}
-					else{
-
-
-					if (b[0]>b[1]) b[1]+=vertices.length
-
-
-					for(let k=b[0];k<b[1];k++){ // 0 iterations has the highest chance
-						on_screen.push( new vertices(k) )
-					}
-					break
+			if ((neighbours[0] instanceof Onthe_border && v instanceof vertex_behind_nearPlane && neighbours[1] instanceof Onthe_border) ) 
+				{					
+									let n=4 ;
+						let i=  neighbours[1].border - neighbours[0].border ;
+						//let s=Math.sign(i); 
+						//i=Math.abs(i);
+						var j=((i % n) + n) % n
+						if (j==3){
+							let t=new Corner();t.corner=neighbours[1].border
+							with_corners.push(t)
+							return							
+						}else{	
+							var range=neighbours.map(n=>(n as Onthe_border).border)  // typeGuard failed
 				}
 			}
+				else {
+					 if ((v instanceof Onthe_border && neighbours[1] instanceof Onthe_border) )  // previous loop discards the vertex marker. This is for symmetry: not a property. Asymmetric code looks ugly. Perhaps optimize the container: Type in a pattern, but use same getter and setter
+						{
+							var range=[v.border,neighbours[1].border]
+						}
+					else with_corners.push(v)  // this loop only adds corners. No need to skip due to a pattern nearby
+					return
+			}
+
+			if (range[1]<range[0]) range[1]+=n
+
+			for (let k=range[0];k<range[2];k++) // corner is named after the border before it ( math sense of rotation )
+				{
+					let t=new Corner();t.corner=k % n
+					with_corners.push(t)			
+				}
 		})
 
-		if (on_screen.length == 0) {
-		let null_egal = (this.corner11 >> 2 & 1) ^ (this.corner11 & 1)
-		if (null_egal == 0) return // polygon completely outside of viewing frustm
+		if (on_screen.length == 0) {  // no vertex nor edge on screen
+		let null_egal = (this.corner11 >> 2 & 1) ^ (this.corner11 & 1)  // check if corner11 pierces the polygon in 3d ?
+		if (null_egal == 0) return // polygon completely outside of viewing frustum
 		// viewing frustum piercing through polygon
 		}
 
@@ -378,7 +376,7 @@ class Polygon_in_cameraSpace {
 
 		// screen as floats
 		
-		if (mode ==modes.NDC){}       // NDC -> pixel   . Rounding errors! Do this before beam tree. So beam tree is 2d and has no beams
+		if (this.mode ==modes.NDC){}       // NDC -> pixel   . Rounding errors! Do this before beam tree. So beam tree is 2d and has no beams
 		else   {}  // Guard band  . Faster rejection at portals ( no MUL needed with its many register fetches). Still no 3d because we operate on 16 bit rounded screen coordinates after projection and rotation!!
 
 
@@ -391,6 +389,8 @@ class Polygon_in_cameraSpace {
 			payload=texturemap.generate_payload_m(   t[1]   )
 		}
 
+		this.rasterize_onscreen(with_corners,payload); return true
+		return
 
 		// Todo: The following code is wrong about corners
 		// Any corner whose beam passes through the face, adds a new on_screen vertex (to the array )
@@ -558,10 +558,16 @@ class Polygon_in_cameraSpace {
 
 	// The beam tree will make everything convex and trigger a lot of MUL 16*16 in the process. Code uses Exception patter: First check if all vertices are convex -> break . Then check for self-cuts => split, goto first . ZigZag concave vertices. Find nearest for last. Zig-zag schould not self cut? 
 	// For the MVP, we do best effort for polygons with nore than 3 edges: Ignore up slopes. Do backface culling per span. 
-	rasterize_onscreen(vertex: Array<number[]>,Payload:Matrix) {  // may be a second pass like in the original JRISC. Allows us to wait for the backbuffer to become available.
+	rasterize_onscreen(vertex: Array<Item>,Payload:Matrix) {  // may be a second pass like in the original JRISC. Allows us to wait for the backbuffer to become available.
 		let l = vertex.length, min = [0, vertex[0][1]]   //weird to proces second component first. Rotate?
+
+		function instanceOfPoint(object: any): object is Point {
+    		return 'get_y' in object;
+		}
+
 		for (let i = 1; i < l; i++) {
-			if (vertex[i][1] < min[1]) min = [i, vertex[i][1]]
+			let v=vertex[i]
+			if (  instanceOfPoint( v )  &&  v[i].get_y() < min[1]) min = [i, v.get_y() ]
 		}
 
 		let i = min[0]
@@ -581,7 +587,7 @@ class Polygon_in_cameraSpace {
 
 		// this is probably pretty standard code. Just I want to explicitely show how what is essential for the inner loop and what is not
 		// JRISC is slow on branches, but unrolling is easy (for my compiler probably), while compacting code is hard. See other files in this project.
-		let y = Math.floor(v[1])
+		let y = ( v as Point).get_y()
 		let slope_accu_c=[[0,0],[0,0]]  // (counter) circle around polygon edges as ordered in space / level-mesh geometry
 		// let slope_accu_s=[[0,0],[0,0]]  // sorted by x on screen  .. uh pre-mature optimization: needs to much code. And time. Check for backfaces in a prior pass? Solid geometry in a portal renderer or beam tree will cull back-faces automatically
 		do {
