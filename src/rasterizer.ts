@@ -67,6 +67,10 @@ class Edge_w_slope extends Edge_hollow{
 	slope:Vec2
 }
 
+class Edge_Horizon extends Edge_w_slope{
+	bias:number
+}
+
 interface Point extends Item{
 	get_y():number;
 }
@@ -612,10 +616,33 @@ class Polygon_in_cameraSpace {
 						AND len,i
 					*/
 					let v_val=active_vertices[k].map(a=>vertex[a]) 		// JRISC does not like addressing modes, but automatic caching in registers is easy for a compiler. I may even want to pack data to save on LOADs with Q-displacement
-					let d=[0,0] // delta, diff
-					for(let i=0;i< v_val[0].length;i++){
-						d[i]=v_val[1][i]-v_val[0][i]
+
+
+					// Point supports get_y . So I only need to consider mirror cases for pattern matchting and subpixel, but not for the for(y) .
+					if (v_val[0] instanceof Vertex_OnScreen && v_val[1] instanceof Edge_hollow && v_val[2] instanceof Vertex_OnScreen  ){
+						let d=[0,0] // delta, diff
+						for(let i=0;i< v_val[0].postion.length;i+=2){
+							d[i]=(v_val[i] as Vertex_OnScreen).postion[i]-v_val[0].postion[i]
+						}
+						if (d[1]>0){
+							var slope=d// see belowvar slope_integer=
+							var y_int=v_val[0].get_y()  // int
+							var x_at_y_int= Math.floor(v_val[0][0]+d[0]* (y_int- v_val[0][1] ) / d[1] ) // frac -> int
+							var Bresenham=(y_int- v_val[0][1] )*d[0]+(x_at_y_int- v_val[0][0] )*d[1]  // this should be the same for all edges not instance of Edge_Horizon
+							var pos=v_val[0].postion
+						}else{
+							continue
+						}
+					}else{
+						if (v_val[0] instanceof Vertex_OnScreen && v_val[1] instanceof Edge_w_slope && v_val[2] instanceof Onthe_border ){
+
+						}else{
+
+						}
 					}
+
+
+					if (mode=float_slope)
 					if  (d[1]!=0)	slope_accu_c[k][0]=d[0]/d[1]  // we only care for edges with actual height on screen. And exact vertical will not glitch too badly
 					// I am going all in to floats / fixed point. No rounding => No DAA  aka  Bresenham. Let the glitches come. 4 kB might be enough code to have a macro to convert all MUL to 16.16*16 muls. I want to check that!
 					// Bresenham has an IF. But I need an if for all gradients anyway and the condition and register usage is not better with fixed.point.
