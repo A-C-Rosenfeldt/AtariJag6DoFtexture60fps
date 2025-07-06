@@ -504,8 +504,9 @@ class Polygon_in_cameraSpace {
 				o.border=border
 				o.pixel_ordinate_int=coords[~border & 1]
 				on_screen.push(o)
-				let e=new Edge_w_slope()
-				e.slope=new Vec2([slope])
+				let e=new Edge_Horizon()
+				e.slope=new Vec2([slope.slice(0,2)])
+				e.bias=slope[2]
 				if (j==0) on_screen.push(e)
 
 			}
@@ -617,31 +618,52 @@ class Polygon_in_cameraSpace {
 					*/
 					let v_val=active_vertices[k].map(a=>vertex[a]) 		// JRISC does not like addressing modes, but automatic caching in registers is easy for a compiler. I may even want to pack data to save on LOADs with Q-displacement
 
+					if (v_val[1] instanceof Edge_Horizon ) // This can only happen at start or end. But this does not help with simplifying the flow
+					{
+						var y_int=(v_val[0] as Onthe_border).get_y()  // int
+						var ambi=v_val[0] as Onthe_border
+						var x_at_y_int= ambi.border & 1 ? ambi.pixel_ordinate_int : this.screen[0]*(1- (ambi.border & 2 ))
+						var Bresenham=v_val[1].bias+slope.wedgeProduct( new Vec2([[x_at_y_int,y_int]]) )  //y_int*d[0]+x_at_y_int*d[1]
+					}else
+					{
 
-					// Point supports get_y . So I only need to consider mirror cases for pattern matchting and subpixel, but not for the for(y) .
-					if (v_val[0] instanceof Vertex_OnScreen && v_val[1] instanceof Edge_hollow && v_val[2] instanceof Vertex_OnScreen  ){
-						let d=[0,0] // delta, diff
-						for(let i=0;i< v_val[0].postion.length;i+=2){
-							d[i]=(v_val[i] as Vertex_OnScreen).postion[i]-v_val[0].postion[i]
-						}
-						if (d[1]>0){
-							var slope=d// see belowvar slope_integer=
-							var y_int=v_val[0].get_y()  // int
-							var x_at_y_int= Math.floor(v_val[0][0]+d[0]* (y_int- v_val[0][1] ) / d[1] ) // frac -> int
-							var Bresenham=(y_int- v_val[0][1] )*d[0]+(x_at_y_int- v_val[0][0] )*d[1]  // this should be the same for all edges not instance of Edge_Horizon
-							var pos=v_val[0].postion
+						// Point supports get_y . So I only need to consider mirror cases for pattern matchting and subpixel, but not for the for(y) .
+						if (v_val[0] instanceof Vertex_OnScreen && v_val[1] instanceof Edge_hollow && v_val[2] instanceof Vertex_OnScreen  ){
+							
+							var slope=new Vec2([( v_val[2] ).postion ,v_val[0].postion] )
+							// for(let i=0;i< v_val[0].postion.length;i+=2){
+							// 	d[i]=(v_val[i] as Vertex_OnScreen).postion[i]-v_val[0].postion[i]
+							// }
+
+								//var slope=d// see belowvar slope_integer=
+								let d=slope.v;	if (d[1]<=0){continue}
+								var y_int=v_val[0].get_y()  // int
+								var x_at_y_int= Math.floor(v_val[0][0]+d[0]* (y_int- v_val[0][1] ) / d[1] ) // frac -> int
+								var Bresenham=slope.wedgeProduct( new Vec2([[x_at_y_int,y_int], v_val[0].postion  ]) ) //(y_int- v_val[0][1] )*d[0]+(x_at_y_int- v_val[0][0] )*d[1]  // this should be the same for all edges not instance of Edge_Horizon
+								
 						}else{
-							continue
-						}
-					}else{
-						if (v_val[0] instanceof Vertex_OnScreen && v_val[1] instanceof Edge_w_slope && v_val[2] instanceof Onthe_border ){
-
-						}else{
-
+							if (v_val[0] instanceof Vertex_OnScreen && v_val[1] instanceof Edge_w_slope && v_val[2] instanceof Onthe_border ){
+								var slope=v_val[1].slope // see belowvar slope_integer=
+								// duplicated code. Function call?
+								var d=slope.v
+								var y_int=v_val[0].get_y()  // int
+								if (y_int<=v_val[2].get_y()){continue}
+								var x_at_y_int= Math.floor(v_val[0][0]+d[0]* (y_int- v_val[0][1] ) / d[1] ) // frac -> int
+								var Bresenham=slope.wedgeProduct( new Vec2([[x_at_y_int,y_int], v_val[0].postion  ]) )  // this should be the same for all edges not instance of Edge_Horizon
+								
+							}else{
+								if (v_val[2] instanceof Vertex_OnScreen && v_val[1] instanceof Edge_w_slope && v_val[0] instanceof Onthe_border ){
+									var slope=v_val[1].slope // see belowvar slope_integer=
+									// duplicated code. Function call?
+									var d=slope.v
+									var y_int=v_val[2].get_y()  // int
+									var x_at_y_int= ambi.border & 1 ? ambi.pixel_ordinate_int : this.screen[0]*(1- (ambi.border & 2 )) // todo: method!
+									var Bresenham=slope.wedgeProduct( new Vec2([[x_at_y_int,y_int], v_val[2].postion  ]) )  // this should be the same for all edges not instance of Edge_Horizon									
+							}
 						}
 					}
 
-
+					/*
 					if (mode=float_slope)
 					if  (d[1]!=0)	slope_accu_c[k][0]=d[0]/d[1]  // we only care for edges with actual height on screen. And exact vertical will not glitch too badly
 					// I am going all in to floats / fixed point. No rounding => No DAA  aka  Bresenham. Let the glitches come. 4 kB might be enough code to have a macro to convert all MUL to 16.16*16 muls. I want to check that!
@@ -656,6 +678,7 @@ class Polygon_in_cameraSpace {
 					// To keep a mesh air-tight, I need (be able) to  cull back-spans 
 					//let no_mirror= slope_accu_c[0][0]<slope_accu_c[1][0]  
 					//for_mapper.sort()  // non-planar poylgons will vanish. Once again: 16.16 will eliminate this glitch to 1 px every hour. 16.16 still fast than guarding IF commands here! Level is checked for planarity. Keyframe animated characters use triangles. Only stuff like head or armor has poylgons.
+					*/
 				}
 			}
 
