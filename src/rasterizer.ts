@@ -158,6 +158,7 @@ class Polygon_in_cameraSpace {
 
 		// NDC -> pixel
 	screen = [320, 200];
+	screen_FoV =[8,5,8]
 
 	epsilon = 0.001  // epsilon depends on the number of bits goint into IMUL. We need to factor-- in JRISC . So that floor() will work.
 
@@ -183,18 +184,45 @@ class Polygon_in_cameraSpace {
 
 			let l = v.inSpace.length - 1   // weird that special component z is last. Probably in assembler I will interate backwards
 			for (let i = 0; i < l; i++) {
-				if (Math.abs(v[i]) > z) { outside = true }  // symmetric NDC. For Jaguar with its 2-port register file it may makes sense to skew and check for the sign bit (AND r0,r0 sets N-flag). Jaguar has abs()
+				if (Math.abs(v.inSpace[i]) > z) { outside = true;break }  // abs works because there is a (0,0) DMZ between the four center pixels. DMZ around the pixels are used as a kindof mini guard band. symmetric NDC. For Jaguar with its 2-port register file it may makes sense to skew and check for the sign bit (AND r0,r0 sets N-flag). Jaguar has abs()
+			}
+			if (v[2]<this.near_plane) outside=true
+
+			// stupid low level performance optimization: Apply 32 bit MUL only on some vertices .  NDC would apply 16 bit MUL on all visible vertices. NDC is so violating anything which brought me to engines: Bounding boxes and portals. Still, NDC has far less branches and code and wins if occlusion culling is not possible. Rounding is always a problem on the border -- not worse for NDC
+			// On a computer without fast MUL, this would be the code. JRISC has single cycle MUL 16*16=>32 ( as fast as ADD !? )
+			if (this.mode==modes.guard_band && outside == false){				
+				for (let i = 0; i < l; i++) {  // square pixels. Otherwise I need this.FoV[] ( not the real one w)
+					// notice how thie method loses on bit on the 3d side. But 32 bit are enough there. 16 bit on 2d are plency also though for SD -- hmm
+					if (Math.abs(v.onScreen.position[i])*2 > z) { v.onScreen.position[i]=v.inSpace[i]/z ; if ( Math.abs(v.onScreen.position[i])>this.screen[i]) {outside = true;break }} // Similar to early out in BSP union
+
+					//if (Math.abs(v[i] * this.screen_FoV[i]) > z*this.screen_FoV[2]) { outside = true }  // Notice how z will be shifted, but two register because 3d is 32 bit
+					// Since FoV is so small, the result will not be 64 bit. I can use two (signed ) 32 bit register with large overlap
+					// 2-port Register file is annoying. Recipie: Start from the end: IMAC . Then have the last preparation instruction 2 cycles before
+				}
+				if (outside==false)	
+					for (let i = 0; i < l; i++) {			
+					if (Math.abs(v.onScreen.position[i])*2 <= z) { v.onScreen.position[i]=v.inSpace[i]/z }  // This makes no sense behind a portal
+
+					//if (Math.abs(v[i] * this.screen_FoV[i]) > z*this.screen_FoV[2]) { outside = true }  // Notice how z will be shifted, but two register because 3d is 32 bit
+					// Since FoV is so small, the result will not be 64 bit. I can use two (signed ) 32 bit register with large overlap
+					// 2-port Register file is annoying. Recipie: Start from the end: IMAC . Then have the last preparation instruction 2 cycles before
+				}
+				/*
+				if (outside==false && Math.abs(v.onScreen.position[0])*2 > z&& Math.abs(v.onScreen.position[0])*2 > z){
+					//code to do 32 bit MUL: scan bits , extend sign, mul high word on both directons, if still uncelar: low word
+				}
+				*/
 			}
 
 			if (!outside && z > this.near_plane) {  // "pure" z checks last because they are not really specific. I need a near plane for z comparison. Far plane might be the level size as in Doom?
-				v.onScreen.position = v.inSpace.slice(0, -1).map(c => c / z)
+				v.onScreen.position = v.inSpace.slice(0, -1).map(c => c / z)    // DIV happens in a loop and will not be very asycn without blowing up code size
 				// symmetric NDC. For Jaguar with its 2-port register file it may makes sense to skew and check for the sign bit (AND r0,r0 sets N-flag). Jaguar has abs()				
 
 				
 				
 				switch( this.mode){
 					case  modes.guard_band :  // So for guardband, we now project and once again check if a vertex is outside ( this duplicated check looks so silly, but I blame JRISC ).
-						if  ( !outside && Math.abs(v.onScreen.position[0]) > this.screen[0] ) outside=true ;  // 
+						if  ( !outside && Math.abs(v.onScreen.position[0]) > this.screen[0] ) outside=true ;  // Some divisions are thrown away. This is an artifact of JRISC (68k), where DIV is not really more expensive than MUL. Or is it? DIV happens in a loop above
 						break;
 					case modes.NDC:  //  So for NDC this result is perfect. Now go from NDC -> pixels ( this pointless mul looks so silly )
 						v.onScreen.position.forEach( (p,j)=> {  v.onScreen.position[j]+=(p>>8) * this.screen[j] } )  // only normalizesd mantissa of this.screen[j] ( 24 bit due to 16.16 DIV ). ADD is onyl single cycle because it feeds on the result of the previous MUL
@@ -241,7 +269,7 @@ class Polygon_in_cameraSpace {
 		})
 		*/
 
-		let v_w_n=new Cyclic_Collection<Array<Vertex_in_cameraSpace>>( vertices ) //new Array<Vertex_OnScreen>
+		let v_w_n=new Cyclic_Collection<Vertex_in_cameraSpace>( vertices ) //new Array<Vertex_OnScreen>
 
 
 		// 2 vertices -> edge
@@ -273,7 +301,7 @@ class Polygon_in_cameraSpace {
 					// due to rounding, a 1001 pattern may lead to a cut inside the screen
 
 
-					if (this.mode==modes.guard_band && vertices[i][0] > this.screen[0]/2 && slope[0]>0 ) { } // edge only in guardband 
+					// this place is too late if (this.mode==modes.guard_band && vertices[i][0] > this.screen[0]/2 && slope[0]>0 ) { } // edge only in guardband 
 					on_screen.push(v.onScreen)  // this push order is for a single polygon. In a mesh there would be references
 
 					// todo move into following method
@@ -326,9 +354,9 @@ class Polygon_in_cameraSpace {
 		})
 
 		let on_screen_read=new Cyclic_Collection<Item>(on_screen)
-		const n=4
+		const n=4;
 
-		let with_corners=new Array<Item>
+		let with_corners=new Array<Item>();
 		// check: edges -> vertices ( happy path: add corners, Rounding Exception: remove edges)
 		// corners. The code above does not know if trianle or more. The code below still does not care. 
 		// funny that we need two passes to add and remove items
@@ -395,7 +423,7 @@ class Polygon_in_cameraSpace {
 
 		this.rasterize_onscreen(with_corners,payload); return true
 		return
-
+		/*
 		// Todo: The following code is wrong about corners
 		// Any corner whose beam passes through the face, adds a new on_screen vertex (to the array )
 		// This happens with both an empty or a full on_screen list up to this point
@@ -424,6 +452,7 @@ class Polygon_in_cameraSpace {
 
 		this.rasterize_onscreen([[-1,-1],[+1,-1],[+1,+1],[-1,+1]],payload)  // full screen
 		return
+		*/
 	}
 
 	// This may be useful for beam tree and non-convex polygons
@@ -473,11 +502,12 @@ class Polygon_in_cameraSpace {
 		}
 
 		// check if crossing in front of us
-		let qp:Vec3=vertex[1].inSpace - vertex[0].inSpace
-		let nearest_point= vertex[0].inSpace * qp.innerProduct(qp) - qp.scalarProduct(qp.innerProduct(vertex[0].inSpace))  // this is in 3d so 32 bit. A lot of MUL.32.32 :-( . Similar to: face in front of me = z   or also: texture   . Log for performance.
-		let z= vertex[0].inSpace[2] * qp.innerProduct(qp) - qp.v[2]*(qp.innerProduct(vertex[0].inSpace)) 
+		let qp:Vec3=new Vec3([vertex[1].inSpace , vertex[0].inSpace ])
+		//let nearest_point= (new Vec3([vertex[0].inSpace]).scalarProduct( qp.innerProduct(qp) ).subtract( qp.scalarProduct( qp.innerProduct( new Vec3([vertex[0].inSpace])   ) ))) ;  // this is in 3d so 32 bit. A lot of MUL.32.32 :-( . Similar to: face in front of me = z   or also: texture   . Log for performance.
+		let z= vertex[0].inSpace[2] * qp.innerProduct(qp) - qp.v[2]*(qp.innerProduct(new Vec3([vertex[0].inSpace])));   // we only need nearest_point.z 
 		if (z<0) return []
 
+		/*
 		for (let corner=0;corner<4;corner++){
 			let side= (slope[2] + ((border & 2) - 1) * slope[border & 1])
 		}
@@ -489,6 +519,7 @@ class Polygon_in_cameraSpace {
 			case 2: // 
 				
 		}
+		*/
 
 		let on_screen=new Array<Item>()
 		{ 
@@ -564,7 +595,7 @@ class Polygon_in_cameraSpace {
 	// The beam tree will make everything convex and trigger a lot of MUL 16*16 in the process. Code uses Exception patter: First check if all vertices are convex -> break . Then check for self-cuts => split, goto first . ZigZag concave vertices. Find nearest for last. Zig-zag schould not self cut? 
 	// For the MVP, we do best effort for polygons with nore than 3 edges: Ignore up slopes. Do backface culling per span. 
 	rasterize_onscreen(vertex: Array<Item>,Payload:Matrix) {  // may be a second pass like in the original JRISC. Allows us to wait for the backbuffer to become available.
-		let l = vertex.length, min = [0, vertex[0][1]]   //weird to proces second component first. Rotate?
+		let l = vertex.length, min = [0, -1  ]   //weird to proces second component first. Rotate?
 
 		function instanceOfPoint(object: any): object is Point {
     		return 'get_y' in object;
@@ -596,10 +627,10 @@ class Polygon_in_cameraSpace {
 		let slope_accu_c=[[0,0],[0,0]]  // (counter) circle around polygon edges as ordered in space / level-mesh geometry
 		// let slope_accu_s=[[0,0],[0,0]]  // sorted by x on screen  .. uh pre-mature optimization: needs to much code. And time. Check for backfaces in a prior pass? Solid geometry in a portal renderer or beam tree will cull back-faces automatically
 		do {
-			for(let k=0;k<2;k++){
-				if (y==vertex[active_vertices[k][1]][1]){
-					active_vertices[k][0]=active_vertices[k][1]
-					active_vertices[k][1]=active_vertices[k][1]+(k*2-1+l)%l  
+			for (let k = 0; k < 2; k++) {
+				if (y == vertex[active_vertices[k][1]][1]) {
+					active_vertices[k][0] = active_vertices[k][1]
+					active_vertices[k][1] = active_vertices[k][1] + (k * 2 - 1 + l) % l
 					// JRISC has a reminder, but it is quirky and needs helper code. Probably I'd rather do: 
 					/* 	
 						;prep
@@ -616,49 +647,49 @@ class Polygon_in_cameraSpace {
 						SAR 31,len   ; on JRISC carry is normal. Not as on 6502
 						AND len,i
 					*/
-					let v_val=active_vertices[k].map(a=>vertex[a]) 		// JRISC does not like addressing modes, but automatic caching in registers is easy for a compiler. I may even want to pack data to save on LOADs with Q-displacement
+					let v_val = active_vertices[k].map(a => vertex[a]) 		// JRISC does not like addressing modes, but automatic caching in registers is easy for a compiler. I may even want to pack data to save on LOADs with Q-displacement
 
-					if (v_val[1] instanceof Edge_Horizon ) // This can only happen at start or end. But this does not help with simplifying the flow
+					if (v_val[1] instanceof Edge_Horizon) // This can only happen at start or end. But this does not help with simplifying the flow
 					{
-						var y_int=(v_val[0] as Onthe_border).get_y()  // int
-						var ambi=v_val[0] as Onthe_border
-						var x_at_y_int= ambi.border & 1 ? ambi.pixel_ordinate_int : this.screen[0]*(1- (ambi.border & 2 ))
-						var Bresenham=v_val[1].bias+slope.wedgeProduct( new Vec2([[x_at_y_int,y_int]]) )  //y_int*d[0]+x_at_y_int*d[1]
-					}else
-					{
+						var y_int = (v_val[0] as Onthe_border).get_y()  // int
+						var ambi = v_val[0] as Onthe_border
+						var x_at_y_int = ambi.border & 1 ? ambi.pixel_ordinate_int : this.screen[0] * (1 - (ambi.border & 2))
+						var Bresenham = v_val[1].bias + slope.wedgeProduct(new Vec2([[x_at_y_int, y_int]]))  //y_int*d[0]+x_at_y_int*d[1]
+					} else {
 
 						// Point supports get_y . So I only need to consider mirror cases for pattern matchting and subpixel, but not for the for(y) .
-						if (v_val[0] instanceof Vertex_OnScreen && v_val[1] instanceof Edge_hollow && v_val[2] instanceof Vertex_OnScreen  ){
-							
-							var slope=new Vec2([( v_val[2] ).postion ,v_val[0].postion] )
+						if (v_val[0] instanceof Vertex_OnScreen && v_val[1] instanceof Edge_hollow && v_val[2] instanceof Vertex_OnScreen) {
+
+							var slope = new Vec2([(v_val[2]).postion, v_val[0].postion])
 							// for(let i=0;i< v_val[0].postion.length;i+=2){
 							// 	d[i]=(v_val[i] as Vertex_OnScreen).postion[i]-v_val[0].postion[i]
 							// }
 
-								//var slope=d// see belowvar slope_integer=
-								let d=slope.v;	if (d[1]<=0){continue}
-								var y_int=v_val[0].get_y()  // int
-								var x_at_y_int= Math.floor(v_val[0][0]+d[0]* (y_int- v_val[0][1] ) / d[1] ) // frac -> int
-								var Bresenham=slope.wedgeProduct( new Vec2([[x_at_y_int,y_int], v_val[0].postion  ]) ) //(y_int- v_val[0][1] )*d[0]+(x_at_y_int- v_val[0][0] )*d[1]  // this should be the same for all edges not instance of Edge_Horizon
-								
-						}else{
-							if (v_val[0] instanceof Vertex_OnScreen && v_val[1] instanceof Edge_w_slope && v_val[2] instanceof Onthe_border ){
-								var slope=v_val[1].slope // see belowvar slope_integer=
+							//var slope=d// see belowvar slope_integer=
+							let d = slope.v; if (d[1] <= 0) { continue }
+							var y_int = v_val[0].get_y()  // int
+							var x_at_y_int = Math.floor(v_val[0][0] + d[0] * (y_int - v_val[0][1]) / d[1]) // frac -> int
+							var Bresenham = slope.wedgeProduct(new Vec2([[x_at_y_int, y_int], v_val[0].postion])) //(y_int- v_val[0][1] )*d[0]+(x_at_y_int- v_val[0][0] )*d[1]  // this should be the same for all edges not instance of Edge_Horizon
+
+						} else {
+							if (v_val[0] instanceof Vertex_OnScreen && v_val[1] instanceof Edge_w_slope && v_val[2] instanceof Onthe_border) {
+								var slope = v_val[1].slope // see belowvar slope_integer=
 								// duplicated code. Function call?
-								var d=slope.v
-								var y_int=v_val[0].get_y()  // int
-								if (y_int<=v_val[2].get_y()){continue}
-								var x_at_y_int= Math.floor(v_val[0][0]+d[0]* (y_int- v_val[0][1] ) / d[1] ) // frac -> int
-								var Bresenham=slope.wedgeProduct( new Vec2([[x_at_y_int,y_int], v_val[0].postion  ]) )  // this should be the same for all edges not instance of Edge_Horizon
-								
-							}else{
-								if (v_val[2] instanceof Vertex_OnScreen && v_val[1] instanceof Edge_w_slope && v_val[0] instanceof Onthe_border ){
-									var slope=v_val[1].slope // see belowvar slope_integer=
+								var d = slope.v
+								var y_int = v_val[0].get_y()  // int
+								if (y_int <= v_val[2].get_y()) { continue }
+								var x_at_y_int = Math.floor(v_val[0][0] + d[0] * (y_int - v_val[0][1]) / d[1]) // frac -> int
+								var Bresenham = slope.wedgeProduct(new Vec2([[x_at_y_int, y_int], v_val[0].postion]))  // this should be the same for all edges not instance of Edge_Horizon
+
+							} else {
+								if (v_val[2] instanceof Vertex_OnScreen && v_val[1] instanceof Edge_w_slope && v_val[0] instanceof Onthe_border) {
+									var slope = v_val[1].slope // see belowvar slope_integer=
 									// duplicated code. Function call?
-									var d=slope.v
-									var y_int=v_val[2].get_y()  // int
-									var x_at_y_int= ambi.border & 1 ? ambi.pixel_ordinate_int : this.screen[0]*(1- (ambi.border & 2 )) // todo: method!
-									var Bresenham=slope.wedgeProduct( new Vec2([[x_at_y_int,y_int], v_val[2].postion  ]) )  // this should be the same for all edges not instance of Edge_Horizon									
+									var d = slope.v
+									var y_int = v_val[2].get_y()  // int
+									var x_at_y_int = ambi.border & 1 ? ambi.pixel_ordinate_int : this.screen[0] * (1 - (ambi.border & 2)) // todo: method!
+									var Bresenham = slope.wedgeProduct(new Vec2([[x_at_y_int, y_int], v_val[2].postion]))  // this should be the same for all edges not instance of Edge_Horizon									
+								}
 							}
 						}
 					}
@@ -672,7 +703,7 @@ class Polygon_in_cameraSpace {
 					// But what about beam trees? The interpolation is a hack in screen space. It does not work for edges projected from occluding polygons.
 					// sub-pixel correction against PlayStation1 (TM) wobble
 					slope_accu_c[k][1]= slope_accu_c[k][0] * (y-v_val[0][1])
-
+	
 					// Do I allow back faces ? I cannot belive that I want to support non-planar poylgons in any way. Use this as assert / for initial debugging?
 					// Clipping leads to polygons with more than 3 vertices. And in both ways: Serially with new vertices in 3d, or (my way) parallel with slopes, those can be non-planar
 					// To keep a mesh air-tight, I need (be able) to  cull back-spans 
@@ -682,16 +713,16 @@ class Polygon_in_cameraSpace {
 				}
 			}
 
-			 // Todo : harmonize
-			let payload_w=[]//Payload.nominator.map( v3=> [v3.v[2],v3.v[0],v3.v[1] ]) 
+			// Todo : harmonize
+			let payload_w = []//Payload.nominator.map( v3=> [v3.v[2],v3.v[0],v3.v[1] ]) 
 			// bias
-			payload_w[0][0]=Payload.nominator[0][2]  // multiply with [2]=1 compontent of view vector gives us the const coeeficient [][0] for the linerar function. Here: denominaotr [0][]
-			payload_w[1][0]=Payload.nominator[1][2]  // same for nominator of s
-			payload_w[2][0]=Payload.nominator[1][2]  // and t
+			payload_w[0][0] = Payload.nominator[0][2]  // multiply with [2]=1 compontent of view vector gives us the const coeeficient [][0] for the linerar function. Here: denominaotr [0][]
+			payload_w[1][0] = Payload.nominator[1][2]  // same for nominator of s
+			payload_w[2][0] = Payload.nominator[1][2]  // and t
 
 			// gradient
-			payload_w[0][1]=Payload.nominator[0][0]  // gradient of denominator along a span ( x ) . Yeah, I probably should reconsider the numbering or transform a matrix or so
-			payload_w[0][2]=Payload.nominator[0][1]  // gradient of denominator along the edges ( y ) 
+			payload_w[0][1] = Payload.nominator[0][0]  // gradient of denominator along a span ( x ) . Yeah, I probably should reconsider the numbering or transform a matrix or so
+			payload_w[0][2] = Payload.nominator[0][1]  // gradient of denominator along the edges ( y ) 
 
 			// same for the s,t gradients
 			// the nominator gradient for z is [0,0] . Failed proof in "infintie plane", but hand wave is easy: Imagine an Amiga copper sky. Color marks z. Fog is far away, dark blue sky is close, as is red-brown ground.
@@ -710,75 +741,73 @@ class Polygon_in_cameraSpace {
 
 			//payload_w[0]+=Payload.viewVector.nominator[0][2] // 0 goes to the left and marks 1/z aka w in payload (xy not there, uv behind). 2 goes to the right and accepts z from xyz viewing vector. z=1 
 			// skew onto the pixel coordinates which don't have int[] in the center of the screen (center is between pixels). I calculate the bias for top-left , still in NDC , so  [-1,-1].
- 			payload_w[0][0]-=Payload.nominator[0][1]  // same for nominator of s
-			payload_w[0][0]-=Payload.nominator[0][2]
+			payload_w[0][0] -= Payload.nominator[0][1]  // same for nominator of s
+			payload_w[0][0] -= Payload.nominator[0][2]
 
 			//let payload=[payload_w]  // Payload is given to use only with UV offsets (for perspective). Affine Gouraud probably needs its own code path with triangles?
 
-			let fragment=[].fill(0,0,payload_w.length) // malloc (reg)
-			let fralment=[].fill(0,0,payload_w.length) // malloc (reg)
+			let fragment = [].fill(0, 0, payload_w.length) // malloc (reg)
+			let fralment = [].fill(0, 0, payload_w.length) // malloc (reg)
 
-			let ny = Math.min(...active_vertices.map(a => vertex[a[1]][1])) ,xo:number,anchor=false
-			for (; y < ny; y ++) {  // floating point trick to get from NDC to pixel cooridinates. 256x256px tech demo. Square pixels. Since I don't round, any factor is possible. Easy one is 256  * 5/4-> 320  .. 256 * 3/4 = 192				
-				let a=slope_accu_c.map(sa=>sa[1])
+			let ny = Math.min(...active_vertices.map(a => vertex[a[1]][1])), xo: number, anchor = false
+			for (; y < ny; y++) {  // floating point trick to get from NDC to pixel cooridinates. 256x256px tech demo. Square pixels. Since I don't round, any factor is possible. Easy one is 256  * 5/4-> 320  .. 256 * 3/4 = 192				
+				let a = slope_accu_c.map(sa => sa[1])
 				a.sort() // Until I debug my sign errors
-				let integer=a.map(a_if=>Math.floor(a_if))  // Should be cheap in JRISC despite the wild look in TypeScript
-				let x=integer[0];if (x<integer[1]){  // dragged out of the for loop. Not an actual additional jump in JRISC
+				let integer = a.map(a_if => Math.floor(a_if))  // Should be cheap in JRISC despite the wild look in TypeScript
+				let x = integer[0]; if (x < integer[1]) {  // dragged out of the for loop. Not an actual additional jump in JRISC
 					// linear interpolation
 					// this is  an experiment. Gradients ADD or ADC on 32 bit should work great in JRISC, right?
 					// When debugged: precalc the gradient in the coordinate system spanne dup by slope floor and ceiling!
 					// Though this primitve approach woudl even work if I use and active-edge (on multiple sectors of a beamtree)
-					if ( anchor){  // I run out of registers, but actually would like to keep more temporary values. MOVTA ? So her is just a quick hack for half of all slopes
-						let dx=x-xo
-						switch(dx)
-						{
-							case -1:payload_w.forEach((p,i)=>{fragment[i]+=p[2]-p[1]})	;break
-							case +1:payload_w.forEach((p,i)=>{fragment[i]+=p[2]+p[1]})	;break
-							case 0	:payload_w.forEach((p,i)=>{fragment[i]+=p[2]})	;break   // this will speed up all edges clipped at the screen borders
-							default: anchor=false
+					if (anchor) {  // I run out of registers, but actually would like to keep more temporary values. MOVTA ? So her is just a quick hack for half of all slopes
+						let dx = x - xo
+						switch (dx) {
+							case -1: payload_w.forEach((p, i) => { fragment[i] += p[2] - p[1] }); break
+							case +1: payload_w.forEach((p, i) => { fragment[i] += p[2] + p[1] }); break
+							case 0: payload_w.forEach((p, i) => { fragment[i] += p[2] }); break   // this will speed up all edges clipped at the screen borders
+							default: anchor = false
 						}
 					}
-					if (!anchor){  // too fat for inner loop, but where do I put this?
-						anchor=true,xo=x
+					if (!anchor) {  // too fat for inner loop, but where do I put this?
+						anchor = true, xo = x
 						// 16.16 internals: let fraction=a[0] % 1 // sub-pixel correction for z and Gouraud or the texture to fight PS1 wobble
-						fralment=payload_w.map(p=> p[0]+p[1]*a[0] + p[2]*y )   // IMAC is fast in JRISC
-					}				
-					fragment=fralment // would feel weird to use the fragemt from the other side to "carriage return" like a typeWriter
-					let blitter_slope=payload_w.map(p=> p[1])
-					if (fralment.length>2){// Z=0 U=1 V=2 coordinates need perspective correction. Gouraud on this blitter is Z=0 G=1
-						let span_within=integer[1]-x
-						if (span_within>0 && fralment[0]>0.001){  // z>0 safety first
-							let right_side=payload_w.map((p,i)=>fralment[i]+p[1]*span_within)
-							let w=1/fralment[0]		// perspective correction  I feel stupid because at 16 bit even the Jaguar has enough RAM for a LUT
-							for (let uv=0;uv<2 ;uv++){
-								let left=fralment[uv+1]*w
-								fragment[1+uv]=left
+						fralment = payload_w.map(p => p[0] + p[1] * a[0] + p[2] * y)   // IMAC is fast in JRISC
+					}
+					fragment = fralment // would feel weird to use the fragemt from the other side to "carriage return" like a typeWriter
+					let blitter_slope = payload_w.map(p => p[1])
+					if (fralment.length > 2) {// Z=0 U=1 V=2 coordinates need perspective correction. Gouraud on this blitter is Z=0 G=1
+						let span_within = integer[1] - x
+						if (span_within > 0 && fralment[0] > 0.001) {  // z>0 safety first
+							let right_side = payload_w.map((p, i) => fralment[i] + p[1] * span_within)
+							let w = 1 / fralment[0]		// perspective correction  I feel stupid because at 16 bit even the Jaguar has enough RAM for a LUT
+							for (let uv = 0; uv < 2; uv++) {
+								let left = fralment[uv + 1] * w
+								fragment[1 + uv] = left
 							}
-							if (span_within==0 || right_side[0]<=0.001) continue
-							w=1/right_side[0]    // perspective correction  // Attention: JRISC bug: use register "left" before next division instruction!
-							for (let uv=0;uv<2 ;uv++){
-								let right=right_side[uv+1]*w  
-								let d=(right-fragment[1+uv])  // JRISC is a load-store architecture. There would be a physical register with the d variable. So this line adds no cost
+							if (span_within == 0 || right_side[0] <= 0.001) continue
+							w = 1 / right_side[0]    // perspective correction  // Attention: JRISC bug: use register "left" before next division instruction!
+							for (let uv = 0; uv < 2; uv++) {
+								let right = right_side[uv + 1] * w
+								let d = (right - fragment[1 + uv])  // JRISC is a load-store architecture. There would be a physical register with the d variable. So this line adds no cost
 								// Quake 1 demake to keep code small. Ah, >> and /2 relation is undefined in C. In JRISC I would inlcude the span_within==2 case
-								if ( span_within) blitter_slope[1+uv]=d;									
-								else blitter_slope[1+uv]= d/ span_within	; // linear interpolation. Quake bloats the code for small values. I have some JRISC ideas in the project: scan for first bit. shift one more. Zero flag? then apply shift to argument. Else: div
+								if (span_within) blitter_slope[1 + uv] = d;
+								else blitter_slope[1 + uv] = d / span_within; // linear interpolation. Quake bloats the code for small values. I have some JRISC ideas in the project: scan for first bit. shift one more. Zero flag? then apply shift to argument. Else: div
 							}
 						}
 					}
-					xo=x
+					xo = x
 					// As in Doom on Jaguar, we do the full persepective calculation for the first and last pixel ( for walls and floors this is perfect, inbetween: some warp . Todo: check diagonals)
 					// then the Jaguar blitter interpolates linearly. Quake and Descent use subspans on large polygons. Code is straight forward. Add later.
-					for (;x<integer[1];x++){ // the blitter does this. Todo: move this code ... . But what about perspective correction? Also not in this source file!
-						m.putpixel([x,y],fragment)
-						blitter_slope.forEach((p,i)=>{fragment[i]+=p[1]})  // x-gradient = slope ( different name for 1-dimensional aka scalar case )
+					for (; x < integer[1]; x++) { // the blitter does this. Todo: move this code ... . But what about perspective correction? Also not in this source file!
+						m.putpixel([x, y], fragment)
+						blitter_slope.forEach((p, i) => { fragment[i] += p[1] })  // x-gradient = slope ( different name for 1-dimensional aka scalar case )
 					}
 				}
-				for(let k=0;k<2;k++) slope_accu_c[k][1]+= slope_accu_c[k][0]				
+				for (let k = 0; k < 2; k++) slope_accu_c[k][1] += slope_accu_c[k][0]
 			}
 
-		} while (active_vertices[0][1] != active_vertices[1][1]) // full circle, bottom vertex found on the fly
+		} while (active_vertices[0][1] != active_vertices[1][1]) // full circle, bottom vertex found on the fly		
 	}
-
 	private edge_fromVertex_toBorder(vs: Vertex_in_cameraSpace[], l: number):PointPointing {
 		let slope = this.get_edge_slope_onScreen(vs).slice(0, 2); // 3d cros  product with meaningful sign. Swap x,y to get a vector pointint to the outside vertex. float the fractions
 
