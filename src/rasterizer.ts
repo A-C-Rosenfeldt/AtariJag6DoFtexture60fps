@@ -625,8 +625,9 @@ class Polygon_in_cameraSpace {
 		// JRISC is slow on branches, but unrolling is easy (for my compiler probably), while compacting code is hard. See other files in this project.
 		let y = ( v as Point).get_y()
 		let slope_accu_c=[[0,0],[0,0]]  // (counter) circle around polygon edges as ordered in space / level-mesh geometry
+		let slope_int=[0,0]
 		// let slope_accu_s=[[0,0],[0,0]]  // sorted by x on screen  .. uh pre-mature optimization: needs to much code. And time. Check for backfaces in a prior pass? Solid geometry in a portal renderer or beam tree will cull back-faces automatically
-		do {
+		do {			
 			for (let k = 0; k < 2; k++) {
 				if (y == vertex[active_vertices[k][1]][1]) {
 					active_vertices[k][0] = active_vertices[k][1]
@@ -648,6 +649,9 @@ class Polygon_in_cameraSpace {
 						AND len,i
 					*/
 					let v_val = active_vertices[k].map(a => vertex[a]) 		// JRISC does not like addressing modes, but automatic caching in registers is easy for a compiler. I may even want to pack data to save on LOADs with Q-displacement
+
+					if (! (  instanceOfPoint(v_val[0]  ) && (v_val[1] instanceof Edge_on_Screen )  && instanceOfPoint(v_val[2]  ) )) continue
+					if ( v_val[0].get_y() >= v_val[2].get_y() ) continue
 
 					if (v_val[1] instanceof Edge_Horizon) // This can only happen at start or end. But this does not help with simplifying the flow
 					{
@@ -711,7 +715,11 @@ class Polygon_in_cameraSpace {
 					//for_mapper.sort()  // non-planar poylgons will vanish. Once again: 16.16 will eliminate this glitch to 1 px every hour. 16.16 still fast than guarding IF commands here! Level is checked for planarity. Keyframe animated characters use triangles. Only stuff like head or armor has poylgons.
 					*/
 				}
+
+							// Bresenham still needs integer slope
+				slope_accu_c[k]= [d[0]>0 ? d[1]/d[0] : this.screen[1] *Math.sign(d[1]) , x_at_y_int ]
 			}
+
 
 			// Todo : harmonize
 			let payload_w = []//Payload.nominator.map( v3=> [v3.v[2],v3.v[0],v3.v[1] ]) 
@@ -753,13 +761,13 @@ class Polygon_in_cameraSpace {
 			for (; y < ny; y++) {  // floating point trick to get from NDC to pixel cooridinates. 256x256px tech demo. Square pixels. Since I don't round, any factor is possible. Easy one is 256  * 5/4-> 320  .. 256 * 3/4 = 192				
 				let a = slope_accu_c.map(sa => sa[1])
 				a.sort() // Until I debug my sign errors
-				let integer = a.map(a_if => Math.floor(a_if))  // Should be cheap in JRISC despite the wild look in TypeScript
+				let integer = a   // Bresenham     if (mode_slope=="fixed") a.map(a_if => Math.floor(a_if))  // Should be cheap in JRISC despite the wild look in TypeScript
 				let x = integer[0]; if (x < integer[1]) {  // dragged out of the for loop. Not an actual additional jump in JRISC
 					// linear interpolation
 					// this is  an experiment. Gradients ADD or ADC on 32 bit should work great in JRISC, right?
 					// When debugged: precalc the gradient in the coordinate system spanne dup by slope floor and ceiling!
 					// Though this primitve approach woudl even work if I use and active-edge (on multiple sectors of a beamtree)
-					if (anchor) {  // I run out of registers, but actually would like to keep more temporary values. MOVTA ? So her is just a quick hack for half of all slopes
+					if (anchor) {  // This makes no sense. Even if occlusion happens, most edges will be straigth. That's why we calculation a slope. So let's calculate a slopw for payload.
 						let dx = x - xo
 						switch (dx) {
 							case -1: payload_w.forEach((p, i) => { fragment[i] += p[2] - p[1] }); break
@@ -771,7 +779,7 @@ class Polygon_in_cameraSpace {
 					if (!anchor) {  // too fat for inner loop, but where do I put this?
 						anchor = true, xo = x
 						// 16.16 internals: let fraction=a[0] % 1 // sub-pixel correction for z and Gouraud or the texture to fight PS1 wobble
-						fralment = payload_w.map(p => p[0] + p[1] * a[0] + p[2] * y)   // IMAC is fast in JRISC
+						fralment = payload_w.map((p,i) => p[0] + p[1] * a[i] + p[2] * y)   // IMAC is fast in JRISC
 					}
 					fragment = fralment // would feel weird to use the fragemt from the other side to "carriage return" like a typeWriter
 					let blitter_slope = payload_w.map(p => p[1])
@@ -803,7 +811,18 @@ class Polygon_in_cameraSpace {
 						blitter_slope.forEach((p, i) => { fragment[i] += p[1] })  // x-gradient = slope ( different name for 1-dimensional aka scalar case )
 					}
 				}
-				for (let k = 0; k < 2; k++) slope_accu_c[k][1] += slope_accu_c[k][0]
+				// when y++ happens
+				for (let k = 0; k < 2; k++) {
+					if (y == vertex[active_vertices[k][1]][1]) {	// todo: duplicate this code for the case that on vertex happens on one side
+					 	slope_accu_c[k][1] += slope_accu_c[k][0]  // todo: rename as x
+						Bresenham[k][1] += Bresenham[k][0]
+						if (Bresenham[k][1]<0){
+							Bresenham[k][1] += Bresenham[k][2]
+							slope_accu_c[k][1]++
+							// payload
+						}
+					}
+				}
 			}
 
 		} while (active_vertices[0][1] != active_vertices[1][1]) // full circle, bottom vertex found on the fly		
