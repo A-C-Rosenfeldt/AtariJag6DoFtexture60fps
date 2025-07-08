@@ -594,21 +594,21 @@ class Polygon_in_cameraSpace {
 
 	// The beam tree will make everything convex and trigger a lot of MUL 16*16 in the process. Code uses Exception patter: First check if all vertices are convex -> break . Then check for self-cuts => split, goto first . ZigZag concave vertices. Find nearest for last. Zig-zag schould not self cut? 
 	// For the MVP, we do best effort for polygons with nore than 3 edges: Ignore up slopes. Do backface culling per span. 
-	rasterize_onscreen(vertex: Array<Item>,Payload:Matrix) {  // may be a second pass like in the original JRISC. Allows us to wait for the backbuffer to become available.
-		let l = vertex.length, min = [0, -1  ]   //weird to proces second component first. Rotate?
+	rasterize_onscreen(vertex: Array<Item>, Payload: Matrix) {  // may be a second pass like in the original JRISC. Allows us to wait for the backbuffer to become available.
+		let l = vertex.length, min = [0, -1]   //weird to proces second component first. Rotate?
 
 		function instanceOfPoint(object: any): object is Point {
-    		return 'get_y' in object;
+			return 'get_y' in object;
 		}
 
 		for (let i = 1; i < l; i++) {
-			let v=vertex[i]
-			if (  instanceOfPoint( v )  &&  v[i].get_y() < min[1]) min = [i, v.get_y() ]
+			let v = vertex[i]
+			if (instanceOfPoint(v) && v[i].get_y() < min[1]) min = [i, v.get_y()]
 		}
 
 		let i = min[0]
 		let v = vertex[i]
-		let active_vertices = [[0,i],[0,i]] // happens in loop first iteration, (i + l - 1) % l], [i, (i + 1) % l]]
+		let active_vertices = [[0, i], [0, i]] // happens in loop first iteration, (i + l - 1) % l], [i, (i + 1) % l]]
 
 		// active_vertices.forEach(a => {
 		// 	let vs = a.map(b => this.vertices[b])
@@ -619,17 +619,28 @@ class Polygon_in_cameraSpace {
 		// 	let v = this.vertices[a[1]]
 		// 	v.outside
 		// })
-		let m=new Mapper()   // our interface to the hardware dependent side. Used for the whole mesh
+		let m = new Mapper()   // our interface to the hardware dependent side. Used for the whole mesh
 
 		// this is probably pretty standard code. Just I want to explicitely show how what is essential for the inner loop and what is not
 		// JRISC is slow on branches, but unrolling is easy (for my compiler probably), while compacting code is hard. See other files in this project.
-		let y = ( v as Point).get_y()
-		let slope_accu_c=[[0,0],[0,0]]  // (counter) circle around polygon edges as ordered in space / level-mesh geometry
-		let slope_int=[0,0]
+
+		let slope_accu_c = [[0, 0], [0, 0]]  // (counter) circle around polygon edges as ordered in space / level-mesh geometry
+		let slope_int = [0, 0]
 		// let slope_accu_s=[[0,0],[0,0]]  // sorted by x on screen  .. uh pre-mature optimization: needs to much code. And time. Check for backfaces in a prior pass? Solid geometry in a portal renderer or beam tree will cull back-faces automatically
-		do {			
+		for (let y = (v as Point).get_y(); y < this.screen[1]; y++) {  // the condition is for safety : Todo: remove from release version			
 			for (let k = 0; k < 2; k++) {
-				if (y == vertex[active_vertices[k][1]][1]) {
+				if (y == vertex[active_vertices[k][1]][1]) {	// todo: duplicate this code for the case that on vertex happens on one side
+					slope_accu_c[k][1] += slope_accu_c[k][0]  // todo: rename as x
+					Bresenham[k][1] += Bresenham[k][0]
+					if (Bresenham[k][1] < 0) {
+						Bresenham[k][1] += Bresenham[k][2]
+						slope_accu_c[k][1]++
+						// payload
+					}
+				}
+				else {
+					if (k == 0 && active_vertices[0][1] == active_vertices[1][1]) break  // left and right side have met. The y condition is more specific. That's why here this odd k==0 appears
+
 					active_vertices[k][0] = active_vertices[k][1]
 					active_vertices[k][1] = active_vertices[k][1] + (k * 2 - 1 + l) % l
 					// JRISC has a reminder, but it is quirky and needs helper code. Probably I'd rather do: 
@@ -650,8 +661,8 @@ class Polygon_in_cameraSpace {
 					*/
 					let v_val = active_vertices[k].map(a => vertex[a]) 		// JRISC does not like addressing modes, but automatic caching in registers is easy for a compiler. I may even want to pack data to save on LOADs with Q-displacement
 
-					if (! (  instanceOfPoint(v_val[0]  ) && (v_val[1] instanceof Edge_on_Screen )  && instanceOfPoint(v_val[2]  ) )) continue
-					if ( v_val[0].get_y() >= v_val[2].get_y() ) continue
+					if (!(instanceOfPoint(v_val[0]) && (v_val[1] instanceof Edge_on_Screen) && instanceOfPoint(v_val[2]))) continue
+					if (v_val[0].get_y() >= v_val[2].get_y()) continue
 
 					if (v_val[1] instanceof Edge_Horizon) // This can only happen at start or end. But this does not help with simplifying the flow
 					{
@@ -716,11 +727,11 @@ class Polygon_in_cameraSpace {
 					*/
 				}
 
-							// Bresenham still needs integer slope
-				slope_accu_c[k]= [d[0]>0 ? d[1]/d[0] : this.screen[1] *Math.sign(d[1]) , x_at_y_int ]
+				// Bresenham still needs integer slope
+				slope_accu_c[k] = [d[0] > 0 ? d[1] / d[0] : this.screen[1] * Math.sign(d[1]), x_at_y_int]
 			}
 
-
+			
 			// Todo : harmonize
 			let payload_w = []//Payload.nominator.map( v3=> [v3.v[2],v3.v[0],v3.v[1] ]) 
 			// bias
@@ -756,10 +767,13 @@ class Polygon_in_cameraSpace {
 
 			let fragment = [].fill(0, 0, payload_w.length) // malloc (reg)
 			let fralment = [].fill(0, 0, payload_w.length) // malloc (reg)
+			
 
-			let ny = Math.min(...active_vertices.map(a => vertex[a[1]][1])), xo: number, anchor = false
-			for (; y < ny; y++) {  // floating point trick to get from NDC to pixel cooridinates. 256x256px tech demo. Square pixels. Since I don't round, any factor is possible. Easy one is 256  * 5/4-> 320  .. 256 * 3/4 = 192				
-				let a = slope_accu_c.map(sa => sa[1])
+			// premature optimizationlet ny = Math.min(...active_vertices.map(a => vertex[a[1]][1])), xo: number, anchor = false
+			// premature optimization (blows up code size, may not even be faster in JRISC ) for (; y < ny; y++) {  // floating point trick to get from NDC to pixel cooridinates. 256x256px tech demo. Square pixels. Since I don't round, any factor is possible. Easy one is 256  * 5/4-> 320  .. 256 * 3/4 = 192				
+			let integer = slope_accu_c.map(sa => sa[1])
+			/*
+			Don't catter to fuzzy beam tree edges too much! The idea of the beam tree is that still linear edges dominate!				
 				a.sort() // Until I debug my sign errors
 				let integer = a   // Bresenham     if (mode_slope=="fixed") a.map(a_if => Math.floor(a_if))  // Should be cheap in JRISC despite the wild look in TypeScript
 				let x = integer[0]; if (x < integer[1]) {  // dragged out of the for loop. Not an actual additional jump in JRISC
@@ -782,50 +796,40 @@ class Polygon_in_cameraSpace {
 						fralment = payload_w.map((p,i) => p[0] + p[1] * a[i] + p[2] * y)   // IMAC is fast in JRISC
 					}
 					fragment = fralment // would feel weird to use the fragemt from the other side to "carriage return" like a typeWriter
-					let blitter_slope = payload_w.map(p => p[1])
-					if (fralment.length > 2) {// Z=0 U=1 V=2 coordinates need perspective correction. Gouraud on this blitter is Z=0 G=1
-						let span_within = integer[1] - x
-						if (span_within > 0 && fralment[0] > 0.001) {  // z>0 safety first
-							let right_side = payload_w.map((p, i) => fralment[i] + p[1] * span_within)
-							let w = 1 / fralment[0]		// perspective correction  I feel stupid because at 16 bit even the Jaguar has enough RAM for a LUT
-							for (let uv = 0; uv < 2; uv++) {
-								let left = fralment[uv + 1] * w
-								fragment[1 + uv] = left
-							}
-							if (span_within == 0 || right_side[0] <= 0.001) continue
-							w = 1 / right_side[0]    // perspective correction  // Attention: JRISC bug: use register "left" before next division instruction!
-							for (let uv = 0; uv < 2; uv++) {
-								let right = right_side[uv + 1] * w
-								let d = (right - fragment[1 + uv])  // JRISC is a load-store architecture. There would be a physical register with the d variable. So this line adds no cost
-								// Quake 1 demake to keep code small. Ah, >> and /2 relation is undefined in C. In JRISC I would inlcude the span_within==2 case
-								if (span_within) blitter_slope[1 + uv] = d;
-								else blitter_slope[1 + uv] = d / span_within; // linear interpolation. Quake bloats the code for small values. I have some JRISC ideas in the project: scan for first bit. shift one more. Zero flag? then apply shift to argument. Else: div
-							}
-						}
+					*/
+
+			// I should fully commit to bresenham at the top of this loop. This is not readable.
+			let blitter_slope = payload_w.map(p => p[1])
+			if (fralment.length > 2) {// Z=0 U=1 V=2 coordinates need perspective correction. Gouraud on this blitter is Z=0 G=1
+				let span_within = integer[1] - x
+				if (span_within > 0 && fralment[0] > 0.001) {  // z>0 safety first
+					let right_side = payload_w.map((p, i) => fralment[i] + p[1] * span_within)
+
+					// so, this is readable :
+					let w = 1 / fralment[0]		// perspective correction  I feel stupid because at 16 bit even the Jaguar has enough RAM for a LUT
+					for (let uv = 0; uv < 2; uv++) {
+						let left = fralment[uv + 1] * w
+						fragment[1 + uv] = left
 					}
-					xo = x
-					// As in Doom on Jaguar, we do the full persepective calculation for the first and last pixel ( for walls and floors this is perfect, inbetween: some warp . Todo: check diagonals)
-					// then the Jaguar blitter interpolates linearly. Quake and Descent use subspans on large polygons. Code is straight forward. Add later.
-					for (; x < integer[1]; x++) { // the blitter does this. Todo: move this code ... . But what about perspective correction? Also not in this source file!
-						m.putpixel([x, y], fragment)
-						blitter_slope.forEach((p, i) => { fragment[i] += p[1] })  // x-gradient = slope ( different name for 1-dimensional aka scalar case )
-					}
-				}
-				// when y++ happens
-				for (let k = 0; k < 2; k++) {
-					if (y == vertex[active_vertices[k][1]][1]) {	// todo: duplicate this code for the case that on vertex happens on one side
-					 	slope_accu_c[k][1] += slope_accu_c[k][0]  // todo: rename as x
-						Bresenham[k][1] += Bresenham[k][0]
-						if (Bresenham[k][1]<0){
-							Bresenham[k][1] += Bresenham[k][2]
-							slope_accu_c[k][1]++
-							// payload
-						}
+					if (span_within == 0 || right_side[0] <= 0.001) continue
+					w = 1 / right_side[0]    // perspective correction  // Attention: JRISC bug: use register "left" before next division instruction!
+					for (let uv = 0; uv < 2; uv++) {
+						let right = right_side[uv + 1] * w
+						let d = (right - fragment[1 + uv])  // JRISC is a load-store architecture. There would be a physical register with the d variable. So this line adds no cost
+						// Quake 1 demake to keep code small. Ah, >> and /2 relation is undefined in C. In JRISC I would inlcude the span_within==2 case
+						if (span_within) blitter_slope[1 + uv] = d;
+						else blitter_slope[1 + uv] = d / span_within; // linear interpolation. Quake bloats the code for small values. I have some JRISC ideas in the project: scan for first bit. shift one more. Zero flag? then apply shift to argument. Else: div
 					}
 				}
 			}
-
-		} while (active_vertices[0][1] != active_vertices[1][1]) // full circle, bottom vertex found on the fly		
+			//xo = x
+			// As in Doom on Jaguar, we do the full persepective calculation for the first and last pixel ( for walls and floors this is perfect, inbetween: some warp . Todo: check diagonals)
+			// then the Jaguar blitter interpolates linearly. Quake and Descent use subspans on large polygons. Code is straight forward. Add later.
+			for (; x < integer[1]; x++) { // the blitter does this. Todo: move this code ... . But what about perspective correction? Also not in this source file!
+				m.putpixel([x, y], fragment)
+				blitter_slope.forEach((p, i) => { fragment[i] += p[1] })  // x-gradient = slope ( different name for 1-dimensional aka scalar case )
+			}
+		} //while (active_vertices[0][1] != active_vertices[1][1]) // full circle, bottom vertex found on the fly		
 	}
 	private edge_fromVertex_toBorder(vs: Vertex_in_cameraSpace[], l: number):PointPointing {
 		let slope = this.get_edge_slope_onScreen(vs).slice(0, 2); // 3d cros  product with meaningful sign. Swap x,y to get a vector pointint to the outside vertex. float the fractions
