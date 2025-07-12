@@ -1,5 +1,6 @@
 import { Vec3,Matrix, Matrix2, Vec2 } from './clipping.js';
 import {Camera_in_stSpace, Mapper,CV} from './infinite_plane_mapper.js'
+import { EdgeShader, PixelShader } from './PixelShader.js';
 // The rasterizer needs to projected points from the beam tree. The tree is the start, and the polygon only lives in the leaf
 // I think that most polygons in a dense mesh are split by their neighbours. I would need extra code to check for back faces. This does neither fit into the MVP nor the cache
 // So I guess that I can go full tree. Still need to switch cases per vertex: Projected, vs cut of two edges, though do I, both are rationals. Ah, but with one x and y share w. Even this is the same for both.
@@ -620,6 +621,7 @@ class Polygon_in_cameraSpace {
 		// 	v.outside
 		// })
 		let m = new Mapper()   // our interface to the hardware dependent side. Used for the whole mesh
+		let ps=new PixelShader()
 
 		// this is probably pretty standard code. Just I want to explicitely show how what is essential for the inner loop and what is not
 		// JRISC is slow on branches, but unrolling is easy (for my compiler probably), while compacting code is hard. See other files in this project.
@@ -630,13 +632,13 @@ class Polygon_in_cameraSpace {
 		for (let y = (v as Point).get_y(); y < this.screen[1]; y++) {  // the condition is for safety : Todo: remove from release version			
 			for (let k = 0; k < 2; k++) {
 				if (y == vertex[active_vertices[k][1]][1]) {	// todo: duplicate this code for the case that on vertex happens on one side
-					slope_accu_c[k][1] += slope_accu_c[k][0]  // todo: rename as x
-					Bresenham[k][1] += Bresenham[k][0]
-					if (Bresenham[k][1] < 0) {
-						Bresenham[k][1] += Bresenham[k][2]
-						slope_accu_c[k][1]++
-						// payload
+					Bresenham[k][1] += Bresenham[k][0] // on JRISC this sets flags .. but I still need to persist them. A useless. Just BitTest on sign. Single cycle to 
+					let ca=Bresenham[k][1] < 0   // Bresenham one line in advance would bloat code only by one instruction 
+					if (ca) {
+						Bresenham[k][1] += Bresenham[k][2]						
 					}
+					slope_accu_c[k][1] += slope_accu_c[k][0] + (ca ? 1 :0 )  //  JRISC/ADC  todo: rename as x	
+					ps.es[k].propagate_along(ca ? 1 :0 )
 				}
 				else {
 					if (k == 0 && active_vertices[0][1] == active_vertices[1][1]) break  // left and right side have met. The y condition is more specific. That's why here this odd k==0 appears
@@ -709,6 +711,12 @@ class Polygon_in_cameraSpace {
 						}
 					}
 
+					// Bresenham still needs integer slope
+					slope_accu_c[k] = [d[0] > 0 ? d[1] / d[0] : this.screen[1] * Math.sign(d[1]), x_at_y_int]
+
+					let e=new EdgeShader( v_val[2] , x_at_y_int  )
+					ps.es[ k ]=e 
+
 					/*
 					if (mode=float_slope)
 					if  (d[1]!=0)	slope_accu_c[k][0]=d[0]/d[1]  // we only care for edges with actual height on screen. And exact vertical will not glitch too badly
@@ -726,109 +734,32 @@ class Polygon_in_cameraSpace {
 					//for_mapper.sort()  // non-planar poylgons will vanish. Once again: 16.16 will eliminate this glitch to 1 px every hour. 16.16 still fast than guarding IF commands here! Level is checked for planarity. Keyframe animated characters use triangles. Only stuff like head or armor has poylgons.
 					*/
 				}
-
-				// Bresenham still needs integer slope
-				slope_accu_c[k] = [d[0] > 0 ? d[1] / d[0] : this.screen[1] * Math.sign(d[1]), x_at_y_int]
 			}
 
-			
-			// Todo : harmonize
-			let payload_w = []//Payload.nominator.map( v3=> [v3.v[2],v3.v[0],v3.v[1] ]) 
-			// bias
-			payload_w[0][0] = Payload.nominator[0][2]  // multiply with [2]=1 compontent of view vector gives us the const coeeficient [][0] for the linerar function. Here: denominaotr [0][]
-			payload_w[1][0] = Payload.nominator[1][2]  // same for nominator of s
-			payload_w[2][0] = Payload.nominator[1][2]  // and t
+			// Bresenham
+			let d=slope_accu_c[1][0]-slope_accu_c[0][0]
+			if (d>0){
+				ps.span( slope_accu_c[0][0], d   )
+			}
 
-			// gradient
-			payload_w[0][1] = Payload.nominator[0][0]  // gradient of denominator along a span ( x ) . Yeah, I probably should reconsider the numbering or transform a matrix or so
-			payload_w[0][2] = Payload.nominator[0][1]  // gradient of denominator along the edges ( y ) 
-
-			// same for the s,t gradients
-			// the nominator gradient for z is [0,0] . Failed proof in "infintie plane", but hand wave is easy: Imagine an Amiga copper sky. Color marks z. Fog is far away, dark blue sky is close, as is red-brown ground.
-			// All const-z lines are aligned to the horizon. Perspective is like this: lines become lines. As known from the checkerboard: the const-z lines are all parallel to each other after projection
-			// So we only need one gradient to know z . After that a scaler function follows (1/z), but z-buffer works without application of this function
-			// => perfect z sorting even in case of linear interpolation between 1/z points. We need this on Jaguar ( N64 may have a real z-buffer)
-			// I read that in OpenGL a big use of the 4x4 Matrices is to combine multiple transformations
-			// I don't do this. First I substract the camera position using 32bit SUB
-			// Then I multiply the rotate and aspectRatio Matrix, which are just 3x3
-			// the product is then multiplied with vertices 
-			// Perhaps with guard space I will drop the aspectRatio Matrix
-
-
-			// the const bias to go from texture oriented w to indpendent z is generated by the factor new Vec3( [this.z]
-			// Assert that gradients are really epsilon.
-
-			//payload_w[0]+=Payload.viewVector.nominator[0][2] // 0 goes to the left and marks 1/z aka w in payload (xy not there, uv behind). 2 goes to the right and accepts z from xyz viewing vector. z=1 
-			// skew onto the pixel coordinates which don't have int[] in the center of the screen (center is between pixels). I calculate the bias for top-left , still in NDC , so  [-1,-1].
-			payload_w[0][0] -= Payload.nominator[0][1]  // same for nominator of s
-			payload_w[0][0] -= Payload.nominator[0][2]
-
-			//let payload=[payload_w]  // Payload is given to use only with UV offsets (for perspective). Affine Gouraud probably needs its own code path with triangles?
-
-			let fragment = [].fill(0, 0, payload_w.length) // malloc (reg)
-			let fralment = [].fill(0, 0, payload_w.length) // malloc (reg)
-			
-
-			// premature optimizationlet ny = Math.min(...active_vertices.map(a => vertex[a[1]][1])), xo: number, anchor = false
-			// premature optimization (blows up code size, may not even be faster in JRISC ) for (; y < ny; y++) {  // floating point trick to get from NDC to pixel cooridinates. 256x256px tech demo. Square pixels. Since I don't round, any factor is possible. Easy one is 256  * 5/4-> 320  .. 256 * 3/4 = 192				
-			let integer = slope_accu_c.map(sa => sa[1])
-			/*
-			Don't catter to fuzzy beam tree edges too much! The idea of the beam tree is that still linear edges dominate!				
-				a.sort() // Until I debug my sign errors
-				let integer = a   // Bresenham     if (mode_slope=="fixed") a.map(a_if => Math.floor(a_if))  // Should be cheap in JRISC despite the wild look in TypeScript
-				let x = integer[0]; if (x < integer[1]) {  // dragged out of the for loop. Not an actual additional jump in JRISC
-					// linear interpolation
-					// this is  an experiment. Gradients ADD or ADC on 32 bit should work great in JRISC, right?
-					// When debugged: precalc the gradient in the coordinate system spanne dup by slope floor and ceiling!
-					// Though this primitve approach woudl even work if I use and active-edge (on multiple sectors of a beamtree)
-					if (anchor) {  // This makes no sense. Even if occlusion happens, most edges will be straigth. That's why we calculation a slope. So let's calculate a slopw for payload.
-						let dx = x - xo
-						switch (dx) {
-							case -1: payload_w.forEach((p, i) => { fragment[i] += p[2] - p[1] }); break
-							case +1: payload_w.forEach((p, i) => { fragment[i] += p[2] + p[1] }); break
-							case 0: payload_w.forEach((p, i) => { fragment[i] += p[2] }); break   // this will speed up all edges clipped at the screen borders
-							default: anchor = false
-						}
-					}
-					if (!anchor) {  // too fat for inner loop, but where do I put this?
-						anchor = true, xo = x
-						// 16.16 internals: let fraction=a[0] % 1 // sub-pixel correction for z and Gouraud or the texture to fight PS1 wobble
-						fralment = payload_w.map((p,i) => p[0] + p[1] * a[i] + p[2] * y)   // IMAC is fast in JRISC
-					}
-					fragment = fralment // would feel weird to use the fragemt from the other side to "carriage return" like a typeWriter
-					*/
-
-			// I should fully commit to bresenham at the top of this loop. This is not readable.
-			let blitter_slope = payload_w.map(p => p[1])
+		
+			// float slope
 			if (fralment.length > 2) {// Z=0 U=1 V=2 coordinates need perspective correction. Gouraud on this blitter is Z=0 G=1
 				let span_within = integer[1] - x
 				if (span_within > 0 && fralment[0] > 0.001) {  // z>0 safety first
 					let right_side = payload_w.map((p, i) => fralment[i] + p[1] * span_within)
 
-					// so, this is readable :
-					let w = 1 / fralment[0]		// perspective correction  I feel stupid because at 16 bit even the Jaguar has enough RAM for a LUT
-					for (let uv = 0; uv < 2; uv++) {
-						let left = fralment[uv + 1] * w
-						fragment[1 + uv] = left
-					}
+
 					if (span_within == 0 || right_side[0] <= 0.001) continue
-					w = 1 / right_side[0]    // perspective correction  // Attention: JRISC bug: use register "left" before next division instruction!
-					for (let uv = 0; uv < 2; uv++) {
-						let right = right_side[uv + 1] * w
-						let d = (right - fragment[1 + uv])  // JRISC is a load-store architecture. There would be a physical register with the d variable. So this line adds no cost
+// JRISC is a load-store architecture. There would be a physical register with the d variable. So this line adds no cost
 						// Quake 1 demake to keep code small. Ah, >> and /2 relation is undefined in C. In JRISC I would inlcude the span_within==2 case
-						if (span_within) blitter_slope[1 + uv] = d;
-						else blitter_slope[1 + uv] = d / span_within; // linear interpolation. Quake bloats the code for small values. I have some JRISC ideas in the project: scan for first bit. shift one more. Zero flag? then apply shift to argument. Else: div
-					}
+
 				}
 			}
-			//xo = x
-			// As in Doom on Jaguar, we do the full persepective calculation for the first and last pixel ( for walls and floors this is perfect, inbetween: some warp . Todo: check diagonals)
-			// then the Jaguar blitter interpolates linearly. Quake and Descent use subspans on large polygons. Code is straight forward. Add later.
-			for (; x < integer[1]; x++) { // the blitter does this. Todo: move this code ... . But what about perspective correction? Also not in this source file!
-				m.putpixel([x, y], fragment)
-				blitter_slope.forEach((p, i) => { fragment[i] += p[1] })  // x-gradient = slope ( different name for 1-dimensional aka scalar case )
-			}
+
+			
+
+
 		} //while (active_vertices[0][1] != active_vertices[1][1]) // full circle, bottom vertex found on the fly		
 	}
 	private edge_fromVertex_toBorder(vs: Vertex_in_cameraSpace[], l: number):PointPointing {

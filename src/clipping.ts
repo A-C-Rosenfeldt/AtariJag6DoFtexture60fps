@@ -148,6 +148,9 @@ class Frac{
 
 export class Matrix{
 	nominator:Vec[]
+	constructor(cols?:number ){
+		if (typeof cols == 'number') this.nominator=new Array<Vec>(cols)
+	}
 	static inverse(spanning2d: Vec[]) {
 		throw new Error("Method not implemented.")
 	}
@@ -160,8 +163,9 @@ export class Matrix{
 	// But obviously here, Matrix is row major, and the vector is considered trans.
 	mul_left(trans:Vec[]):Matrix{		
 		let res=new Matrix()
+		let k=0
 		for(let i=0;i++;i<this.nominator.length){
-			res[i]=this.nominator[i].innerProductM(trans,i)  // base would want vector add, while JRISC wants inner product
+			res.nominator[i].v[k]=this.nominator[i].innerProductM(trans,k)  // base would want vector add, while JRISC wants inner product
 		}
 		return res
 	}
