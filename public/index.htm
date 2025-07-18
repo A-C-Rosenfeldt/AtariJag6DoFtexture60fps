@@ -3,7 +3,6 @@
 <head>
 
 </head>
-<body>
 
 <h2>Motivation</h2>
 <p>
@@ -41,11 +40,14 @@
 	<p>Check OpenGL
 	<canvas id="GlCanvas" width="540" height="100" style="border:1px solid #000000;" class=""></canvas> 
 	<script src="TestGl.js" type="module" ></script>
+	<script src="infinite_plane_mapper.js" type="module" ></script> <!-- should loag imageData only once? -->
 	</p>
 	<p>polygon
 		<canvas id="CanvasPolygon" width="540" height="100" style="border:1px solid #000000;" class=""></canvas> 
 		<script src="Polygon2d.js" type="module" ></script>
 	
+		<img src="texture.png" id="texture">
+		<canvas id="texture_check">
 
 	</p>
 	<p>

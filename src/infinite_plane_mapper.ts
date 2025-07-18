@@ -19,7 +19,7 @@ import { Vec3,Vec } from "./clipping";
 // component z=2 is the bias due to how the view vector is [x,y,1]
 import {Matrix} from "./clipping"
 
-export class CV{
+export class CameraViewvector{
 	cameraPosition: Matrix
 	viewVector:Matrix
 }
@@ -40,7 +40,7 @@ export class Camera_in_stSpace{
 	V is the view vector. It's transformation needs to follow homogenous coordinates to be understood by the rasterizer
 	*/
 
-	transform_into_texture_space_ctr(S:Vec3,T:Vec3){
+	transform_into_texture_space__constructor(S:Vec3,T:Vec3){
 		this.z=[S.v[2],T.v[2],0]  // not affected by clipping. No flipping around of chosen vertex with adjacent edgesr to invert
 		let n=S.crossProduct(T)
 		this.normal=n.scalarProduct(1/n.innerProduct(n)) as Vec3  // uh I need special scalar Product to avoid typeCast ??!
@@ -63,20 +63,29 @@ export class Camera_in_stSpace{
 		return pl
 	}
 
-	generate_payload_m(C:number[]):Matrix{
-		let cv=this.infinte_checkerBoard_m(C)
-		// First occurence of matrix mul. Not sure about interface. Clearly I need this for rotation (frame to frame), and generally transformation (within frame)
-		let mesh=new Matrix()
+	uvz_from_viewvector(C:number[]):Matrix{
+		let st_from_viewvector=this.infinte_checkerBoard_m(C)
+
+
+		// the rest should result in new PixelShader( at_bottomRight_of_Center, gradient )  // InfiniteCheckerBoard is PixelShader
+		// view vector has fixed z component => at_bottomRight_of_Center
+
+
+		// UV mapping to harmonize st with z : none is aligned with any of the edges ( only by luck )
+		// UV mapping is great to map one rectangular texture onto a mesh
+		// But we don't depend on it here.
+		// what mesh?    // First occurence of matrix mul. Not sure about interface. Clearly I need this for rotation (frame to frame), and generally transformation (within frame)
+		let uvz_mapped=new Matrix()
 		// the first row is the w component of homogenouc coordinates. It feeds the 1/ve[2] through
-		mesh.nominator=	[new Vec3( [[0,0,1]] ) ].concat( this.UVmapping_fromST.map(p=>new Vec3([p])) , new Vec3( [this.z] ));
+		uvz_mapped.nominator=	[new Vec3( [[0,0,1]] ) ].concat( this.UVmapping_fromST.map(p=>new Vec3([p])) , new Vec3( [this.z] ));
 			// Everone uses the general proof that 1/z is linear in screen space (far plane can be substracted.). Sorry that I cannot utilize my: "just calculate with fractions as in school!"
 			// Linear allows for an offset. So 0 does not need to be the horizon. Together with scaling there are two degrees of freedom which can change from polygon to polygon
 			// Do polygons bring their far-plane along? Perhaps due to vertex position
 			// for inter-polygon comparison ( z-buffer ) we need a standard. So the multiplication with [s.z,t.z.0] 
 			// with viewVector should fix scaling
 			// with cameraPostion should fix offset  ( both indirectly through cv.nominator)
-		let cv_p=new Matrix //CV
-		cv_p=Matrix.mul( [mesh.nominator, cv.nominator]  )
+		let uvz_from_viewvector=new Matrix //CV
+		uvz_from_viewvector=Matrix.mul( [uvz_mapped.nominator, st_from_viewvector.nominator]  )
 		//cv_p.viewVector=Matrix.mul( [mesh.nominator, cv.viewVector.nominator] )
 
 		// We may need to measure if it is faster to have two different 1/z or to compensate the s,t nominators
@@ -92,7 +101,7 @@ export class Camera_in_stSpace{
 		// So there cannot be an offset
 		// So multiplication with this.z really is just to scale?
 		// infinte_checkerBoard_m mixes cv.viewVector.nominator[2] into these components
-		return cv_p
+		return uvz_from_viewvector
 	}
 
 	infinte_checkerBoard(C:number[],V:number[]):number[]{
@@ -110,7 +119,7 @@ export class Camera_in_stSpace{
 
 	// like mode-z on SNES (tm)
  	infinte_checkerBoard_m(C:number[]):Matrix{
-		let cv=new CV
+		let cv=new CameraViewvector
 		cv.cameraPosition.nominator[0]=new Vec([this.transform_into_texture_space(C),this.UVmapping_Offest.concat(0)]) // pos point of camera relative to UV origin on st plane (so that we can use a texture atlas)
 		cv.viewVector=this.transform_into_texture_space_m() // view vector  ( many vectors for one camera ? )
 
@@ -160,14 +169,61 @@ export class Camera_in_stSpace{
 	}
 }
 
+
+
 export class Mapper{
-	putpixel(coords: number[], fragment: any){
-		const pixel = new Uint8Array(4); // 2+4+4 = 10
+	pixel: Uint8Array   // frame buffer
+	// I love OOP and cannot stand functional paradigma for this
+	image: HTMLImageElement;
+	imageData: ImageData;
+	texture_inspected: HTMLCanvasElement;
+	source_pitch:number
+	target_pitch:number
+
+	constructor(){
+		// This is a prototype. I putt everything into DOM
+		// release to Atari Jaguar!
+		const texture_inspected=document.getElementById("texture") as HTMLImageElement
+		if ( (texture_inspected  ).complete ) this.getImageData(texture_inspected)
+		
+		 //as HTMLCanvasElement	
+		 // fires too late while debugging 
+    	//this.texture_inspected.onload = this.getImageData  // Asset loading needs to move to top level
+
+		//this.image.src = "texture.png";
+		
+	}
+	putpixel(source: number[], target: number[]){
+		const s=source[0]+this.source_pitch*source[1]
+		const t=target[0]+this.target_pitch*source[1]
+		this.imageData.data[ s]
+
+		// todo: connect to GL.ts 
+
+		const pixel = this.pixel //new Uint8Array(4); // 2+4+4 = 10
 		pixel[0] = 0; //[0, 0, 255, 255];  // opaque blue
 		pixel[1] = 0;
 		pixel[2] = 255;
 		pixel[3] = 255;
 	}
+
+	getImageData(texture_inspected) {  // binding
+
+			this.texture_inspected=document.getElementById("texture_check") as HTMLCanvasElement
+			const ctx=this.texture_inspected.getContext("2d")
+			ctx.drawImage(texture_inspected,0,0)
+
+
+		// an intermediate "buffer" 2D context is necessary
+		
+		//const ctx = this.texture_inspected.getContext("2d")
+		//ctx.getContextAttributes()
+		
+		const obj={ pixelFormat :"rgba-unorm8"}  // dated lib.dom.d.ts?? 2025-07-18
+		this.imageData= ctx.getImageData(0, 0, this.texture_inspected.width, this.texture_inspected.height,obj as ImageDataSettings);
+		this.source_pitch=this.texture_inspected.width*4
+	}
+
 	affine(){
 		// Span.render();
 	}

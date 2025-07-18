@@ -1,5 +1,5 @@
-import { Vec3,Matrix, Matrix2, Vec2 } from './clipping.js';
-import {Camera_in_stSpace, Mapper,CV} from './infinite_plane_mapper.js'
+import { Vec3,Matrix, Matrix2, Vec2, Vec } from './clipping.js';
+import {Camera_in_stSpace, Mapper,CameraViewvector} from './infinite_plane_mapper.js'
 import { EdgeShader, PixelShader } from './PixelShader.js';
 // The rasterizer needs to projected points from the beam tree. The tree is the start, and the polygon only lives in the leaf
 // I think that most polygons in a dense mesh are split by their neighbours. I would need extra code to check for back faces. This does neither fit into the MVP nor the cache
@@ -52,7 +52,7 @@ class PointPointing{
 }
 
 // but ...Aparently, with parallel consideration, I need polymorphism very badly
-interface Item{
+export interface Item{
 
 }
 
@@ -413,13 +413,14 @@ class Polygon_in_cameraSpace {
 		else   {}  // Guard band  . Faster rejection at portals ( no MUL needed with its many register fetches). Still no 3d because we operate on 16 bit rounded screen coordinates after projection and rotation!!
 
 
-		let texturemap=new Camera_in_stSpace()  // I should probably pull the next line into the constructor
+		let texturemap=new Camera_in_stSpace()  // Camera is in (0,0) in its own space .
+		//  I should probably pull the next line into the constructor
 		//let s:Vec3=new Vec3([vertices[0].inSpace])
 		let payload:Matrix
 		{
-			let t=vertices.slice(0,3).map( v=>(v.inSpace)  ) ;
-			texturemap.transform_into_texture_space_ctr( new Vec3([t[0],t[1]]) ,new Vec3([t[2],t[1]]) )  // My first model will have the s and t vectors on edges 0-1-2  .  for z-comparison and texture maps		
-			payload=texturemap.generate_payload_m(   t[1]   )
+			let t=vertices.slice(0,3).map( v=>(v.inSpace)  )  // take 3 vertices and avoid overdetermination for polygons
+			texturemap.transform_into_texture_space__constructor( new Vec3([t[0],t[1]]) ,new Vec3([t[2],t[1]]) )  // My first model will have the s and t vectors on edges 0-1-2  .  for z-comparison and texture maps		
+			payload=texturemap.uvz_from_viewvector(   t[1]   )
 		}
 
 		this.rasterize_onscreen(with_corners,payload); return true
@@ -621,7 +622,12 @@ class Polygon_in_cameraSpace {
 		// 	v.outside
 		// })
 		let m = new Mapper()   // our interface to the hardware dependent side. Used for the whole mesh
-		let ps=new PixelShader()
+
+		// The pixel shader does not care about the real 3d nature of the vectors
+		// It just knows that it has to divide everything by z (= last element)
+		// Matrix is trans-unit. There is no reason for it to be square
+
+		let ps=new PixelShader( Payload )  // InfiniteCheckerBoard is PixelShader
 
 		// this is probably pretty standard code. Just I want to explicitely show how what is essential for the inner loop and what is not
 		// JRISC is slow on branches, but unrolling is easy (for my compiler probably), while compacting code is hard. See other files in this project.
@@ -630,6 +636,7 @@ class Polygon_in_cameraSpace {
 		let slope_int = [0, 0]
 		// let slope_accu_s=[[0,0],[0,0]]  // sorted by x on screen  .. uh pre-mature optimization: needs to much code. And time. Check for backfaces in a prior pass? Solid geometry in a portal renderer or beam tree will cull back-faces automatically
 		for (let y = (v as Point).get_y(); y < this.screen[1]; y++) {  // the condition is for safety : Todo: remove from release version			
+			let width=0
 			for (let k = 0; k < 2; k++) {
 				if (y == vertex[active_vertices[k][1]][1]) {	// todo: duplicate this code for the case that on vertex happens on one side
 					Bresenham[k][1] += Bresenham[k][0] // on JRISC this sets flags .. but I still need to persist them. A useless. Just BitTest on sign. Single cycle to 
@@ -638,7 +645,9 @@ class Polygon_in_cameraSpace {
 						Bresenham[k][1] += Bresenham[k][2]						
 					}
 					slope_accu_c[k][1] += slope_accu_c[k][0] + (ca ? 1 :0 )  //  JRISC/ADC  todo: rename as x	
-					ps.es[k].propagate_along(ca ? 1 :0 )
+
+
+					ps.es[k].propagate_along(ca  )
 				}
 				else {
 					if (k == 0 && active_vertices[0][1] == active_vertices[1][1]) break  // left and right side have met. The y condition is more specific. That's why here this odd k==0 appears
@@ -714,9 +723,12 @@ class Polygon_in_cameraSpace {
 					// Bresenham still needs integer slope
 					slope_accu_c[k] = [d[0] > 0 ? d[1] / d[0] : this.screen[1] * Math.sign(d[1]), x_at_y_int]
 
-					let e=new EdgeShader( v_val[2] , x_at_y_int  )
+					let e=new EdgeShader( v_val[2] , x_at_y_int , slope_accu_c[k][0] )
 					ps.es[ k ]=e 
-
+					// Alternatives
+					// ps.inject_checkerboard(k) 
+					// ps.create(e) builder pattern 
+					// Either e needs to know parent or parent needs to 
 					/*
 					if (mode=float_slope)
 					if  (d[1]!=0)	slope_accu_c[k][0]=d[0]/d[1]  // we only care for edges with actual height on screen. And exact vertical will not glitch too badly
@@ -736,28 +748,11 @@ class Polygon_in_cameraSpace {
 				}
 			}
 
-			// Bresenham
-			let d=slope_accu_c[1][0]-slope_accu_c[0][0]
-			if (d>0){
-				ps.span( slope_accu_c[0][0], d   )
-			}
 
-		
-			// float slope
-			if (fralment.length > 2) {// Z=0 U=1 V=2 coordinates need perspective correction. Gouraud on this blitter is Z=0 G=1
-				let span_within = integer[1] - x
-				if (span_within > 0 && fralment[0] > 0.001) {  // z>0 safety first
-					let right_side = payload_w.map((p, i) => fralment[i] + p[1] * span_within)
+			if (width>0){
+				ps.span( slope_accu_c[0][0], width  ,m )
+			}	
 
-
-					if (span_within == 0 || right_side[0] <= 0.001) continue
-// JRISC is a load-store architecture. There would be a physical register with the d variable. So this line adds no cost
-						// Quake 1 demake to keep code small. Ah, >> and /2 relation is undefined in C. In JRISC I would inlcude the span_within==2 case
-
-				}
-			}
-
-			
 
 
 		} //while (active_vertices[0][1] != active_vertices[1][1]) // full circle, bottom vertex found on the fly		

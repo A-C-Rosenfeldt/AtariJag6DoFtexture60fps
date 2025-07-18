@@ -20,7 +20,7 @@ class Controller{
 let controller=new Controller()
 
 document.addEventListener(
-  "keydown",    repeats liek keypressed
+  "keydown",  //  repeats liek keypressed
   (event) => {
     const keyName = event.key;
 

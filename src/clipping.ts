@@ -390,7 +390,7 @@ class Matrix_Rotation extends Matrix{
 }
 
 
-class Matrix_frac extends Matrix{
+export class Matrix_frac extends Matrix{
 	denominator:number
 /*  UV has no denominator .. super class suffices!
 	mul(trans:Vec[]):Matrix_frac{

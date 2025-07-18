@@ -1,6 +1,10 @@
+import {  Matrix, Matrix_frac, Vec } from "clipping"
+import {Item } from "rasterizer"
+import { Mapper } from "./infinite_plane_mapper"
+
 class a_i{
+	increment = [0, 0]	
 	accumulator = 0
-	increment = [0, 0]
 	projected=0
 	propagate_along(direction: boolean) { // Bresenham gives bool: Direction from last to get back on track
 		this.accumulator+=this.increment[direction?1:0]
@@ -8,47 +12,85 @@ class a_i{
 }
 
 export class EdgeShader {
-	zst:Array<a_i>=new a_i[3]
+	uvz:Array<a_i>=new a_i[3]   // along edge and edge shifted 1 to the right
+	x_at_y_int: number
 
-	constructor() {  // @ vertex2d
-
+	constructor(edge:Item , x_at_y_int:number , slope_inc:number ) {  // number is int   @ vertex2d
+		this.x_at_y_int=x_at_y_int
 	}
 	propagate_along(direction: boolean) { // Bresenham gives bool: Direction from last to get back on track
-		this.zst.forEach(s=>s.propagate_along)
+		this.uvz.forEach(s=>s.propagate_along)
 	}
 	perspective() {
-		let w=this.zst[0].accumulator
+		let w=this.uvz[0].accumulator
 		if (w==0) return
 		let z = 1 /w     // perspective correction  // Attention: JRISC bug: use register "left" before next division instruction!
-		for (let st = 1; st < 2; st++) {
-			this.zst[st].projected = this.zst[st].accumulator*z
+		for (let st = 0; st < 2; st++) {
+			this.uvz[st].projected = this.uvz[st].accumulator*z
 		}
+		this.uvz[2].projected=z
 	}
 }
 
 export class PixelShader{
-	es:Array<EdgeShader> =EdgeShader[2]
+	y:number
 
-	span(x:number,d,y) { 
+	//  Element [0] as denominator  in the code is to easy to confuse to [0] in less critical roles like sides, directions
+	// to implement a_i in a loop, I could work with getters and setters for everyone else?
+	// OpenGL uses homogenous coordinates where the denominator is just one element at the border. They use last to keep indices familiar
 
-		if (d==1){
+	// PixelShader does not increment along axis units:  zst:Array<a_i>=new a_i[3]  // along axes units
+	// Rather we keep the data format from the 3d side
+	uvz_from_viewvecto: Matrix
+	// and only on vertices convert from 3d Matrix structure to mutable a incr structure
+	inject_checkerboard(k: number, slope_int:number) {
+		for (let i=0;i<this.es[k].uvz.length;i++){
+
+			
+			let r=this.es[k].uvz[i]  // needs to be a method on a_i
+			
+			r.accumulator=0
+			r.accumulator+=this.uvz_from_viewvecto.nominator[2].v[i]*500 ;  // 2= viewVector.z  . column vector makes positions reverse :-(
+			r.accumulator+=this.uvz_from_viewvecto.nominator[0].v[i]* (this.es[k].x_at_y_int+0.5); // fast changes in x=0 is little Endian . Low level
+			r.accumulator+=this.uvz_from_viewvecto.nominator[1].v[i]* (this.y+0.5); // fast changes in x=0 is little Endian . Low level(  , this.y )
+
+			// incr
+			let t= slope_int* this.uvz_from_viewvecto.nominator[0].v[i]  // slope parameter goes here
+			for (let d=0;d<2;d++){
+				t+=this.uvz_from_viewvecto.nominator[d].v[i]  // always go down one pixel
+				r[d].increment=t  // I don't see how 0 1 could be logically mapped ot the input 0 and 1. So I just count up
+			} // Bresenham might decide to go one right
 
 		}
-		this.es.map(e=>{
-			e.perspective(x + (d-1))  // Perspective is calculated within  aka closed interval
-			return (s,t)
-		})
+	}
+	es:Array<EdgeShader> =EdgeShader[2]
 
-		if (span_within) blitter_slope[1 + uv] = d;
-			else blitter_slope[1 + uv] = d / span_within; // linear interpolation. Quake bloats the code for small values. I have some JRISC ideas in the project: scan for first bit. shift one more. Zero flag? then apply shift to argument. Else: div
-			
+	span(x0: number, width: number, m: Mapper) { 
 
+		let blitter_slope=[0,0,0]
+		if (width==1){ // slithers and corners  (width 0 never calls) Assert
+			var esp=this.es.slice(0,1).map(e=>{
+			e.perspective() // Edges propagate / use cursors. No parameter here //  x + (width-1))  // Perspective is calculated within  aka closed interval
+			return e.uvz.map(u=>u.projected )})
+			esp[1]=esp[0]
+			// slope is not set because it will never be read
+		}else{
+			var esp=this.es.map(e=>{
+			e.perspective() //x + (width-1))  // Perspective is calculated within  aka closed interval
+			return e.uvz.map(u=>u.projected )})
+			for(let uvz=0;uvz<2;uvz++){
+				blitter_slope[uvz] = (esp[1][uvz]-esp[1][uvz]) / width  ; // linear interpolation. Quake bloats the code for small values. I have some JRISC ideas in the project: scan for first bit. shift one more. Zero flag? then apply shift to argument. Else: div			
+			}
+		}
+
+		// Hardware specific
 				//xo = x
 		// As in Doom on Jaguar, we do the full persepective calculation for the first and last pixel ( for walls and floors this is perfect, inbetween: some warp . Todo: check diagonals)
 		// then the Jaguar blitter interpolates linearly. Quake and Descent use subspans on large polygons. Code is straight forward. Add later.
-		for (; x < integer[1]; x++) { // the blitter does this. Todo: move this code ... . But what about perspective correction? Also not in this source file!
-			m.putpixel([x, y], fragment)
-			blitter_slope.forEach((p, i) => { fragment[i] += p[1] })  // x-gradient = slope ( different name for 1-dimensional aka scalar case )
+		let source=esp[0]  // todo: accumulator increment pairs
+		for (let x=x0; x < x0+width; x++) { // the blitter does this. Todo: move this code ... . But what about perspective correction? Also not in this source file!
+			m.putpixel(source, [x, this.y])
+			blitter_slope.forEach((p, i) => { source[i] += p[1] })  // x-gradient = slope ( different name for 1-dimensional aka scalar case )
 		}
 	
 		/*
@@ -85,17 +127,19 @@ export class PixelShader{
 		return
 	};
 
-	constructor(){
+	constructor( uvz_from_viewvector:Matrix ){
+		this.uvz_from_viewvecto=uvz_from_viewvector
+
 	// Todo : harmonize
 			let payload_w = []//Payload.nominator.map( v3=> [v3.v[2],v3.v[0],v3.v[1] ]) 
 			// bias
-			payload_w[0][0] = Payload.nominator[0][2]  // multiply with [2]=1 compontent of view vector gives us the const coeeficient [][0] for the linerar function. Here: denominaotr [0][]
-			payload_w[1][0] = Payload.nominator[1][2]  // same for nominator of s
-			payload_w[2][0] = Payload.nominator[1][2]  // and t
+			payload_w[0][0] = uvz_from_viewvector.nominator[0][2]  // multiply with [2]=1 compontent of view vector gives us the const coeeficient [][0] for the linerar function. Here: denominaotr [0][]
+			payload_w[1][0] = uvz_from_viewvector.nominator[1][2]  // same for nominator of s
+			payload_w[2][0] = uvz_from_viewvector.nominator[1][2]  // and t
 
 			// gradient
-			payload_w[0][1] = Payload.nominator[0][0]  // gradient of denominator along a span ( x ) . Yeah, I probably should reconsider the numbering or transform a matrix or so
-			payload_w[0][2] = Payload.nominator[0][1]  // gradient of denominator along the edges ( y ) 
+			payload_w[0][1] = uvz_from_viewvector.nominator[0][0]  // gradient of denominator along a span ( x ) . Yeah, I probably should reconsider the numbering or transform a matrix or so
+			payload_w[0][2] = uvz_from_viewvector.nominator[0][1]  // gradient of denominator along the edges ( y ) 
 
 			// same for the s,t gradients
 			// the nominator gradient for z is [0,0] . Failed proof in "infintie plane", but hand wave is easy: Imagine an Amiga copper sky. Color marks z. Fog is far away, dark blue sky is close, as is red-brown ground.
@@ -114,18 +158,12 @@ export class PixelShader{
 
 			//payload_w[0]+=Payload.viewVector.nominator[0][2] // 0 goes to the left and marks 1/z aka w in payload (xy not there, uv behind). 2 goes to the right and accepts z from xyz viewing vector. z=1 
 			// skew onto the pixel coordinates which don't have int[] in the center of the screen (center is between pixels). I calculate the bias for top-left , still in NDC , so  [-1,-1].
-			payload_w[0][0] -= Payload.nominator[0][1]  // same for nominator of s
-			payload_w[0][0] -= Payload.nominator[0][2]
+			payload_w[0][0] -= uvz_from_viewvector.nominator[0][1]  // same for nominator of s
+			payload_w[0][0] -= uvz_from_viewvector.nominator[0][2]
 
 			//let payload=[payload_w]  // Payload is given to use only with UV offsets (for perspective). Affine Gouraud probably needs its own code path with triangles?
 
-			let fragment = [].fill(0, 0, payload_w.length) // malloc (reg)
-			let fralment = [].fill(0, 0, payload_w.length) // malloc (reg)
-			
 
-			// premature optimizationlet ny = Math.min(...active_vertices.map(a => vertex[a[1]][1])), xo: number, anchor = false
-			// premature optimization (blows up code size, may not even be faster in JRISC ) for (; y < ny; y++) {  // floating point trick to get from NDC to pixel cooridinates. 256x256px tech demo. Square pixels. Since I don't round, any factor is possible. Easy one is 256  * 5/4-> 320  .. 256 * 3/4 = 192				
-			let integer = slope_accu_c.map(sa => sa[1])
 			/*
 			Don't catter to fuzzy beam tree edges too much! The idea of the beam tree is that still linear edges dominate!				
 				a.sort() // Until I debug my sign errors
