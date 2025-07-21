@@ -332,7 +332,7 @@ Just this gets a little weird for screen corners. Like I would raytrace exactly 
 // All the math is 3d with some non-normalized vectors. But the edges can still be drawn on screen.
 // So uh, okay fantasy world without rounding
 
-class Matrix_Rotation extends Matrix{
+export class Matrix_Rotation extends Matrix{
 	// for rotation matrices this is the same as multiplying with inverse
 	// First version only uses vectors because beam tree has a lot of rays to trace which are not projected
 	// I want to leak the implementation because I count the bits. It is research code!
