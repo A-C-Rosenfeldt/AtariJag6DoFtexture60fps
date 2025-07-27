@@ -18,6 +18,8 @@ import { Vec3,Vec } from "./clipping";
 
 // component z=2 is the bias due to how the view vector is [x,y,1]
 import {Matrix} from "./clipping"
+//import { SimpleImage } from "./GL";
+import { field2Gl } from './GL.js'
 
 export class CameraViewvector{
 	cameraPosition: Matrix
@@ -172,15 +174,17 @@ export class Camera_in_stSpace{
 
 
 export class Mapper{
-	pixel: Uint8Array   // frame buffer
+
 	// I love OOP and cannot stand functional paradigma for this
 	image: HTMLImageElement;
 	imageData: ImageData;
 	texture_inspected: HTMLCanvasElement;
 	source_pitch:number
 	target_pitch:number
+	frame: SimpleImage;
 
-	constructor(){
+	constructor(frame: SimpleImage){
+		this.frame=frame
 		// This is a prototype. I putt everything into DOM
 		// release to Atari Jaguar!
 		const texture_inspected=document.getElementById("texture") as HTMLImageElement
@@ -194,17 +198,12 @@ export class Mapper{
 		
 	}
 	putpixel(source: number[], target: number[]){
-		const s=source[0]+this.source_pitch*source[1]
-		const t=target[0]+this.target_pitch*source[1]
-		this.imageData.data[ s]
+		const s=(Math.floor(source[0])+this.source_pitch*Math.floor(source[1]))*4
+		const t=(Math.floor(target[0])+this.target_pitch*Math.floor(target[1]))*4
 
-		// todo: connect to GL.ts 
-
-		const pixel = this.pixel //new Uint8Array(4); // 2+4+4 = 10
-		pixel[0] = 0; //[0, 0, 255, 255];  // opaque blue
-		pixel[1] = 0;
-		pixel[2] = 255;
-		pixel[3] = 255;
+		for(let i=0;i<4;i++){
+			this.frame.pixel[t+i]=this.imageData.data[s+i]
+		}
 	}
 
 	getImageData(texture_inspected) {  // binding
@@ -221,14 +220,23 @@ export class Mapper{
 		
 		const obj={ pixelFormat :"rgba-unorm8"}  // dated lib.dom.d.ts?? 2025-07-18
 		this.imageData= ctx.getImageData(0, 0, this.texture_inspected.width, this.texture_inspected.height,obj as ImageDataSettings);
-		this.source_pitch=this.texture_inspected.width*4
+		this.source_pitch=this.texture_inspected.width
+	}
+	drawCanvas(){
+		const canvas = document.getElementById("Canvas2d") as HTMLCanvasElement;
+		const ctx = canvas.getContext("2d");
+		if (ctx) {
+			ctx.putImageData(this.imageData, 0, 0);
+		}
+
+	}
+	span(){
+			// no synergy in code. Deltas cost too much lines. Later?
+			// Maybe start with "The hidden below": Do end points exaclty and then span. Then add Quake subspans?
 	}
 
 	affine(){
 		// Span.render();
-	}
-	span(){
-			// Maybe start with "The hidden below": Do end points exaclty and then span. Then add Quake subspans?
 	}
 	constZ(){ //On Jaguar due to pixel mode this seems to be fastest. Longest blitter runs. Lowest CPU burden. Fits into the Doom minimize overdraw and blitter command theme
 		// this would need calculations above this for the horizon

@@ -17,23 +17,29 @@ document.addEventListener(
 
     switch (keyName) {
       case "Left":
-      controller.rotation.Rotate_along_axis_Orthonormalize(1, controller.sine);
-      break;
+        controller.rotation.Rotate_along_axis_Orthonormalize(1, controller.sine);
+        break;
       case "Right":
-      controller.rotation.Rotate_along_axis_Orthonormalize(1, [controller.sine[0], -controller.sine[1]]);
-      break;
+        controller.rotation.Rotate_along_axis_Orthonormalize(1, [controller.sine[0], -controller.sine[1]]);
+        break;
       case "up":
-      controller.rotation.Rotate_along_axis_Orthonormalize(0, controller.sine);
-      break;
+        controller.rotation.Rotate_along_axis_Orthonormalize(0, controller.sine);
+        break;
       case "down":
-      controller.rotation.Rotate_along_axis_Orthonormalize(0, [controller.sine[0], -controller.sine[1]]);
-      break;      
+        controller.rotation.Rotate_along_axis_Orthonormalize(0, [controller.sine[0], -controller.sine[1]]);
+        break;
       case "w":
-      controller.position.subtract(controller.rotation.nominator[2]);
-      break;
+        controller.position.add(controller.rotation.nominator[2], 1);
+        break;
       case "s":
-      controller.position.subtract(controller.rotation.nominator[2].scalarProduct(-1));
-      break
+        controller.position.add(controller.rotation.nominator[2], -1);
+        break
+      case "d":
+        controller.position.add(controller.rotation.nominator[0], 1);
+        break;
+      case "a":
+        controller.position.add(controller.rotation.nominator[0], -1);
+        break
     }
 
     // if (event.ctrlKey) {

@@ -75,7 +75,7 @@ export class Vec{ // looks like I need 2 and 3 dimensions to show off this (adap
 	
 	innerProductM(o:Vec[],k:number):number{
 		let sum=0
-		for(let i=0;i++;i<this.v.length){
+		for(let i=0;i<this.v.length;i++){
 			sum+=this.v[i]*o[i].v[k]
 		}		
 		return 0
@@ -105,6 +105,11 @@ export class Vec{ // looks like I need 2 and 3 dimensions to show off this (adap
 		return new Vec([this.v, other.v])
 	}
 	
+	add(other: Vec, weight?:number) {
+		for(let i=0;i<this.v.length;i++){
+			this.v[i]+=other.v[i]*(weight||1)
+		}		
+	}
 }
 
 export class Vec2 extends Vec{
@@ -340,9 +345,9 @@ export class Matrix_Rotation extends Matrix{
 	// Looks like Quaternions and Rotation Matrix belong together, while other Matrices don't
 	MUL_left_transposed(v:Vec):Vec{
 		let res=new Vec([[0,0,0]])
-		for(let i=0;i++;i<this.nominator.length){
-			for(let k=0;k++;k<this.nominator.length){			
-				res[i]=this.nominator[k][i] //.innerProductM(trans,i)  // base would want vector add, while JRISC wants inner product
+		for(let k=0;k<this.nominator.length;k++){
+			for(let i=0;i<this.nominator[k].v.length;i++){
+				res[i]=this.nominator[k].v[i] //.innerProductM(trans,i)  // base would want vector add, while JRISC wants inner product
 			}
 		}
 		return res
@@ -352,39 +357,37 @@ export class Matrix_Rotation extends Matrix{
 	// It only affects two oridinates
 	// Only these need to be modified, but all be read
 	// Only reason for this is here is this rotation!
+	// The Camera is not rotated along world axes, but along the camera axes.
+	// Thus the generator is multiplied from right. This allows me to add vectors.
 	Rotate_along_axis_Orthonormalize(axis:number, sine:number[]){
 		// rotate an normalize
 		// orthogonal: 3 products. Correction is shared 50:50
 		//let cosine=Math.sqrt(1-sine*sine)
-		let n:number[][]
+
+		// Rotate by mixing two axes
+		let n:Vec[] = []
+		n[axis]=this.nominator[axis] // copy the axis
+		for(let i=0;i<2;i++){ // copy the other two axes
+			let others=[(axis+1+i)%3,(axis+2-i)%3]
+			n[others[0]]=this.nominator[others[0]].scalarProduct(sine[0]).subtract(this.nominator[others[1]].scalarProduct(sine[1])) // rotate the other two axes
+		}
+
+		// normalize
 		for(let i=0;i<3;i++){ // left transpose = right normal? I do row major as normal. So second index [i] just goes through. Right index mates.
-			let k=(axis+1)%3,l=(k+1)%3, n:number[], sqs=Math.pow(this.nominator[axis][i],2)
-			for(let j=0;j<2;j++){ // Maybe I should have both versions available
-				n[k][i]+=sine[0]*this.nominator[k][i]+sine[1]*this.nominator[l][i]
-				k=l,l=(k+1)%3;sine[1]=-1*sine[1]
-				sqs+=Math.pow(n[k],2)
-			}
-			let rsq=1/Math.sqrt(sqs) // see Quake for Taylor series
-			n[k][i]*=rsq
-			n[axis][i]=this.nominator[k][i]
+			n[i]=n[i].scalarProduct(1-(1/2)*n[i].innerProduct(n[i]))
 		}
+
+		// orthogonalize
+		// Inner products
 		let sums:number[]=[]	// So do I need a transpose?	
-		for(let i=0;i<3;i++){
-			let sum=0,j=(i+1)%3
-			for(let k=0;k<3;){
-				sum+=n[k][i]*n[k][j]
-			}
-			sums[i]=sum
+		for(let i=0;i<3;i++){   // between each pair of axes (only once)
+			let j=(i+1)%3
+			sums[i]=n[i].innerProduct(n[j])/2 // inner product    . 2 is for fair removal of the cross-talk
 		}
+		// compensate any "cross-talk" to first order
 		for(let i=0;i<3;i++){
-			let sum=0,j=(i+1)%3,l=(j+1)%3
-			for(let k=0;k<3;k++){
-				this.nominator[k][i]=n[k][j]
-				if (k!=axis){
-					this.nominator[k][i]-=sums[i]*n[k][j]/2
-					this.nominator[k][i]-=sums[l]*n[k][l]/2
-				}
-			}
+			let j=(i+1)%3,k=(j+1)%3
+			this.nominator[i]=n[i].subtract(n[j].scalarProduct(sums[i])).subtract(n[k].scalarProduct(sums[k]))
 		}
 	}
 }

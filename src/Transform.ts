@@ -29,3 +29,4 @@ export class Mesh {
       return  c.rotation.MUL_left_transposed( v.subtract(c.position)  )as Vec3
     });
 }
+}

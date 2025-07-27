@@ -1,4 +1,5 @@
 import { Vec3,Matrix, Matrix2, Vec2, Vec } from './clipping.js';
+import { SimpleImage } from './GL.js';
 import {Camera_in_stSpace, Mapper,CameraViewvector} from './infinite_plane_mapper.js'
 import { EdgeShader, PixelShader } from './PixelShader.js';
 // The rasterizer needs to projected points from the beam tree. The tree is the start, and the polygon only lives in the leaf
@@ -621,7 +622,7 @@ class Polygon_in_cameraSpace {
 		// 	let v = this.vertices[a[1]]
 		// 	v.outside
 		// })
-		let m = new Mapper()   // our interface to the hardware dependent side. Used for the whole mesh
+		let m = new Mapper(new SimpleImage())   // our interface to the hardware dependent side. Used for the whole mesh
 
 		// The pixel shader does not care about the real 3d nature of the vectors
 		// It just knows that it has to divide everything by z (= last element)
