@@ -19,7 +19,7 @@ import { Vec3,Vec } from "./clipping";
 // component z=2 is the bias due to how the view vector is [x,y,1]
 import {Matrix} from "./clipping"
 //import { SimpleImage } from "./GL";
-import { field2Gl } from './GL.js'
+import { field2Gl, SimpleImage } from './GL.js'
 
 export class CameraViewvector{
 	cameraPosition: Matrix
@@ -179,12 +179,12 @@ export class Mapper{
 	image: HTMLImageElement;
 	imageData: ImageData;
 	texture_inspected: HTMLCanvasElement;
-	source_pitch:number
-	target_pitch:number
-	frame: SimpleImage;
+	source_width:number
+	target_width:number
+	frame= new SimpleImage();
 
-	constructor(frame: SimpleImage){
-		this.frame=frame
+	constructor(){
+	
 		// This is a prototype. I putt everything into DOM
 		// release to Atari Jaguar!
 		const texture_inspected=document.getElementById("texture") as HTMLImageElement
@@ -195,32 +195,39 @@ export class Mapper{
     	//this.texture_inspected.onload = this.getImageData  // Asset loading needs to move to top level
 
 		//this.image.src = "texture.png";
-		
+
+		const frame_inspected=document.getElementById("Canvas2d") as HTMLCanvasElement
+		this.frame.pixel=new Uint8ClampedArray(frame_inspected.width*frame_inspected.height*4)
+		this.target_width=frame_inspected.width
+		this.frame.height=frame_inspected.height
+		// Elements are so fat, we pick cherries
 	}
 	putpixel(source: number[], target: number[]){
-		const s=(Math.floor(source[0])+this.source_pitch*Math.floor(source[1]))*4
-		const t=(Math.floor(target[0])+this.target_pitch*Math.floor(target[1]))*4
+		const s=(Math.floor(source[0])+this.source_width*Math.floor(source[1]))*4
+		const t=(Math.floor(target[0])+this.target_width*Math.floor(target[1]))*4
 
 		for(let i=0;i<4;i++){
 			this.frame.pixel[t+i]=this.imageData.data[s+i]
 		}
 	}
 
-	getImageData(texture_inspected) {  // binding
+	getImageData(texture_inspected: HTMLImageElement) {  // binding
 
-			this.texture_inspected=document.getElementById("texture_check") as HTMLCanvasElement
-			const ctx=this.texture_inspected.getContext("2d")
-			ctx.drawImage(texture_inspected,0,0)
+		this.texture_inspected = document.getElementById("texture_check") as HTMLCanvasElement
+		this.texture_inspected.width = texture_inspected.width
+		this.texture_inspected.height = texture_inspected.height
+		const ctx = this.texture_inspected.getContext("2d")
+		ctx.drawImage(texture_inspected, 0, 0)
 
 
 		// an intermediate "buffer" 2D context is necessary
-		
+
 		//const ctx = this.texture_inspected.getContext("2d")
 		//ctx.getContextAttributes()
-		
-		const obj={ pixelFormat :"rgba-unorm8"}  // dated lib.dom.d.ts?? 2025-07-18
-		this.imageData= ctx.getImageData(0, 0, this.texture_inspected.width, this.texture_inspected.height,obj as ImageDataSettings);
-		this.source_pitch=this.texture_inspected.width
+
+		const obj = { pixelFormat: "rgba-unorm8" }  // dated lib.dom.d.ts?? 2025-07-18
+		this.imageData = ctx.getImageData(0, 0, this.texture_inspected.width, this.texture_inspected.height, obj as ImageDataSettings);
+		this.source_width = texture_inspected.width  // no style on the image. Browser extracts size after loading the image
 	}
 	drawCanvas(){
 		const canvas = document.getElementById("Canvas2d") as HTMLCanvasElement;

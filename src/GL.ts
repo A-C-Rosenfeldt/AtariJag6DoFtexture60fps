@@ -199,7 +199,7 @@ export class Squeeze{
   extent?: number[]  // todo: switch to this. I think a class with a single member is no anit-pattern  . I guess TypeScript has something for this
 }
 export class SimpleImage extends Squeeze {
-  pixel: Uint8Array
+  pixel: Uint8ClampedArray
   span?: Uint8Array  // not used .  not so simple anymore
 }
 
