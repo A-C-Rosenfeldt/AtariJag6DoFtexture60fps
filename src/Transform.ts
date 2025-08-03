@@ -10,7 +10,7 @@ export class Camera {
     for (let i = 2; i >= 0; i--) {
       this.rotation.nominator[i] = new Vec3([nos]); // Vec3 has a copy-constructor
       nos.shift();
-      nos.concat(0);
+      nos=nos.concat(0);
     }
 
 
@@ -26,7 +26,8 @@ export class Mesh {
 
   transform(c:Camera) {
     this.transformed= this.polygon.map((v) => {
-      return  c.rotation.MUL_left_transposed( v.subtract(c.position)  )as Vec3
+      const rotated=c.rotation.mul_left_vec( v.subtract(c.position) )  
+      return  rotated as Vec3 ;  // cast should work
     });
 }
 }

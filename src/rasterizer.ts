@@ -171,7 +171,7 @@ export class Polygon_in_cameraSpace {
 	constructor(m: Mapper){
 		this.m =m
 		// for rasterization of clipped edges ( potentially very long) we want max precision (similar to vertices on opposed corners). So we expand the fraction
-		let whyDoWeCareBelo16=this.screen.map(s=> Math.ceil(Math.log2(s))  )   // the function is a native instruction in JRISC. Okay , two instructions. need to adjust the bias
+		//let whyDoWeCareBelo16=this.screen.map(s=> Math.ceil(Math.log2(s))  )   // the function is a native instruction in JRISC. Okay , two instructions. need to adjust the bias
 
 	}
 
@@ -471,7 +471,7 @@ export class Polygon_in_cameraSpace {
 
 	// This may be useful for beam tree and non-convex polygons
 	// I don't think that it is light enough to double check clipping after rounding errors
-	findCut(v0: Vertex_in_cameraSpace, v1: Vertex_in_cameraSpace): Array<number> {
+	private findCut(v0: Vertex_in_cameraSpace, v1: Vertex_in_cameraSpace): Array<number> {
 		// find cut between two vertices. This is a 2d cut, so it is not a 3d cut. It is a 2d cut in the viewing frustum
 		let p0 = v0.onScreen.position
 		let p1 = v1.onScreen.position
@@ -503,7 +503,8 @@ export class Polygon_in_cameraSpace {
 		*/
 
 	private edge_crossing_two_borders(vertex: Vertex_in_cameraSpace[], pattern4: number):Item[] {
-		let slope = this.get_edge_slope_onScreen(vertex), border=0
+		const slope = this.get_edge_slope_onScreen(vertex)
+		let border_count=0
 
 		// with zero border crossing, no edge is visible. Or when both vertices are in front of the near plane. For speed
 		if (vertex[0].inSpace[2]<this.near_plane && vertex[1].inSpace[2]<this.near_plane) return [] //false
@@ -511,7 +512,7 @@ export class Polygon_in_cameraSpace {
 		// some borders cannot be crossed and all corners are on the same side, but which? Sign does not make much sense here
 		for (let border = 0; border < 4; border++) {  // go over all screen borders
 			if ((pattern4 >> border & 1) != (pattern4 >> (border + 1) & 1)) {   // check if vertices lie on different sides of the 3d frustum plane
-				border++
+				border_count++
 			}
 		}
 
@@ -535,19 +536,19 @@ export class Polygon_in_cameraSpace {
 		}
 		*/
 
-		let on_screen=new Array<Item>()
+		const on_screen=new Array<Item>()
 		{ 
 			for(let j=0;j<2;j++)
 			{
 				// Calculate pixel cuts for the rasterizer . we don't care for cuts .. I mean we do, we need them for the beam tree. But with a single polygon we only need y_pixel
 				// code duplicated from v->edge
 				let coords = [0, 0]
-				coords[border & 1] = (border & 2) - 1;
-				coords[~border & 1] = (slope[2] + ((border & 2) - 1) * slope[border & 1]) / slope[~border & 1];  // I do have to check for divide by zero. I already rounded to 16 bit. So MUL on corners is okay.
+				coords[border_count & 1] = (border_count & 2) - 1;
+				coords[~border_count & 1] = (slope[2] + ((border_count & 2) - 1) * slope[border_count & 1]) / slope[~border_count & 1];  // I do have to check for divide by zero. I already rounded to 16 bit. So MUL on corners is okay.
 
 				let o=new Onthe_border()
-				o.border=border
-				o.pixel_ordinate_int=coords[~border & 1]
+				o.border=border_count
+				o.pixel_ordinate_int=coords[~border_count & 1]
 				on_screen.push(o)
 				let e=new Edge_Horizon()
 				e.slope=new Vec2([slope.slice(0,2)])
@@ -559,24 +560,24 @@ export class Polygon_in_cameraSpace {
 		return on_screen
 	}
 
-	isEdge_visible(vertices: Array<Vertex_in_cameraSpace>): number {
+	private isEdge_visible(vertices: Array<Vertex_in_cameraSpace>): number {
 		// rough and fast
-		let z = vertices[0].inSpace[2]
+		const z = vertices[0].inSpace[2]
 		for (let orientation = 0; orientation < 2; orientation++) {
-			let xy = vertices.map(v => v.inSpace[orientation])
+			const xy = vertices.map(v => v.inSpace[orientation])
 			for (let side = 0; side < 2; side++) {
 				if (+xy[0] > z && +xy[1] > z) return 0 //false
 				if (-xy[0] > z && -xy[1] > z) return 0 //false
 			}
 		}
 		// precise and unoptimized
-		let v0 = new Vec3([vertices[0].inSpace])
-		let edge = new Vec3([vertices[0].inSpace, vertices[1].inSpace])   // todo: consolidate with edges with one vertex on screen
-		let cross = v0.crossProduct(edge) // Like a water surface
-		let corner_screen = [0, 0]
-		let bias = corner_screen[2] * cross.v[2]
+		const v0 = new Vec3([vertices[0].inSpace])
+		const edge = new Vec3([vertices[0].inSpace, vertices[1].inSpace])   // todo: consolidate with edges with one vertex on screen
+		const cross = v0.crossProduct(edge) // Like a water surface
+		const corner_screen = [0, 0]
+		const bias = corner_screen[2] * cross.v[2]
 
-		let head = [false, false]  // any corner under water any over water?
+		//let head = [false, false]  // any corner under water any over water?
 		let pattern4 = 0, inside = 0
 		for (corner_screen[1] = -1; corner_screen[1] <= +1; corner_screen[1] += 2) {
 			for (corner_screen[0] = -1; corner_screen[0] <= +1; corner_screen[0] += 2) {
@@ -589,11 +590,11 @@ export class Polygon_in_cameraSpace {
 
 		if (pattern4 == 15 || pattern4 == 0) return 0
 		// check for postive z
-		let base = new Vec3([vertices[0].inSpace])
-		let direction = new Vec3([vertices[0].inSpace, vertices[1].inSpace]);
+		const base = new Vec3([vertices[0].inSpace])
+		const direction = new Vec3([vertices[0].inSpace, vertices[1].inSpace]);
 		// Gramm-Schmidt
-		let corrector = direction.scalarProduct(base.innerProduct(direction) / direction.innerProduct(direction));
-		let close = vertices[0].inSpace[2] - corrector.v[2] // Does nearest point have positive z?  full equation. base - corrector  
+		const corrector = direction.scalarProduct(base.innerProduct(direction) / direction.innerProduct(direction));
+		const close = vertices[0].inSpace[2] - corrector.v[2] // Does nearest point have positive z?  full equation. base - corrector  
 		if (close < 0) return 0
 
 		// compfort repeat for caller
@@ -608,8 +609,9 @@ export class Polygon_in_cameraSpace {
 
 	// The beam tree will make everything convex and trigger a lot of MUL 16*16 in the process. Code uses Exception patter: First check if all vertices are convex -> break . Then check for self-cuts => split, goto first . ZigZag concave vertices. Find nearest for last. Zig-zag schould not self cut? 
 	// For the MVP, we do best effort for polygons with nore than 3 edges: Ignore up slopes. Do backface culling per span. 
-	rasterize_onscreen(vertex: Array<Item>, Payload: Matrix) {  // may be a second pass like in the original JRISC. Allows us to wait for the backbuffer to become available.
-		let l = vertex.length, min = [0, -1]   //weird to proces second component first. Rotate?
+	private rasterize_onscreen(vertex: Array<Item>, Payload: Matrix) {  // may be a second pass like in the original JRISC. Allows us to wait for the backbuffer to become available.
+		const l = vertex.length
+		let min = [0, -1]   //weird to proces second component first. Rotate?
 
 		function instanceOfPoint(object: any): object is Point {
 			return 'get_y' in object;
@@ -622,7 +624,7 @@ export class Polygon_in_cameraSpace {
 
 		let i = min[0]
 		let v = vertex[i]
-		let active_vertices = [[0, i], [0, i]] // happens in loop first iteration, (i + l - 1) % l], [i, (i + 1) % l]]
+		const active_vertices = [[0, i], [0, i]] // happens in loop first iteration, (i + l - 1) % l], [i, (i + 1) % l]]
 
 		// active_vertices.forEach(a => {
 		// 	let vs = a.map(b => this.vertices[b])
@@ -639,18 +641,18 @@ export class Polygon_in_cameraSpace {
 		// It just knows that it has to divide everything by z (= last element)
 		// Matrix is trans-unit. There is no reason for it to be square
 
-		let ps=new PixelShader( Payload )  // InfiniteCheckerBoard is PixelShader
+		const ps=new PixelShader( Payload )  // InfiniteCheckerBoard is PixelShader
 
 		// this is probably pretty standard code. Just I want to explicitely show how what is essential for the inner loop and what is not
 		// JRISC is slow on branches, but unrolling is easy (for my compiler probably), while compacting code is hard. See other files in this project.
 
-		let slope_accu_c = [[0, 0], [0, 0]]  // (counter) circle around polygon edges as ordered in space / level-mesh geometry
-		let slope_int = [0, 0]
+		const slope_accu_c = [[0, 0], [0, 0]]  // (counter) circle around polygon edges as ordered in space / level-mesh geometry
+		//let slope_int = [0, 0]
 		// let slope_accu_s=[[0,0],[0,0]]  // sorted by x on screen  .. uh pre-mature optimization: needs to much code. And time. Check for backfaces in a prior pass? Solid geometry in a portal renderer or beam tree will cull back-faces automatically
 		for (let y = (v as Point).get_y(); y < this.screen[1]; y++) {  // the condition is for safety : Todo: remove from release version			
 			let width=0
 			for (let k = 0; k < 2; k++) {
-				if (y == vertex[active_vertices[k][1]][1]) {	// todo: duplicate this code for the case that on vertex happens on one side
+				if (y < vertex[active_vertices[k][1]][1]) {	// todo: duplicate this code for the case that on vertex happens on one side
 					Bresenham[k][1] += Bresenham[k][0] // on JRISC this sets flags .. but I still need to persist them. A useless. Just BitTest on sign. Single cycle to 
 					let ca=Bresenham[k][1] < 0   // Bresenham one line in advance would bloat code only by one instruction 
 					if (ca) {
@@ -735,7 +737,7 @@ export class Polygon_in_cameraSpace {
 					// Bresenham still needs integer slope
 					slope_accu_c[k] = [d[0] > 0 ? d[1] / d[0] : this.screen[1] * Math.sign(d[1]), x_at_y_int]
 
-					let e=new EdgeShader( v_val[2] , x_at_y_int , slope_accu_c[k][0] )
+					const e=new EdgeShader( v_val[2] , x_at_y_int , slope_accu_c[k][0] )
 					ps.es[ k ]=e 
 					// Alternatives
 					// ps.inject_checkerboard(k) 
@@ -770,9 +772,9 @@ export class Polygon_in_cameraSpace {
 		} //while (active_vertices[0][1] != active_vertices[1][1]) // full circle, bottom vertex found on the fly		
 	}
 	private edge_fromVertex_toBorder(vs: Vertex_in_cameraSpace[], l: number):PointPointing {
-		let slope = this.get_edge_slope_onScreen(vs).slice(0, 2); // 3d cros  product with meaningful sign. Swap x,y to get a vector pointint to the outside vertex. float the fractions
+		const slope = this.get_edge_slope_onScreen(vs).slice(0, 2); // 3d cros  product with meaningful sign. Swap x,y to get a vector pointint to the outside vertex. float the fractions
 
-		var abs=slope.map(s=>Math.abs(s))
+		const abs=slope.map(s=>Math.abs(s))
 
 		switch( this.mode){
 			case modes.NDC:
@@ -859,23 +861,23 @@ export class Polygon_in_cameraSpace {
 		return vs[1].onScreen;
 	}
 
-	get_edge_slope_onScreen(vertex: Array<Vertex_in_cameraSpace>): Array<number> {
+	private get_edge_slope_onScreen(vertex: Array<Vertex_in_cameraSpace>): Array<number> {
 		/*
 		view Vector(x,y,1)
 		edge= v1-v0
 		normal= v0 x edge
 		implicit=normal * view
 		 */
-		let view = new Vec3([vertex[0].inSpace])
-		let edge = new Vec3([vertex[0].inSpace, vertex[1].inSpace])
-		let normal = view.crossProduct(edge)  // The sign has a meaning 
+		const view = new Vec3([vertex[0].inSpace])
+		const edge = new Vec3([vertex[0].inSpace, vertex[1].inSpace])
+		const normal = view.crossProduct(edge)  // The sign has a meaning 
 
 		// normalize for jrisc
 		// mul.w will be applied to x and y components only . 
 		// I need to know the screen expontent . x and y on screen need the same exponent to match bias in implicict function.
 		// Ah, basicall 16.16
-		let list=normal.v.slice(0,2). map(s=> Math.ceil(Math.log2(s))  )  ; // z = bias and can stay 32 bit because FoV ( Sniper view? ) will always keep z-viewing compontenc < 16 bits for 8 bit pixel coords 
-		let f=Math.pow(2,16-Math.max(...list)), n=normal.v.map(c=>c*f)   ; // Bitshift in JRISC. SHA accepts sign shifter values!   
+		const list = normal.v.slice(0,2).map(s => Math.ceil(Math.log2(s)))  // z = bias and can stay 32 bit because FoV ( Sniper view? ) will always keep z-viewing compontenc < 16 bits for 8 bit pixel coords 
+		const f = Math.pow(2, 16 - Math.max(...list)), n = normal.v.map(c => c * f)   // Bitshift in JRISC. SHA accepts sign shifter values!   
 
 		// Even for a float slope 16.8 I would float the fraction before-hand
 		// I cannot have two inner loops. So vertex-vertex needs to use floats and may hit the border before the vertex due to rounding

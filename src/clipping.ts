@@ -166,11 +166,26 @@ export class Matrix{
 	// So here the right Matrix is seen as a collection of vectors. Somehow this works great to interpolate, but badly for rotation.
 	// Thinking of column major for the vector. We store along columns, we mmult along columns
 	// But obviously here, Matrix is row major, and the vector is considered trans.
+
+	// inner product works well to let the camera coordinate system pull in world coordinates
+	// this means that this Matrix has rows. So the vectors are rotated by 90° (transposed). Weird.
+	// Rotating the camera coordinate system, cannot use the inner product.
+	// But I just don't write it a Matrix. Just vector adds. So that I can skip some zeroes.
 	mul_left(trans:Vec[]):Matrix{		
-		let res=new Matrix()
+		let res=new Matrix(this.nominator.length)
 		let k=0
-		for(let i=0;i++;i<this.nominator.length){
+		for(let i=0;i<this.nominator.length;i++){
 			res.nominator[i].v[k]=this.nominator[i].innerProductM(trans,k)  // base would want vector add, while JRISC wants inner product
+		}
+		return res
+	}
+
+	// for some reason Matrix makes the code unreadable in many places. VertexId as Matrix dimension makes no sense
+	mul_left_vec(trans:Vec):Vec{		
+		let res=new Vec([[this.nominator.length]])
+		//let k=0
+		for(let i=0;i<this.nominator.length;i++){
+			res.v[i]=this.nominator[i].innerProduct(trans)  // base would want vector add, while JRISC wants inner product
 		}
 		return res
 	}
@@ -192,22 +207,25 @@ export class Matrix{
 	// So we do full precision z on the edge and then affine ( style of 1993 ). For sub spans, ah I get it. Interpolation is naturally an integer thing. We want to use the full machine integer range for this.
 	// So both, texture subspans and z buffer, want the viewing frustum. It feels weird to keep dependencies for spans, like I would run along the span, and then suddenly will have to MUL to up the precision at one point,
 	// or generally pull in more precision on a lot of.. But hey, grazing incidence is not suited to subspans. So I would fall back to full software and full precision, anyway.
-	static mul(A:Vec[][]):Matrix{		
-		let res=new Matrix()
-		for(let j=0;j++;j<A[0].length){
-		for(let i=0;i++;i<A[0].length){
-			res[i][j]=0
-			for(let k=0;k++;k<A[1].length){
-				res[i][j]+=A[0][i][k]*A[1][k][j]  // base would want vector add, while JRISC wants inner product
-				// for Vector Add, we want the last index select the component
-				// So no matter what picture you have in your head ( row or column, left or right multiply),
-				// Like in OpenGL Vectors would need to live in the right factor ( the inner loop ) as input
-				// Output uses the other index
+
+	// Matrix multiplication cannot utilize inner product. It has to break up vectors of one of the factors.
+	// Do we need transposed versions? This is used only for uv -> st mapping, so no.
+	static mul(A: Vec[][]): Matrix {
+		let res = new Matrix()
+		for (let j = 0; j++; j < A[0].length) {
+			for (let i = 0; i++; i < A[0][j].v.length) {
+				res.nominator[i][j] = 0
+				for (let k = 0; k++; k < A[1].length) {
+					res.nominator[i][j] += A[0][i].v[k] * A[1][k].v[j]  // base would want vector add, while JRISC wants inner product
+					// for Vector Add, we want the last index select the component
+					// So no matter what picture you have in your head ( row or column, left or right multiply),
+					// Like in OpenGL Vectors would need to live in the right factor ( the inner loop ) as input
+					// Output uses the other index
+				}
 			}
 		}
-	}
 		return res
-	}	
+	}
 }
 
 export class Matrix2 extends Matrix{
@@ -339,15 +357,16 @@ Just this gets a little weird for screen corners. Like I would raytrace exactly 
 
 export class Matrix_Rotation extends Matrix{
 	// for rotation matrices this is the same as multiplying with inverse
+	// I always multiply from the left ( MAtrix=rows aka row major ). Vectors are on the right and "vertical"
 	// First version only uses vectors because beam tree has a lot of rays to trace which are not projected
 	// I want to leak the implementation because I count the bits. It is research code!
 	// transpose only confuses me with other Matrices
 	// Looks like Quaternions and Rotation Matrix belong together, while other Matrices don't
-	MUL_left_transposed(v:Vec):Vec{
+	MUL_left_transposed(v:Vec):Vec{  // Rot Matrix in column major makes more sense as it pushes the coordinate system into world space
 		let res=new Vec([[0,0,0]])
 		for(let k=0;k<this.nominator.length;k++){
 			for(let i=0;i<this.nominator[k].v.length;i++){
-				res[i]=this.nominator[k].v[i] //.innerProductM(trans,i)  // base would want vector add, while JRISC wants inner product
+				res[i]+=this.nominator[k].v[i] * v[k] //.innerProductM(trans,i)  // base would want vector add, while JRISC wants inner product
 			}
 		}
 		return res
@@ -503,7 +522,7 @@ class Camera extends Player{ // camera
 
 
 	// pre multiply matrix or not? 
-	pixel_projection_texel(pixel:number[]){
+	private pixel_projection_texel(pixel:number[]){
 		var backwards_ray=new Vec3( [[ this.fov,pixel[0]-screen[0]+.5  , pixel[1]-screen[0]+.5 ]] )
 		this.rotation.mul_left([backwards_ray])  // I support both directions of rotations nativeley because that is how I think of them, generally (when solving equations, or physcs, or synergy with HBV). SO3 just does not have a common denominator in neither direction.
 		// something position?
@@ -512,7 +531,7 @@ class Camera extends Player{ // camera
 	 fov=256 // It hurts me that magic values help with float. OpenGL runs on float hardware and combines this into one Matrix
 	// I need a start pixel of the polygon for the rasterizer
 	// I know that it feels weird that edges and texture are then projected backwards
-	vertex_projection_pixel(vertex:number[]){
+	private vertex_projection_pixel(vertex:number[]){
 		let forward_ray=new Vec3([vertex,this.position])
 		let fr=this.rotation.MUL_left_transposed(forward_ray)
 		let pixel=[ Math.floor(fr[1]*this.fov/fr[0]), Math.floor(fr[2]*this.fov/fr[0]) ]
@@ -530,7 +549,7 @@ class Camera extends Player{ // camera
 	// short refresher: After transformation we don't store 1/z, but we subtract the far plane to use the whole scale (and that is the only reason: Memory is expensive!).
 	// this gives us a far plane. I see how 1/z still has to be linear after this substraction
 	// Perspective correction works by using W also for UV just as for the other coordinates. W is the unbiased Z and U and V have not been transformed.
-	vertex_projection_clip(forward_ray:Vec3){
+	private vertex_projection_clip(forward_ray:Vec3){
 		var clipcode:number[]=[]
 		for(let side=0;side<4;side++){
 			var pyramid_normal:Vec3

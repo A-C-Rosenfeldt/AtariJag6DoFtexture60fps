@@ -64,8 +64,7 @@ export class Camera_in_stSpace{
 	}
 
 	uvz_from_viewvector(C:number[]):Matrix{
-		let st_from_viewvector=this.infinte_checkerBoard_m(C)
-
+		const st_from_viewvector=this.infinte_checkerBoard_m(C)
 
 		// the rest should result in new PixelShader( at_bottomRight_of_Center, gradient )  // InfiniteCheckerBoard is PixelShader
 		// view vector has fixed z component => at_bottomRight_of_Center
@@ -75,7 +74,7 @@ export class Camera_in_stSpace{
 		// UV mapping is great to map one rectangular texture onto a mesh
 		// But we don't depend on it here.
 		// what mesh?    // First occurence of matrix mul. Not sure about interface. Clearly I need this for rotation (frame to frame), and generally transformation (within frame)
-		let uvz_mapped=new Matrix()
+		const uvz_mapped=new Matrix()
 		// the first row is the w component of homogenouc coordinates. It feeds the 1/ve[2] through
 		uvz_mapped.nominator=	[new Vec3( [[0,0,1]] ) ].concat( this.UVmapping_fromST.map(p=>new Vec3([p])) , new Vec3( [this.z] ));
 			// Everone uses the general proof that 1/z is linear in screen space (far plane can be substracted.). Sorry that I cannot utilize my: "just calculate with fractions as in school!"
@@ -84,8 +83,7 @@ export class Camera_in_stSpace{
 			// for inter-polygon comparison ( z-buffer ) we need a standard. So the multiplication with [s.z,t.z.0] 
 			// with viewVector should fix scaling
 			// with cameraPostion should fix offset  ( both indirectly through cv.nominator)
-		let uvz_from_viewvector=new Matrix //CV
-		uvz_from_viewvector=Matrix.mul( [uvz_mapped.nominator, st_from_viewvector.nominator]  )
+		const uvz_from_viewvector=Matrix.mul( [uvz_mapped.nominator, st_from_viewvector.nominator]  )
 		//cv_p.viewVector=Matrix.mul( [mesh.nominator, cv.viewVector.nominator] )
 
 		// We may need to measure if it is faster to have two different 1/z or to compensate the s,t nominators
@@ -105,11 +103,11 @@ export class Camera_in_stSpace{
 	}
 
 	infinte_checkerBoard(C:number[],V:number[]):number[]{
-		let c=this.transform_into_texture_space(C,this.UVmapping_Offest.concat(0)) // pos point of camera
-		let v=this.transform_into_texture_space(V) // view vector  ( many vectors for one camera ? )
+		const c=this.transform_into_texture_space(C,this.UVmapping_Offest.concat(0)) // pos point of camera
+		const v=this.transform_into_texture_space(V) // view vector  ( many vectors for one camera ? )
 
-		let tau=c[2]/v[2]     // todo: use law of ascocitaten to change order of matrix mul and div
-		let texel=[0,0]
+		const tau=c[2]/v[2]     // todo: use law of ascocitaten to change order of matrix mul and div
+		const texel=[0,0]
 		for(let st=0;st<2;st++){
 			texel[st]=c[st] + tau * v[st]     
 		}
@@ -119,7 +117,7 @@ export class Camera_in_stSpace{
 
 	// like mode-z on SNES (tm)
  	infinte_checkerBoard_m(C:number[]):Matrix{
-		let cv=new CameraViewvector
+		const cv=new CameraViewvector
 		cv.cameraPosition.nominator[0]=new Vec([this.transform_into_texture_space(C),this.UVmapping_Offest.concat(0)]) // pos point of camera relative to UV origin on st plane (so that we can use a texture atlas)
 		cv.viewVector=this.transform_into_texture_space_m() // view vector  ( many vectors for one camera ? )
 
@@ -147,17 +145,17 @@ export class Camera_in_stSpace{
 	}
  
 	transform_into_texture_space(v:number[],UV_offset?:number[]):number[]{
-		let v3=UV_offset!=null ? new Vec3([v,UV_offset]): new Vec3([v])
-		let coords=[0,0,0]
+		const v3=UV_offset!=null ? new Vec3([v,UV_offset]): new Vec3([v])
+		const coords=[0,0,0]
 		coords[2]=this.normal.innerProduct( v3  ) 
-		for(let st=0;st<2;st++){
+		for(let st=0;st<2;st++){  // this is actually a Matrix multiplication
 			coords[st]=this.only[st].innerProduct( v3 )
 		}
 		return coords
 	}
 
 	transform_into_texture_space_m():Matrix{
-		let m=new Matrix()
+		const m=new Matrix()
 		m.nominator=[...this.only,this.normal]
 		return m
 	}
