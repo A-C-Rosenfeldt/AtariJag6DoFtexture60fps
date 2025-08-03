@@ -1,9 +1,9 @@
-import { Matrix, Matrix_Rotation, Vec3 } from "./clipping";
+import { Matrix, Matrix_Rotation, Vec3 } from "./clipping.js";
 
 export class Camera {
   sine=[Math.cos(0.1),Math.sin(0.1)]
   position = new Vec3([[0, 0, -5]]); // input device => position
-  rotation = new Matrix_Rotation(); // this is actually the rotation of the scene, not the camera. It is the transpose.
+  rotation = new Matrix_Rotation(3); // this is actually the rotation of the scene, not the camera. It is the transpose.
   constructor() {
     // I did not need unity matrix elsewhere. IF that happens: move to clipping.ts
     let nos = [0, 0, 1]; // Matlab equivalent: eye(3)

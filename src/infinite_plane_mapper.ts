@@ -14,10 +14,8 @@ The other part stays as it is. That is okay because it is exactly the same now f
 
 */
 
-import { Vec3,Vec } from "./clipping";
+import { Vec3,Vec,Matrix } from "./clipping.js";
 
-// component z=2 is the bias due to how the view vector is [x,y,1]
-import {Matrix} from "./clipping"
 //import { SimpleImage } from "./GL";
 import { field2Gl, SimpleImage } from './GL.js'
 

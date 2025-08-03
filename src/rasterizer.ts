@@ -105,10 +105,13 @@ class Onthe_border extends Corner{
 }
 
 // Even without lazy precision, clipping and mapping tends to go back to the rotated vertex
-class Vertex_in_cameraSpace {
-	inSpace: Array<number>
+export class Vertex_in_cameraSpace {
+	inSpace: Array<number>   // Not a Vec3 because projection deals so differently with the z-component
 	outside: boolean
 	onScreen: PointPointing
+	constructor(inSpace: Array<number>) {
+		this.inSpace = inSpace;
+	}
 }
 
 enum modes{NDC,guard_band};
@@ -142,7 +145,7 @@ class Cyclic_Collection<T extends any>  {
 	
 }
 
-class Polygon_in_cameraSpace {
+export class Polygon_in_cameraSpace {
 	near_plane = 0.001
 	// vertex_to_vertex(){} transformation happens elsewhere
 	// vertex_to_clip(up:boolean){}  this rasterizer does not work with clipping because edges become first class citizens
@@ -163,8 +166,10 @@ class Polygon_in_cameraSpace {
 	screen_FoV =[8,5,8]
 
 	epsilon = 0.001  // epsilon depends on the number of bits goint into IMUL. We need to factor-- in JRISC . So that floor() will work.
+	readonly m: Mapper;
 
-	constructor(){
+	constructor(m: Mapper){
+		this.m =m
 		// for rasterization of clipped edges ( potentially very long) we want max precision (similar to vertices on opposed corners). So we expand the fraction
 		let whyDoWeCareBelo16=this.screen.map(s=> Math.ceil(Math.log2(s))  )   // the function is a native instruction in JRISC. Okay , two instructions. need to adjust the bias
 
@@ -386,6 +391,9 @@ class Polygon_in_cameraSpace {
 				else { // In this case, use the shortest path between the two vertices. This can endure the rounding errors from clipping. This should work for the BSP-tree.
 					// In the MVP I will send only clipped polygons to the BSP tree. Perhaps later I will add a 32bit code path and do pure portals?
 					// Anyway, BSP means portals because the leafs are convex polygons, and we add convex polygons whose clipped version becomes a new leaf.
+					// BSP always wanrs heuristcs. The simple linear polygon-add will use all info about two polygons to decide how to construct the BSP,
+					// though, the leaf is already integrated into the beam tree. I would need to consider tree vs convex polygon. 
+					// When rendering a mesh in a stripe, surely I should reuse shared edges
 					 if ((v instanceof Onthe_border && neighbours[1] instanceof Onthe_border) )  // previous loop discards the vertex marker. This is for symmetry: not a property. Asymmetric code looks ugly. Perhaps optimize the container: Type in a pattern, but use same getter and setter
 						{
 							var range=[v.border,neighbours[1].border]
@@ -625,7 +633,7 @@ class Polygon_in_cameraSpace {
 		// 	let v = this.vertices[a[1]]
 		// 	v.outside
 		// })
-		let m = new Mapper()   // our interface to the hardware dependent side. Used for the whole mesh. Handels asset loading and frame buffer (even on the Jaguar we see the frame buffer only through the blitter)
+		const m = this.m    // our interface to the hardware dependent side. Used for the whole mesh. Handels asset loading and frame buffer (even on the Jaguar we see the frame buffer only through the blitter)
 
 		// The pixel shader does not care about the real 3d nature of the vectors
 		// It just knows that it has to divide everything by z (= last element)
