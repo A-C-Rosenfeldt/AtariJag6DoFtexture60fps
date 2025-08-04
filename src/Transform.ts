@@ -26,7 +26,8 @@ export class Mesh {
 
   transform(c:Camera) {
     this.transformed= this.polygon.map((v) => {
-      const rotated=c.rotation.mul_left_vec( v.subtract(c.position) )  
+      const test=v.subtract(c.position);
+      const rotated=c.rotation.mul_left_vec( test )  
       return  rotated as Vec3 ;  // cast should work
     });
 }

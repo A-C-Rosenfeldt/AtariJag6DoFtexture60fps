@@ -67,10 +67,10 @@ export class Vec{ // looks like I need 2 and 3 dimensions to show off this (adap
 	v:number[]
 	innerProduct(o:Vec):number{
 		let sum=0
-		for(let i=0;i++;i<this.v.length){
+		for(let i=0;i<this.v.length;i++){
 			sum+=this.v[i]*o.v[i]
 		}		
-		return 0
+		return sum
 	}
 	
 	innerProductM(o:Vec[],k:number):number{
@@ -78,7 +78,7 @@ export class Vec{ // looks like I need 2 and 3 dimensions to show off this (adap
 		for(let i=0;i<this.v.length;i++){
 			sum+=this.v[i]*o[i].v[k]
 		}		
-		return 0
+		return sum
 	}
 
 	//constructor(points:number[][],len)
@@ -88,7 +88,7 @@ export class Vec{ // looks like I need 2 and 3 dimensions to show off this (adap
 				else this.v=new Array(...points[0])
 		}else{
 			this.v=new Array<number>(points[0].length)
-			for(let i=0;i++;i<points[0].length){
+			for(let i=0;i<points[0].length;i++){
 				this.v[i]=points[0][i]-points[1][i]
 			}
 		}
@@ -125,7 +125,7 @@ export class Vec3 extends Vec{
 
 	crossProduct(o:Vec3):Vec3{
 		let v:Vec3=new Vec3([[this.v.length]])
-		for(let i=0;i++;i<this.v.length){
+		for(let i=0;i<this.v.length;i++){
 			v[i]=o.v[(i+1)%3]*o.v[(i+2)%3]-o.v[(i+2)%3]*o.v[(i+1)%3]
 		}
 		return v

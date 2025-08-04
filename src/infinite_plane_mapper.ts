@@ -20,8 +20,10 @@ import { Vec3,Vec,Matrix } from "./clipping.js";
 import { field2Gl, SimpleImage } from './GL.js'
 
 export class CameraViewvector{
-	cameraPosition: Matrix
-	viewVector:Matrix
+	
+	cameraPosition: Vec // this is for internal use only . It lives flying  "over the textured plane" (s,t,z)
+	// This is an array of Vec3. The first two are the (s,t) vectors, the third is the z vector. Matrix of rows makes sense because the consumer wants to "pull" stz from the screen coordinates.
+	viewVector:Matrix   // I have a problem to find a nice way because this is really a function which viewVector as output. Input are the screen coordinates + (const FoV_z)
 }
 
 // Here in the source code I show the naive calculation above the corresponding
@@ -43,7 +45,7 @@ export class Camera_in_stSpace{
 	transform_into_texture_space__constructor(S:Vec3,T:Vec3){
 		this.z=[S.v[2],T.v[2],0]  // not affected by clipping. No flipping around of chosen vertex with adjacent edgesr to invert
 		let n=S.crossProduct(T)
-		this.normal=n.scalarProduct(1/n.innerProduct(n)) as Vec3  // uh I need special scalar Product to avoid typeCast ??!
+		this.normal=n.scalarProduct(Math.sqrt(1/n.innerProduct(n))) as Vec3  // I don't even need it normalized, just keep the direction stick to it for all of CameraViewvector and it needs to fit in 16bit of JRISC.  // uh I need special scalar Product to avoid typeCast ??!
 		let coupling=S.innerProduct(T)  // symmetric
 		let ST=[[S,T],[T,S]] // pointer even in JS ( and Java, and C#, and please in JRISC -- or loop unroll)
 		this.only=ST.map(st=> st[0].subtract(  st[1].scalarProduct(  coupling / st[1].innerProduct(st[1])  )  ) as Vec3)
@@ -116,34 +118,32 @@ export class Camera_in_stSpace{
 	}
 
 	// like mode-z on SNES (tm)
- 	infinte_checkerBoard_m(C:number[]):Matrix{
+ 	private infinte_checkerBoard_m(C:number[]):Matrix{
 		const cv=new CameraViewvector
-		cv.cameraPosition.nominator[0]=new Vec([this.transform_into_texture_space(C),this.UVmapping_Offest.concat(0)]) // pos point of camera relative to UV origin on st plane (so that we can use a texture atlas)
+		cv.cameraPosition=new Vec([this.transform_into_texture_space(C),this.UVmapping_Offest.concat(0)]) // pos point of camera relative to UV origin on st plane (so that we can use a texture atlas)
 		cv.viewVector=this.transform_into_texture_space_m() // view vector  ( many vectors for one camera ? )
 
 		//let tau=c[2]  /v[2]     // todo: use law of ascocitaten to change order of matrix mul and div
 		// 2 -> 0,1
 		for(let st=0;st<2;st++){
 			// dependency on V moves this to cv.ViewVector (see two lines below): cv.cameraPosition.nominator[st]=cv.cameraPosition.nominator[st].scalarProduct(cv.viewVector.nominator[0][2]) // common denominator aka "homogenous coordinates" cameraPostion just stays	texel[st]=c[st]		 
-			cv.viewVector.nominator[st]=cv.viewVector.nominator[st].scalarProduct(cv.cameraPosition.nominator[0][2]) // // +  tau * v[st]     
+
+			// the higher the camere, the farther we can see
+			cv.viewVector.nominator[st]=cv.viewVector.nominator[st].scalarProduct(cv.cameraPosition.v[2]) // // +  tau * v[st]     
 			
 			// read from right to left: sense normal distance -> scalar, multiply with camera position (vector) as in the non _m method. This bottleneck with numbers becomes an outer product and creates a matrix for the defered evaluation
 			// Ugly in concert with the st loop. Matrix.mul(cv.cameraPosition,cv.viewVector.nominator[2])   
 			// try manually
-			for(let out=0;out<3;out++){
-				cv.viewVector.nominator[st]=cv.viewVector.nominator[st].subtract(cv.viewVector.nominator[2].scalarProduct(-cv.cameraPosition.nominator[0][st]))
-			}
+			//for(let out=0;out<3;out++){ // todo : out is never used
 
-			// v[2] is left as "w"" to defer the division
-			// but why does payload want to multiply with the z components of s and t?
+			// 2 is the compontent which will be multiplied with the forward (z) component of the view vector which is 1. So it is just the bias, the const nom in the polynom
+			// this is the uvz value for the nose view vector in the center of the screen. This is really a vector ( column in a matrix made of rows -- I just checked: build of rows is called row major . It is just confusing because in my Code and in Java, there then is no column, just fields / compontens of the row because rows and columns are vectors / arrays. They don't have their own name for the index.)
+			cv.viewVector.nominator[st][2]+=cv.cameraPosition.v[st]   // [][2] (bias) is not to be confuced with [2] (denominator)
+			//}
 		}
-
-		// the moment we expand the denominator to cameraPosition, the const is gone. Const is due to untronsformed viewVector[2=z] = 1
-		//cv.cameraPosition.nominator[0]=[cv.cameraPosition.nominator[2]] // independent of View. Position already incorporated. => only a vector. Not a matrix
-
-		return cv.viewVector  // v[2] is 1/z aka w   c[2] needs to be multiplied with v
+		return cv.viewVector
 	}
- 
+	
 	transform_into_texture_space(v:number[],UV_offset?:number[]):number[]{
 		const v3=UV_offset!=null ? new Vec3([v,UV_offset]): new Vec3([v])
 		const coords=[0,0,0]

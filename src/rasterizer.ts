@@ -281,7 +281,7 @@ export class Polygon_in_cameraSpace {
 
 		// 2 vertices -> edge
 		vertices.forEach((v, i) => {// edge stage. In a polygon an edge follows every vertex while circulating. In mesh it does not.
-			let neighbours=on_screen_read.get_startingVertex(i)
+			let neighbours=v_w_n.get_startingVertex(i)  // Error cannot access on_screen_read before initialization.
 
 			if (neighbours[0] instanceof Vertex_OnScreen ) {}
 
