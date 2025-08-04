@@ -222,12 +222,13 @@ export class Polygon_in_cameraSpace {
 			}
 
 			if (!outside && z > this.near_plane) {  // "pure" z checks last because they are not really specific. I need a near plane for z comparison. Far plane might be the level size as in Doom?
+				v.onScreen= new PointPointing();
 				v.onScreen.position = v.inSpace.slice(0, -1).map(c => c / z)    // DIV happens in a loop and will not be very asycn without blowing up code size
 				// symmetric NDC. For Jaguar with its 2-port register file it may makes sense to skew and check for the sign bit (AND r0,r0 sets N-flag). Jaguar has abs()				
 
 				
 				
-				switch( this.mode){
+/* 				switch( this.mode){
 					case  modes.guard_band :  // So for guardband, we now project and once again check if a vertex is outside ( this duplicated check looks so silly, but I blame JRISC ).
 						if  ( !outside && Math.abs(v.onScreen.position[0]) > this.screen[0] ) outside=true ;  // Some divisions are thrown away. This is an artifact of JRISC (68k), where DIV is not really more expensive than MUL. Or is it? DIV happens in a loop above
 						break;
@@ -235,7 +236,7 @@ export class Polygon_in_cameraSpace {
 						v.onScreen.position.forEach( (p,j)=> {  v.onScreen.position[j]+=(p>>8) * this.screen[j] } )  // only normalizesd mantissa of this.screen[j] ( 24 bit due to 16.16 DIV ). ADD is onyl single cycle because it feeds on the result of the previous MUL
 						v.onScreen.vector.v.forEach( (p,j)=> {  v.onScreen.vector.v[j]+=(p>>8) * this.screen[j] } )  // renormalize?
 						break;
-				}
+				} */
 								
 			} else { // else is expensive in JRISC, but perhaps I need special code here. Otherwise Todo: remove
 				v.onScreen = null // null does exist on Jaguar, but for value type vertices I will have to use a flag field
@@ -281,36 +282,26 @@ export class Polygon_in_cameraSpace {
 
 		// 2 vertices -> edge
 		vertices.forEach((v, i) => {// edge stage. In a polygon an edge follows every vertex while circulating. In mesh it does not.
-			let neighbours=v_w_n.get_startingVertex(i)  // Error cannot access on_screen_read before initialization.
-
-			if (neighbours[0] instanceof Vertex_OnScreen ) {}
-
+			//if (neighbours[0] instanceof Vertex_OnScreen ) {}
 			let k = (i + 1) % vertices.length
-			switch ((pattern32 >> i) & 3) {  // todo: rewrite as above
-				case 3: // both outside, check if the edge is visble. In case of a guard band I need this code to avoid overflow later on
+			let neighbours=[v_w_n.get_startingVertex(i),v_w_n.get_startingVertex(i+1)] // Error cannot access on_screen_read before initialization.
 
+
+			if (neighbours[0].outside) {
+				if (neighbours[1].outside) {
 					let pattern4 = 0
-					if (0 == (pattern4 = this.isEdge_visible([vertices[i], vertices[k]]))) break;
-					let cuts:Item[]=this.edge_crossing_two_borders(vertices, pattern4) //, on_screen);
-					
-					/* too expensive
-					// find cuts with slopes before ( after looks at us )
-					let j=(i-1 + vertices.length)% vertices.length
-					let c=this.findCut(vertices[i], vertices[j])
-					if (c) {on_screen.push(c);pattern32=~((~pattern32) | 1<< i) } // set vertex to inside }
-					else */ {on_screen.push(cuts)}
-					
+					if (0 != (pattern4 = this.isEdge_visible([vertices[i], vertices[k]]))) {
+						let cuts:Item[]=this.edge_crossing_two_borders(vertices, pattern4)
+						on_screen.push(cuts)
+					}
+				} else {
+					let cut = this.edge_fromVertex_toBorder([vertices[k], vertices[i]], l);
+					on_screen.push(cut)
+				}
 
-					//on_screen is pointer to collection:  on_screen.push(...cuts)
-					break;
-				case 1:
-					// don't push yet
-					// due to rounding, a 1001 pattern may lead to a cut inside the screen
-
-
-					// this place is too late if (this.mode==modes.guard_band && vertices[i][0] > this.screen[0]/2 && slope[0]>0 ) { } // edge only in guardband 
-					on_screen.push(v.onScreen)  // this push order is for a single polygon. In a mesh there would be references
-
+			} else {
+				on_screen.push(v.onScreen)
+				if (neighbours[1].outside) {
 					// todo move into following method
 					let cut_r = this.edge_fromVertex_toBorder([vertices[k], vertices[i]], l);
 					let edge=new Edge_w_slope()
@@ -322,41 +313,7 @@ export class Polygon_in_cameraSpace {
 					border.z_gt_nearplane=vertices[k].inSpace[2]>this.near_plane
 
 					if (vertices[k].inSpace[2]>this.near_plane) {} // keep outside vertex
-					
-					// This is like a non-planar polygon after 3d clipping. And like for all non-planar polygons, to keept the mesh air-tight, we need to no cull back-faces, but back-spans. Should work here. Edges are shared.
-					// So when a vertex has 6 edges leading to it and all the cuts disagree, what happens? Vertex sits 1 px outside of the viewing frustum ( like: we could have a guard band, but we didn't)
-					// How can this be air tight?
-					// I thought about this for float slopes with fixed scanlines: Do back-face scanes
-					// Here we have the fixed screen border. If it is the side border, we need to act like doing scan rows? We know the faces which meet the border before and after ( rotation around the borders ). So within this it needs be forth (Draw) and back and forth (overdraw)
-					// Intersting version is the screen corner. Rows or columns? So actually we need to determine back by the cuts which veered into the screen. => don't draw behind them, but do if real face is back?
-					// Once I wanted pure code, but now I calculate cuts for the beam tree. For a non-planar polygon I can also calculate cuts. I shuold do this before I insert the convex parts into the beam tree.
-					// It doesn't even matter if NDC. NDC keeps vertices on the same side of the frustum border. vertex-vertex slopes can be calcualted after NDC -mul-> px . Clipped edges have rounded slopes anyway          
-					// After the screen list is debugged: todo: Cuts will be managed by the rasterizer
-					on_screen.push(cut)
-					break
-				case 2: {
-					// like in 3
-					let cut = this.edge_fromVertex_toBorder([vertices[k], vertices[i]], l);
-					on_screen.push(cut)// The asymmetry fits the counting: When the borders cut a corner of the polygon, the vertex count++ , but we have cuts=2
 				}
-					break
-				case 0: //none outside
-					on_screen.push(v.onScreen)  // Nothing to insert before   // of course in JRISC this would be in a fixed length pool
-					break;
-				// For a single poylgon rasterizer her I may want to check if this vertex is convex: All edge 2d cross products should have the same sign.
-				// To insert in beam tree, first use the "flipped" vertex to cut into two convext sectors
-				// Check for Self-intersection!
-
-				// Doom has no near nor far plane. The Jaguar SDK deals with them like with the other planes
-				// For any limits in z precision later on ( interpolation not only with z-buffer ), those planes will help
-				// slope on screen = normal.slice(0,2)
-				// it only truncates vertices on screen (who have passed previous tests)
-				// in many games the camera turns fast, but z does not
-				// I may makes look better to run a delta algorithm and use sperical clipping within LoD / depth cuing / fog . Max distance gives the smalles w value. Use negative offset to still use all 16 bits in the z-buffer . -- basically not my problem anymore
-				// Near plane could be set on the windshield. Anything within the cockpit is a hit => screen goes white
-				// Or actually, near plane is probably an accident. Move close to something. w gets larger than 16 bit + offset => glitch. Set collision radius here!
-				// I don't know if w for z comparison and for texture maps need to be the same on Jaguar. Rounding may be a problem. Beamtree is a pass before mapping.
-				// near plane should only affect a very small number of polygons
 			}
 		})
 
@@ -434,6 +391,8 @@ export class Polygon_in_cameraSpace {
 			texturemap.transform_into_texture_space__constructor( new Vec3([t[0],t[1]]) ,new Vec3([t[2],t[1]]) )  // My first model will have the s and t vectors on edges 0-1-2  .  for z-comparison and texture maps		
 			payload=texturemap.uvz_from_viewvector(   t[1]   )
 		}
+
+		console.log(payload.nominator[0]) ; // Error: payload is not really constructed
 
 		this.rasterize_onscreen(with_corners,payload); return true
 		return

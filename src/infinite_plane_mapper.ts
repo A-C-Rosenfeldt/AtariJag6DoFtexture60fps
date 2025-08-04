@@ -48,10 +48,10 @@ export class Camera_in_stSpace{
 		this.normal=n.scalarProduct(Math.sqrt(1/n.innerProduct(n))) as Vec3  // I don't even need it normalized, just keep the direction stick to it for all of CameraViewvector and it needs to fit in 16bit of JRISC.  // uh I need special scalar Product to avoid typeCast ??!
 		let coupling=S.innerProduct(T)  // symmetric
 		let ST=[[S,T],[T,S]] // pointer even in JS ( and Java, and C#, and please in JRISC -- or loop unroll)
-		this.only=ST.map(st=> st[0].subtract(  st[1].scalarProduct(  coupling / st[1].innerProduct(st[1])  )  ) as Vec3)
+		this.only=ST.map(st=> st[0].subtract(  st[1].scalarProduct(  coupling / st[1].innerProduct(st[1])  )  ) as Vec3)  // this is some ad hoc hack to invert a Matrix, Only look along a direction orthogonal to the other axis.
 		for(let i=0;i<this.only.length;i++){
 			let effect_of_1st=this.only[i].innerProduct( ST[i][0] )
-			if (Math.abs(effect_of_1st)>0.001) this.only[i]=this.only[i].scalarProduct(1/effect_of_1st) as Vec3
+			if (Math.abs(effect_of_1st)>0.001) this.only[i]=this.only[i].scalarProduct(1/effect_of_1st) as Vec3  // correct scaling
 		}
 	}
 
@@ -148,7 +148,7 @@ export class Camera_in_stSpace{
 		const v3=UV_offset!=null ? new Vec3([v,UV_offset]): new Vec3([v])
 		const coords=[0,0,0]
 		coords[2]=this.normal.innerProduct( v3  ) 
-		for(let st=0;st<2;st++){  // this is actually a Matrix multiplication
+		for(let st=0;st<2;st++){  // this is actually a Matrix multiplication todo Matrix is not square.
 			coords[st]=this.only[st].innerProduct( v3 )
 		}
 		return coords
