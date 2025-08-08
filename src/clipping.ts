@@ -126,7 +126,7 @@ export class Vec3 extends Vec{
 	crossProduct(o:Vec3):Vec3{
 		let v:Vec3=new Vec3([[this.v.length]])
 		for(let i=0;i<this.v.length;i++){
-			v[i]=o.v[(i+1)%3]*o.v[(i+2)%3]-o.v[(i+2)%3]*o.v[(i+1)%3]
+			v.v[i]=this.v[(i+1)%3]*o.v[(i+2)%3]-this.v[(i+2)%3]*o.v[(i+1)%3]
 		}
 		return v
 	}
@@ -210,12 +210,15 @@ export class Matrix{
 
 	// Matrix multiplication cannot utilize inner product. It has to break up vectors of one of the factors.
 	// Do we need transposed versions? This is used only for uv -> st mapping, so no.
+
+	// uvz <- st <- viewVector  is pulling. So again, I use row major (Matrix of rows). It is an accident that rotation and texture mapping are both row major?
 	static mul(A: Vec[][]): Matrix {
-		let res = new Matrix()
-		for (let j = 0; j++; j < A[0].length) {
-			for (let i = 0; i++; i < A[0][j].v.length) {
-				res.nominator[i][j] = 0
-				for (let k = 0; k++; k < A[1].length) {
+		let res = new Matrix(A[0].length)
+		for (let j = 0; j < A[0].length; j++) {
+			const row= new Vec([[A[1][0].v.length]])  // jagged array does not work here. The 90° rotate picture in my head for V=M&*V does not deal with the fields in the result well. My head cannot do multply from right like V=V &* M . I mean, there is no application in 3d graphics. Of course it is useful for eigen values for differential equations or the stress-strain tensor. But we are lucky, zero overlap with computer graphics here.
+			for (let i = 0; i < A[0][j].v.length; i++) {
+				res.nominator[i].v[j] = 0
+				for (let k = 0; k < A[1].length; k++) {
 					res.nominator[i][j] += A[0][i].v[k] * A[1][k].v[j]  // base would want vector add, while JRISC wants inner product
 					// for Vector Add, we want the last index select the component
 					// So no matter what picture you have in your head ( row or column, left or right multiply),

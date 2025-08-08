@@ -44,7 +44,7 @@ export class Camera_in_stSpace{
 
 	transform_into_texture_space__constructor(S:Vec3,T:Vec3){
 		this.z=[S.v[2],T.v[2],0]  // not affected by clipping. No flipping around of chosen vertex with adjacent edgesr to invert
-		let n=S.crossProduct(T)
+		let n=S.crossProduct(T)  // todo: unit Test because this was n=[0,0,0]
 		this.normal=n.scalarProduct(Math.sqrt(1/n.innerProduct(n))) as Vec3  // I don't even need it normalized, just keep the direction stick to it for all of CameraViewvector and it needs to fit in 16bit of JRISC.  // uh I need special scalar Product to avoid typeCast ??!
 		let coupling=S.innerProduct(T)  // symmetric
 		let ST=[[S,T],[T,S]] // pointer even in JS ( and Java, and C#, and please in JRISC -- or loop unroll)
@@ -85,7 +85,7 @@ export class Camera_in_stSpace{
 			// for inter-polygon comparison ( z-buffer ) we need a standard. So the multiplication with [s.z,t.z.0] 
 			// with viewVector should fix scaling
 			// with cameraPostion should fix offset  ( both indirectly through cv.nominator)
-		const uvz_from_viewvector=Matrix.mul( [uvz_mapped.nominator, st_from_viewvector.nominator]  )
+		const uvz_from_viewvector=Matrix.mul( [uvz_mapped.nominator, st_from_viewvector.nominator]  ) // Error
 		//cv_p.viewVector=Matrix.mul( [mesh.nominator, cv.viewVector.nominator] )
 
 		// We may need to measure if it is faster to have two different 1/z or to compensate the s,t nominators
@@ -138,7 +138,7 @@ export class Camera_in_stSpace{
 
 			// 2 is the compontent which will be multiplied with the forward (z) component of the view vector which is 1. So it is just the bias, the const nom in the polynom
 			// this is the uvz value for the nose view vector in the center of the screen. This is really a vector ( column in a matrix made of rows -- I just checked: build of rows is called row major . It is just confusing because in my Code and in Java, there then is no column, just fields / compontens of the row because rows and columns are vectors / arrays. They don't have their own name for the index.)
-			cv.viewVector.nominator[st][2]+=cv.cameraPosition.v[st]   // [][2] (bias) is not to be confuced with [2] (denominator)
+			cv.viewVector.nominator[st].v[2]+=cv.cameraPosition.v[st]   // [][2] (bias) is not to be confuced with [2] (denominator)
 			//}
 		}
 		return cv.viewVector
@@ -147,7 +147,7 @@ export class Camera_in_stSpace{
 	transform_into_texture_space(v:number[],UV_offset?:number[]):number[]{
 		const v3=UV_offset!=null ? new Vec3([v,UV_offset]): new Vec3([v])
 		const coords=[0,0,0]
-		coords[2]=this.normal.innerProduct( v3  ) 
+		coords[2]=this.normal.innerProduct( v3  )  // Error: this.normal is not defined
 		for(let st=0;st<2;st++){  // this is actually a Matrix multiplication todo Matrix is not square.
 			coords[st]=this.only[st].innerProduct( v3 )
 		}
