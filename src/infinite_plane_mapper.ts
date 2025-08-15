@@ -77,8 +77,11 @@ export class Camera_in_stSpace{
 		// But we don't depend on it here.
 		// what mesh?    // First occurence of matrix mul. Not sure about interface. Clearly I need this for rotation (frame to frame), and generally transformation (within frame)
 		const uvz_mapped=new Matrix()
-		// the first row is the w component of homogenouc coordinates. It feeds the 1/ve[2] through
-		uvz_mapped.nominator=	[new Vec3( [[0,0,1]] ) ].concat( this.UVmapping_fromST.map(p=>new Vec3([p])) , new Vec3( [this.z] ));
+		// the first Vec is the w component of homogenous coordinates (okay, usually w is last?). It feeds the 1/ve[2] through
+		// So for the infinite plane, the first two components are actually the view vectors, but the last component is the camer hover height over the plane. Still a naming convention?
+		// I need to change to names. One component here adds bias. So it does not bind to the (x,y) input row (mul from left). The other feeds into the denominator on the left. This comes later
+		// st does not bind to cv.viewVector.nominator[2>st]  . This is the "down looking" compontent. So we fill the jaggies with 0  (todo: downlooking is special. Move do front division notion (nominator first) makes no sense )
+		uvz_mapped.nominator=	[new Vec3( [[0,0,1]] ) ].concat( this.UVmapping_fromST.map(p=>new Vec3([p.concat(0)])) , new Vec3( [this.z] )); // Error: jaggies. In the trivial test with billboard polygon z=00 ( a third 0 is padded )
 			// Everone uses the general proof that 1/z is linear in screen space (far plane can be substracted.). Sorry that I cannot utilize my: "just calculate with fractions as in school!"
 			// Linear allows for an offset. So 0 does not need to be the horizon. Together with scaling there are two degrees of freedom which can change from polygon to polygon
 			// Do polygons bring their far-plane along? Perhaps due to vertex position

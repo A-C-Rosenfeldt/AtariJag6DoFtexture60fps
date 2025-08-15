@@ -133,6 +133,9 @@ export class PixelShader{
 	// Todo : harmonize
 			let payload_w = []//Payload.nominator.map( v3=> [v3.v[2],v3.v[0],v3.v[1] ]) 
 			// bias
+
+			Java does not know multiple dimensions, so I use a jagged array. Looks so ugly. Do I really need to map?
+
 			payload_w[0][0] = uvz_from_viewvector.nominator[0][2]  // multiply with [2]=1 compontent of view vector gives us the const coeeficient [][0] for the linerar function. Here: denominaotr [0][]
 			payload_w[1][0] = uvz_from_viewvector.nominator[1][2]  // same for nominator of s
 			payload_w[2][0] = uvz_from_viewvector.nominator[1][2]  // and t
