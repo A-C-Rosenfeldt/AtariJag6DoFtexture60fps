@@ -131,20 +131,23 @@ export class PixelShader{
 		this.uvz_from_viewvecto=uvz_from_viewvector
 
 	// Todo : harmonize
-			let payload_w = []//Payload.nominator.map( v3=> [v3.v[2],v3.v[0],v3.v[1] ]) 
+			//let payload_w = []//Payload.nominator.map( v3=> [v3.v[2],v3.v[0],v3.v[1] ]) 
 			// bias
+			// I adjusted 	uvz_from_viewvector(C:number[]):Matrix{ so that I can simply.
 
-			Java does not know multiple dimensions, so I use a jagged array. Looks so ugly. Do I really need to map?
+			let payload_w= uvz_from_viewvector.nominator.slice();
 
-			payload_w[0][0] = uvz_from_viewvector.nominator[0][2]  // multiply with [2]=1 compontent of view vector gives us the const coeeficient [][0] for the linerar function. Here: denominaotr [0][]
-			payload_w[1][0] = uvz_from_viewvector.nominator[1][2]  // same for nominator of s
-			payload_w[2][0] = uvz_from_viewvector.nominator[1][2]  // and t
+			// payload_w[0][0] = uvz_from_viewvector.nominator[0][2]  // multiply with [2]=1 compontent of view vector gives us the const coeeficient [][0] for the linerar function. Here: denominaotr [0][]
+			// payload_w[1][0] = uvz_from_viewvector.nominator[1][2]  // same for nominator of s
+			// payload_w[2][0] = uvz_from_viewvector.nominator[2][2]  // and t
 
-			// gradient
-			payload_w[0][1] = uvz_from_viewvector.nominator[0][0]  // gradient of denominator along a span ( x ) . Yeah, I probably should reconsider the numbering or transform a matrix or so
-			payload_w[0][2] = uvz_from_viewvector.nominator[0][1]  // gradient of denominator along the edges ( y ) 
+			// gradient .. So, this was a swap
+			// payload_w[0][1] = uvz_from_viewvector.nominator[0][0]  // gradient of denominator along a span ( x ) . Yeah, I probably should reconsider the numbering or transform a matrix or so
+			// payload_w[0][2] = uvz_from_viewvector.nominator[0][1]  // gradient of denominator along the edges ( y ) 
 
 			// same for the s,t gradients
+
+
 			// the nominator gradient for z is [0,0] . Failed proof in "infintie plane", but hand wave is easy: Imagine an Amiga copper sky. Color marks z. Fog is far away, dark blue sky is close, as is red-brown ground.
 			// All const-z lines are aligned to the horizon. Perspective is like this: lines become lines. As known from the checkerboard: the const-z lines are all parallel to each other after projection
 			// So we only need one gradient to know z . After that a scaler function follows (1/z), but z-buffer works without application of this function
@@ -161,8 +164,9 @@ export class PixelShader{
 
 			//payload_w[0]+=Payload.viewVector.nominator[0][2] // 0 goes to the left and marks 1/z aka w in payload (xy not there, uv behind). 2 goes to the right and accepts z from xyz viewing vector. z=1 
 			// skew onto the pixel coordinates which don't have int[] in the center of the screen (center is between pixels). I calculate the bias for top-left , still in NDC , so  [-1,-1].
-			payload_w[0][0] -= uvz_from_viewvector.nominator[0][1]  // same for nominator of s
-			payload_w[0][0] -= uvz_from_viewvector.nominator[0][2]
+			// I don't know anymore what this is. I don't skew because JRISC MAC wants signed int. My beam tree and subpixel code works just the same with 0,0 on pixel or corner
+			// payload_w[0][0] -= uvz_from_viewvector.nominator[0][1]  // same for nominator of s
+			// payload_w[0][0] -= uvz_from_viewvector.nominator[0][2]
 
 			//let payload=[payload_w]  // Payload is given to use only with UV offsets (for perspective). Affine Gouraud probably needs its own code path with triangles?
 

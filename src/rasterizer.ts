@@ -83,8 +83,8 @@ class vertex_behind_nearPlane implements Item{
 
 // Just as projected
 class Vertex_OnScreen implements Point{
-	postion:number[]
-	get_y(){return Math.floor(this.postion[0])}
+	position:number[]
+	get_y(){return Math.floor(this.position[0])}
 }
 
 class Corner implements Point{
@@ -108,7 +108,7 @@ class Onthe_border extends Corner{
 export class Vertex_in_cameraSpace {
 	inSpace: Array<number>   // Not a Vec3 because projection deals so differently with the z-component
 	outside: boolean
-	onScreen: PointPointing
+	onScreen: Vertex_OnScreen //Point //Pointing
 	constructor(inSpace: Array<number>) {
 		this.inSpace = inSpace;
 	}
@@ -222,7 +222,7 @@ export class Polygon_in_cameraSpace {
 			}
 
 			if (!outside && z > this.near_plane) {  // "pure" z checks last because they are not really specific. I need a near plane for z comparison. Far plane might be the level size as in Doom?
-				v.onScreen= new PointPointing();
+				v.onScreen= new Vertex_OnScreen() //PointPointing();
 				v.onScreen.position = v.inSpace.slice(0, -1).map(c => c / z)    // DIV happens in a loop and will not be very asycn without blowing up code size
 				// symmetric NDC. For Jaguar with its 2-port register file it may makes sense to skew and check for the sign bit (AND r0,r0 sets N-flag). Jaguar has abs()				
 
@@ -292,27 +292,19 @@ export class Polygon_in_cameraSpace {
 					let pattern4 = 0
 					if (0 != (pattern4 = this.isEdge_visible([vertices[i], vertices[k]]))) {
 						let cuts:Item[]=this.edge_crossing_two_borders(vertices, pattern4)
-						on_screen.push(cuts)
+						on_screen.push(...cuts)
 					}
 				} else {
-					let cut = this.edge_fromVertex_toBorder([vertices[k], vertices[i]], l);
-					on_screen.push(cut)
+					let cut_r = this.edge_fromVertex_toBorder([vertices[k], vertices[i]], l);
+					on_screen.push(...cut_r)
 				}
-
 			} else {
 				on_screen.push(v.onScreen)
 				if (neighbours[1].outside) {
 					// todo move into following method
 					let cut_r = this.edge_fromVertex_toBorder([vertices[k], vertices[i]], l);
-					let edge=new Edge_w_slope()
-					edge.slope=cut_r.vector
-					on_screen.push(edge)
-					let border=new Onthe_border()
-					border.border=cut_r.border
-					border.pixel_ordinate_int=cut_r.position[cut_r.border & 1]
-					border.z_gt_nearplane=vertices[k].inSpace[2]>this.near_plane
-
-					if (vertices[k].inSpace[2]>this.near_plane) {} // keep outside vertex
+					on_screen.push(...cut_r)
+					//let border=new Onthe_border()
 				}
 			}
 		})
@@ -430,23 +422,23 @@ export class Polygon_in_cameraSpace {
 
 	// This may be useful for beam tree and non-convex polygons
 	// I don't think that it is light enough to double check clipping after rounding errors
-	private findCut(v0: Vertex_in_cameraSpace, v1: Vertex_in_cameraSpace): Array<number> {
-		// find cut between two vertices. This is a 2d cut, so it is not a 3d cut. It is a 2d cut in the viewing frustum
-		let p0 = v0.onScreen.position
-		let p1 = v1.onScreen.position
-		let d =  new Vec2([p0,p1])  //p0.map((c, j) => p1[j]-c)  // vector from p0 to p1
-		//  [v0,v1] &* [s,t]  = d
-		// <=> [s,t] = inv([v0,v1]]
-		let m=new Matrix2()
-		m.nominator=[v0.onScreen.vector, v1.onScreen.vector]
-		let fac=m.inverse_rn(0)
-		let s=fac.innerProduct(d)
-		let xy=v0.onScreen.vector.scalarProduct(s).subtract(new Vec2([p0]).scalarProduct(-fac.den))  // 16*16 -> 32 bit
-		// no rounding errors allowed here
-		let pixels=xy.v.map(c => c / fac.den )  // 32/32 -> 8bit .  this feels wrong to do on the frustum. There we should use a while loop 
+	// private findCut(v0: Vertex_in_cameraSpace, v1: Vertex_in_cameraSpace): Array<number> {
+	// 	// find cut between two vertices. This is a 2d cut, so it is not a 3d cut. It is a 2d cut in the viewing frustum
+	// 	let p0 = v0.onScreen.position
+	// 	let p1 = v1.onScreen.position
+	// 	let d =  new Vec2([p0,p1])  //p0.map((c, j) => p1[j]-c)  // vector from p0 to p1
+	// 	//  [v0,v1] &* [s,t]  = d
+	// 	// <=> [s,t] = inv([v0,v1]]
+	// 	let m=new Matrix2()
+	// 	m.nominator=[v0.onScreen.vector, v1.onScreen.vector]
+	// 	let fac=m.inverse_rn(0)
+	// 	let s=fac.innerProduct(d)
+	// 	let xy=v0.onScreen.vector.scalarProduct(s).subtract(new Vec2([p0]).scalarProduct(-fac.den))  // 16*16 -> 32 bit
+	// 	// no rounding errors allowed here
+	// 	let pixels=xy.v.map(c => c / fac.den )  // 32/32 -> 8bit .  this feels wrong to do on the frustum. There we should use a while loop 
 
-		return pixels
-	}
+	// 	return pixels
+	// }
 
 	/* When we no the border, lets go ahead and calculate the pixel. So: see edge from vertex to border
 	which_border(arg0: Vertex_in_cameraSpace): any {
@@ -502,8 +494,8 @@ export class Polygon_in_cameraSpace {
 				// Calculate pixel cuts for the rasterizer . we don't care for cuts .. I mean we do, we need them for the beam tree. But with a single polygon we only need y_pixel
 				// code duplicated from v->edge
 				let coords = [0, 0]
-				coords[border_count & 1] = (border_count & 2) - 1;
-				coords[~border_count & 1] = (slope[2] + ((border_count & 2) - 1) * slope[border_count & 1]) / slope[~border_count & 1];  // I do have to check for divide by zero. I already rounded to 16 bit. So MUL on corners is okay.
+				coords[border_count & 1] = this.screen[~border_count & 1]*((border_count & 2) - 1)
+				coords[~border_count & 1] = (slope[2] + this.screen[~border_count & 1]*((border_count & 2) - 1) * slope[border_count & 1]) / slope[~border_count & 1];  // I do have to check for divide by zero. I already rounded to 16 bit. So MUL on corners is okay.
 
 				let o=new Onthe_border()
 				o.border=border_count
@@ -659,7 +651,7 @@ export class Polygon_in_cameraSpace {
 						// Point supports get_y . So I only need to consider mirror cases for pattern matchting and subpixel, but not for the for(y) .
 						if (v_val[0] instanceof Vertex_OnScreen && v_val[1] instanceof Edge_hollow && v_val[2] instanceof Vertex_OnScreen) {
 
-							var slope = new Vec2([(v_val[2]).postion, v_val[0].postion])
+							var slope = new Vec2([(v_val[2]).position, v_val[0].position])
 							// for(let i=0;i< v_val[0].postion.length;i+=2){
 							// 	d[i]=(v_val[i] as Vertex_OnScreen).postion[i]-v_val[0].postion[i]
 							// }
@@ -668,7 +660,7 @@ export class Polygon_in_cameraSpace {
 							let d = slope.v; if (d[1] <= 0) { continue }
 							var y_int = v_val[0].get_y()  // int
 							var x_at_y_int = Math.floor(v_val[0][0] + d[0] * (y_int - v_val[0][1]) / d[1]) // frac -> int
-							var Bresenham = slope.wedgeProduct(new Vec2([[x_at_y_int, y_int], v_val[0].postion])) //(y_int- v_val[0][1] )*d[0]+(x_at_y_int- v_val[0][0] )*d[1]  // this should be the same for all edges not instance of Edge_Horizon
+							var Bresenham = slope.wedgeProduct(new Vec2([[x_at_y_int, y_int], v_val[0].position])) //(y_int- v_val[0][1] )*d[0]+(x_at_y_int- v_val[0][0] )*d[1]  // this should be the same for all edges not instance of Edge_Horizon
 
 						} else {
 							if (v_val[0] instanceof Vertex_OnScreen && v_val[1] instanceof Edge_w_slope && v_val[2] instanceof Onthe_border) {
@@ -678,7 +670,7 @@ export class Polygon_in_cameraSpace {
 								var y_int = v_val[0].get_y()  // int
 								if (y_int <= v_val[2].get_y()) { continue }
 								var x_at_y_int = Math.floor(v_val[0][0] + d[0] * (y_int - v_val[0][1]) / d[1]) // frac -> int
-								var Bresenham = slope.wedgeProduct(new Vec2([[x_at_y_int, y_int], v_val[0].postion]))  // this should be the same for all edges not instance of Edge_Horizon
+								var Bresenham = slope.wedgeProduct(new Vec2([[x_at_y_int, y_int], v_val[0].position]))  // this should be the same for all edges not instance of Edge_Horizon
 
 							} else {
 								if (v_val[2] instanceof Vertex_OnScreen && v_val[1] instanceof Edge_w_slope && v_val[0] instanceof Onthe_border) {
@@ -687,7 +679,7 @@ export class Polygon_in_cameraSpace {
 									var d = slope.v
 									var y_int = v_val[2].get_y()  // int
 									var x_at_y_int = ambi.border & 1 ? ambi.pixel_ordinate_int : this.screen[0] * (1 - (ambi.border & 2)) // todo: method!
-									var Bresenham = slope.wedgeProduct(new Vec2([[x_at_y_int, y_int], v_val[2].postion]))  // this should be the same for all edges not instance of Edge_Horizon									
+									var Bresenham = slope.wedgeProduct(new Vec2([[x_at_y_int, y_int], v_val[2].position]))  // this should be the same for all edges not instance of Edge_Horizon									
 								}
 							}
 						}
@@ -730,8 +722,14 @@ export class Polygon_in_cameraSpace {
 
 		} //while (active_vertices[0][1] != active_vertices[1][1]) // full circle, bottom vertex found on the fly		
 	}
-	private edge_fromVertex_toBorder(vs: Vertex_in_cameraSpace[], l: number):PointPointing {
+	private edge_fromVertex_toBorder(vs: Vertex_in_cameraSpace[], l: number):Item[] {
+
+		const on_screen=new Array<Item>()
+
 		const slope = this.get_edge_slope_onScreen(vs).slice(0, 2); // 3d cros  product with meaningful sign. Swap x,y to get a vector pointint to the outside vertex. float the fractions
+		let edge=new Edge_w_slope()
+		edge.slope=new Vec2([slope])
+		on_screen.push(edge)
 
 		const abs=slope.map(s=>Math.abs(s))
 
@@ -789,18 +787,21 @@ export class Polygon_in_cameraSpace {
 		// todo unify with
 		//this.which_border(vs[0])
 
-		if (  slope[0] > slope[1]) { // Nonsense  slope tells us that the edge comes from above.  This is branching only for NDC
+		
+		
+
+		//if (  slope[0] > slope[1]) { // Nonsense  slope tells us that the edge comes from above.  This is branching only for NDC
 			// correct order . At least every other vertex need to be on inside for this function
 
 			 
 			let cc = 0;
 
-			for (let corner = -1; corner <= +1; corner += 2) {
+			for (var corner = -1; corner <= +1; corner += 2) {
 				if ((corner - vs[0].onScreen[0]) * slope[1] > (-1 - vs[0].onScreen[1]) * slope[0]) {
-					vs[1].onScreen[0] = corner, vs[1].onScreen.border=corner // Todo: I need corners with rotation sense to fill the polygon
+					vs[1].onScreen[0] = corner //, vs[1].onScreen.border=corner // Todo: I need corners with rotation sense to fill the polygon
 					switch (this.mode){ // todo: different edge clases?
 						case modes.NDC:	
-							vs[1].onScreen[1] = vs[0].onScreen[1] + (corner - vs[0].onScreen[0]) * slope[1] / slope[0];
+							vs[1].onScreen[1] = vs[0].onScreen[1] + ( this.screen[1 & 1]*corner - vs[0].onScreen[0]) * slope[1] / slope[0];
 							break;
 						case modes.guard_band: // The displacement is given by the other vertex. We store the float 
 							// check for overflow
@@ -813,11 +814,20 @@ export class Polygon_in_cameraSpace {
 			}
 			if (cc == 0) {
 				vs[1].onScreen[1] = -1;
-				vs[1].onScreen[1] = ( vs[0].onScreen[0] * slope[1]+ (-1 - vs[0].onScreen[1]) * slope[0] ) / slope[1]; // no rounding error allowed
+				vs[1].onScreen[1] = ( vs[0].onScreen[0] * slope[1]+ this.screen[1 & 1]*(-1 - vs[0].onScreen[1]) * slope[0] ) / slope[1]; // no rounding error allowed
 			}
 			vs[1].onScreen[1] = -1;  
-		}
-		return vs[1].onScreen;
+
+			let border=new Onthe_border()
+		border.border = corner  // todo : or 0
+		border.pixel_ordinate_int = vs[1].onScreen[1]
+
+		border.z_gt_nearplane = vs[1].onScreen[1] > this.near_plane
+
+		on_screen.push(border)
+		//}
+		
+		return on_screen
 	}
 
 	private get_edge_slope_onScreen(vertex: Array<Vertex_in_cameraSpace>): Array<number> {

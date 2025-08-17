@@ -60,6 +60,7 @@ export class Camera_in_stSpace{
 
 	generate_payload(C:number[],V:number[]):number[]{
 		let factor_on_the_right=this.infinte_checkerBoard(C,V)
+		// ?? I changed this.z to only contain z expressed in the s,t coordinates. No normal compontent.
 		let pl=([this.z].concat(this.UVmapping_fromST).map(p=>p.reduce( (s,c,i)=> s+c*factor_on_the_right[i])))  // need a way to transform this into gradients for rasterizer
 
 		return pl
@@ -81,7 +82,8 @@ export class Camera_in_stSpace{
 		// So for the infinite plane, the first two components are actually the view vectors, but the last component is the camer hover height over the plane. Still a naming convention?
 		// I need to change to names. One component here adds bias. So it does not bind to the (x,y) input row (mul from left). The other feeds into the denominator on the left. This comes later
 		// st does not bind to cv.viewVector.nominator[2>st]  . This is the "down looking" compontent. So we fill the jaggies with 0  (todo: downlooking is special. Move do front division notion (nominator first) makes no sense )
-		uvz_mapped.nominator=	[new Vec3( [[0,0,1]] ) ].concat( this.UVmapping_fromST.map(p=>new Vec3([p.concat(0)])) , new Vec3( [this.z] )); // Error: jaggies. In the trivial test with billboard polygon z=00 ( a third 0 is padded )
+		// the pixel shader wants the const stuff in 0 because x^0  So I moved this to the fron 2025-08-15
+		uvz_mapped.nominator=	[new Vec3( [[1,0,0]] ) ].concat( this.UVmapping_fromST.map(p=>new Vec3([[0,...p]])) , new Vec3( [[0,...this.z]] )); // Error: jaggies. In the trivial test with billboard polygon z=00 ( a third 0 is padded )
 			// Everone uses the general proof that 1/z is linear in screen space (far plane can be substracted.). Sorry that I cannot utilize my: "just calculate with fractions as in school!"
 			// Linear allows for an offset. So 0 does not need to be the horizon. Together with scaling there are two degrees of freedom which can change from polygon to polygon
 			// Do polygons bring their far-plane along? Perhaps due to vertex position
