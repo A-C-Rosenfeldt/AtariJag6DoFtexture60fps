@@ -84,7 +84,7 @@ export class Vec{ // looks like I need 2 and 3 dimensions to show off this (adap
 	//constructor(points:number[][],len)
 	constructor(points:number[][]){
 		if (points.length<2){
-			if (points[0].length<2) 			this.v=new Array<number>(points[0][0])
+			if (points[0].length<2) 			this.v=new Array<number>(points[0][0]).fill(0)
 				else this.v=new Array(...points[0])
 		}else{
 			this.v=new Array<number>(points[0].length)
@@ -212,21 +212,24 @@ export class Matrix{
 	// Do we need transposed versions? This is used only for uv -> st mapping, so no.
 
 	// uvz <- st <- viewVector  is pulling. So again, I use row major (Matrix of rows). It is an accident that rotation and texture mapping are both row major?
-	static mul(A: Vec[][]): Matrix {
-		let res = new Matrix(A[0].length)
-		for (let j = 0; j < A[0].length; j++) {
-			const row= new Vec([[A[1][0].v.length]])  // jagged array does not work here. The 90° rotate picture in my head for V=M&*V does not deal with the fields in the result well. My head cannot do multply from right like V=V &* M . I mean, there is no application in 3d graphics. Of course it is useful for eigen values for differential equations or the stress-strain tensor. But we are lucky, zero overlap with computer graphics here.
-			for (let i = 0; i < A[0][j].v.length; i++) {
-				
-				for (let k = 0; k < A[1].length; k++) {
-					row[i] += A[0][i].v[k] * A[1][k].v[j]  // base would want vector add, while JRISC wants inner product
+	static mul__Matrices_of_Rows(A: Vec[][]): Matrix {
+		const row_count = A[0].length;
+		const res = new Matrix(row_count)
+		for (let row_i = 0; row_i < row_count; row_i++) {
+			//if (row_i==row_count-1) console.log("mul row",A[0][row_i],A[1]) // debug
+			const field_per_row__count = A[1][0].v.length  // 0=any
+ 			const row= new Vec([[field_per_row__count]])  // jagged array does not work here. The 90° rotate picture in my head for V=M&*V does not deal with the fields in the result well. My head cannot do multply from right like V=V &* M . I mean, there is no application in 3d graphics. Of course it is useful for eigen values for differential equations or the stress-strain tensor. But we are lucky, zero overlap with computer graphics here.
+			for (let field_i = 0; field_i < field_per_row__count; field_i++) {
+				if (A[0][field_i].v.length != A[1].length) throw new Error("Incompatible matrix sizes")
+				for (let inner = 0; inner < A[1].length; inner++) {  // k inner ? inner loop? Encapsulated. Inner working?
+					row.v[field_i] += A[0][row_i].v[inner] * A[1][inner].v[field_i]  // notice how indeces in second factor are interleaved. It looks like this transposed form is not natural for the application. So I have to transpose here.
 					// for Vector Add, we want the last index select the component
 					// So no matter what picture you have in your head ( row or column, left or right multiply),
 					// Like in OpenGL Vectors would need to live in the right factor ( the inner loop ) as input
 					// Output uses the other index
 				}
 			}
-			res.nominator[j] = row
+			res.nominator[row_i] = row
 		}
 		return res
 	}

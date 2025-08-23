@@ -43,7 +43,7 @@ export class Camera_in_stSpace{
 	*/
 
 	transform_into_texture_space__constructor(S:Vec3,T:Vec3){
-		this.z=[S.v[2],T.v[2],0]  // not affected by clipping. No flipping around of chosen vertex with adjacent edgesr to invert
+		this.z=[S.v[2],T.v[2]] // ,0] does not help much because next thing I do is pack it with (s,t) from the texture  // not affected by clipping. No flipping around of chosen vertex with adjacent edgesr to invert
 		let n=S.crossProduct(T)  // todo: unit Test because this was n=[0,0,0]
 		this.normal=n.scalarProduct(Math.sqrt(1/n.innerProduct(n))) as Vec3  // I don't even need it normalized, just keep the direction stick to it for all of CameraViewvector and it needs to fit in 16bit of JRISC.  // uh I need special scalar Product to avoid typeCast ??!
 		let coupling=S.innerProduct(T)  // symmetric
@@ -83,6 +83,10 @@ export class Camera_in_stSpace{
 		// I need to change to names. One component here adds bias. So it does not bind to the (x,y) input row (mul from left). The other feeds into the denominator on the left. This comes later
 		// st does not bind to cv.viewVector.nominator[2>st]  . This is the "down looking" compontent. So we fill the jaggies with 0  (todo: downlooking is special. Move do front division notion (nominator first) makes no sense )
 		// the pixel shader wants the const stuff in 0 because x^0  So I moved this to the fron 2025-08-15
+
+		if (this.z.length>2) throw "z length >2 not supported"
+
+		// ToDo: I probably should do away with pos0 and last_pos stuff because I use it for different purposes. Needs names!
 		uvz_mapped.nominator=	[new Vec3( [[1,0,0]] ) ].concat( this.UVmapping_fromST.map(p=>new Vec3([[0,...p]])) , new Vec3( [[0,...this.z]] )); // Error: jaggies. In the trivial test with billboard polygon z=00 ( a third 0 is padded )
 			// Everone uses the general proof that 1/z is linear in screen space (far plane can be substracted.). Sorry that I cannot utilize my: "just calculate with fractions as in school!"
 			// Linear allows for an offset. So 0 does not need to be the horizon. Together with scaling there are two degrees of freedom which can change from polygon to polygon
@@ -90,7 +94,8 @@ export class Camera_in_stSpace{
 			// for inter-polygon comparison ( z-buffer ) we need a standard. So the multiplication with [s.z,t.z.0] 
 			// with viewVector should fix scaling
 			// with cameraPostion should fix offset  ( both indirectly through cv.nominator)
-		const uvz_from_viewvector=Matrix.mul( [uvz_mapped.nominator, st_from_viewvector.nominator]  ) // Error
+		//console.log("uvz_mapped",uvz_mapped.nominator,st_from_viewvector.nominator) // Error
+		const uvz_from_viewvector=Matrix.mul__Matrices_of_Rows( [uvz_mapped.nominator, st_from_viewvector.nominator]  ) // Error
 		//cv_p.viewVector=Matrix.mul( [mesh.nominator, cv.viewVector.nominator] )
 
 		// We may need to measure if it is faster to have two different 1/z or to compensate the s,t nominators

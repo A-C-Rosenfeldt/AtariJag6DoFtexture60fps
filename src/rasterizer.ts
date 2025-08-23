@@ -44,13 +44,13 @@ class Span {
 	}
 }
 
-// I tried nullable properties ...
-class PointPointing{
-	position: Array<number>
-	vector: Vec2
-	reverse:boolean
-	border: any;
-}
+// // I tried nullable properties ...
+// class PointPointing{
+// 	position: Array<number>
+// 	vector: Vec2
+// 	reverse:boolean
+// 	border: any;
+// }
 
 // but ...Aparently, with parallel consideration, I need polymorphism very badly
 export interface Item{
@@ -384,7 +384,7 @@ export class Polygon_in_cameraSpace {
 			payload=texturemap.uvz_from_viewvector(   t[1]   )
 		}
 
-		console.log(payload.nominator[0]) ; // Error: payload is not really constructed
+		console.log("payload",payload.nominator) ; // Error: payload is not really constructed
 
 		this.rasterize_onscreen(with_corners,payload); return true
 		return
@@ -570,7 +570,7 @@ export class Polygon_in_cameraSpace {
 
 		for (let i = 1; i < l; i++) {
 			let v = vertex[i]
-			if (instanceOfPoint(v) && v[i].get_y() < min[1]) min = [i, v.get_y()]
+			if (instanceOfPoint(v) && v.get_y() < min[1]) min = [i, v.get_y()]
 		}
 
 		let i = min[0]
