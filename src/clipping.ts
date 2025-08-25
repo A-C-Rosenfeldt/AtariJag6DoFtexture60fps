@@ -518,6 +518,9 @@ class Camera extends Player{ // camera
 
 
 	 screen=[320,240]
+	 fov=256 // It hurts me that magic values help with float. OpenGL runs on float hardware and combines this into one Matrix
+	// I need a start pixel of the polygon for the rasterizer
+	// I know that it feels weird that edges and texture are then projected backwards	 
 	scale:number[]
 
 	constructor(){
@@ -528,21 +531,19 @@ class Camera extends Player{ // camera
 
 
 
-	// pre multiply matrix or not? 
-	private pixel_projection_texel(pixel:number[]){
-		var backwards_ray=new Vec3( [[ this.fov,pixel[0]-screen[0]+.5  , pixel[1]-screen[0]+.5 ]] )
-		this.rotation.mul_left([backwards_ray])  // I support both directions of rotations nativeley because that is how I think of them, generally (when solving equations, or physcs, or synergy with HBV). SO3 just does not have a common denominator in neither direction.
-		// something position?
-	}
+	// // pre multiply matrix or not? 
+	// private pixel_projection_texel(pixel:number[]){
+	// 	var backwards_ray=new Vec3( [[ this.fov,pixel[0]-screen[0]+.5  , pixel[1]-screen[0]+.5 ]] )
+	// 	this.rotation.mul_left([backwards_ray])  // I support both directions of rotations nativeley because that is how I think of them, generally (when solving equations, or physcs, or synergy with HBV). SO3 just does not have a common denominator in neither direction.
+	// 	// something position?
+	// }
 
-	 fov=256 // It hurts me that magic values help with float. OpenGL runs on float hardware and combines this into one Matrix
-	// I need a start pixel of the polygon for the rasterizer
-	// I know that it feels weird that edges and texture are then projected backwards
-	private vertex_projection_pixel(vertex:number[]){
-		let forward_ray=new Vec3([vertex,this.position])
-		let fr=this.rotation.MUL_left_transposed(forward_ray)
-		let pixel=[ Math.floor(fr[1]*this.fov/fr[0]), Math.floor(fr[2]*this.fov/fr[0]) ]
-	}
+
+	// private vertex_projection_pixel(vertex:number[]){
+	// 	let forward_ray=new Vec3([vertex,this.position])
+	// 	let fr=this.rotation.MUL_left_transposed(forward_ray)
+	// 	let pixel=[ Math.floor(fr[1]*this.fov/fr[0]), Math.floor(fr[2]*this.fov/fr[0]) ]
+	// }
 
 	// very similar to Jaguar SDK. Guard band clipping only bloats the code.
 	// actually, JRISC only has unsigned DIV. So we are forced to clip the near plane beforehand (no divide by zero). We are also forced to skew and make two sides of the screen axis aligned. Then again: clip using the sign.
@@ -556,21 +557,21 @@ class Camera extends Player{ // camera
 	// short refresher: After transformation we don't store 1/z, but we subtract the far plane to use the whole scale (and that is the only reason: Memory is expensive!).
 	// this gives us a far plane. I see how 1/z still has to be linear after this substraction
 	// Perspective correction works by using W also for UV just as for the other coordinates. W is the unbiased Z and U and V have not been transformed.
-	private vertex_projection_clip(forward_ray:Vec3){
-		var clipcode:number[]=[]
-		for(let side=0;side<4;side++){
-			var pyramid_normal:Vec3
-			if (side&1){
-				pyramid_normal=new Vec3([[ side&2?-160:160 ,0, this.fov]]) //-160, -220 )
-			}else{
-				pyramid_normal=new Vec3([[ 0,side&2?-120:120, this.fov]])
-			}
-			let nr=this.rotation.mul_left([pyramid_normal]) // forward or backwards? I dunno
-			clipcode[side]=forward_ray.innerProduct(nr[0])
-		}
-		var plane:number[]=[] // near and far
-		clipcode[5]=forward_ray[0]-plane[0]
-	}
+	// private vertex_projection_clip(forward_ray:Vec3){
+	// 	var clipcode:number[]=[]
+	// 	for(let side=0;side<4;side++){
+	// 		var pyramid_normal:Vec3
+	// 		if (side&1){
+	// 			pyramid_normal=new Vec3([[ side&2?-160:160 ,0, this.fov]]) //-160, -220 )
+	// 		}else{
+	// 			pyramid_normal=new Vec3([[ 0,side&2?-120:120, this.fov]])
+	// 		}
+	// 		let nr=this.rotation.mul_left([pyramid_normal]) // forward or backwards? I dunno
+	// 		clipcode[side]=forward_ray.innerProduct(nr[0])
+	// 	}
+	// 	var plane:number[]=[] // near and far
+	// 	clipcode[5]=forward_ray[0]-plane[0]
+	// }
 
 	// Todo: Find my text about this. I only use rotation matrix to be able to debug this
 	// BeamTree language. Precision is no problem

@@ -42,6 +42,7 @@ export class PixelShader{
 	// PixelShader does not increment along axis units:  zst:Array<a_i>=new a_i[3]  // along axes units
 	// Rather we keep the data format from the 3d side
 	uvz_from_viewvecto: Matrix
+	half_screen: any
 	// and only on vertices convert from 3d Matrix structure to mutable a incr structure
 	inject_checkerboard(k: number, slope_int:number) {
 		for (let i=0;i<this.es[k].uvz.length;i++){
@@ -67,6 +68,8 @@ export class PixelShader{
 
 	span(x0: number, width: number, m: Mapper) { 
 
+		// debugging perspective is easier with coordinates around (0,0)
+
 		let blitter_slope=[0,0,0]
 		if (width==1){ // slithers and corners  (width 0 never calls) Assert
 			var esp=this.es.slice(0,1).map(e=>{
@@ -88,8 +91,10 @@ export class PixelShader{
 		// As in Doom on Jaguar, we do the full persepective calculation for the first and last pixel ( for walls and floors this is perfect, inbetween: some warp . Todo: check diagonals)
 		// then the Jaguar blitter interpolates linearly. Quake and Descent use subspans on large polygons. Code is straight forward. Add later.
 		let source=esp[0]  // todo: accumulator increment pairs
-		for (let x=x0; x < x0+width; x++) { // the blitter does this. Todo: move this code ... . But what about perspective correction? Also not in this source file!
-			m.putpixel(source, [x, this.y])
+		const xu=x0+ this.half_screen[0] // Jaguar Blitter uses 12-bit unsigned values
+		const yu=this.y+ this.half_screen[1]
+		for (let x=xu; x < xu+width; x++) { // the blitter does this. Todo: move this code ... . But what about perspective correction? Also not in this source file!
+			m.putpixel(source, [x, yu])
 			blitter_slope.forEach((p, i) => { source[i] += p[1] })  // x-gradient = slope ( different name for 1-dimensional aka scalar case )
 		}
 	
@@ -127,7 +132,8 @@ export class PixelShader{
 		return
 	};
 
-	constructor( uvz_from_viewvector:Matrix ){
+	constructor( uvz_from_viewvector:Matrix, half_screen:number[] ){
+		this.half_screen=half_screen
 		this.uvz_from_viewvecto=uvz_from_viewvector
 
 	// Todo : harmonize
