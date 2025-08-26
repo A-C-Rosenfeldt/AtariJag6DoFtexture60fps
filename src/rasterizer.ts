@@ -92,12 +92,18 @@ class Vertex_OnScreen implements Point {
 class Corner implements Point {
 	static screen: number[]
 	corner: number
+	get_one_digit_coords(){ return [1-(this.corner & 2),1-1*(this.corner+1 & 2)] } // Todo: UnitTest
 	get_y() { return screen[this.corner & 1] * (1 - (this.corner & 2)) }
 }
 
 class Onthe_border extends Corner {
 	// the edge after the corner in mathematical sense of rotation
 	border: number
+	get_one_digit_coords(){ // Todo. Unit Test . Could be the wrong direction of rotation
+		let t=[1-1*(this.border & 2),0]
+		if ((this.border & 1) ==1 ) return t
+		return [0,t[0]]
+	}
 	pixel_ordinate_int: number
 	z_gt_nearplane: boolean
 	half_screen: any;
@@ -150,7 +156,14 @@ class Cyclic_Collection<T extends any> {
 		let j = ((i % n) + n) % n
 		return this.a[j]
 	}
+}
 
+class Cyclic_Indexer{
+	length:number
+	direction:number
+	iterate_by_ref2(ref:number[]){
+		ref[2]=ref[2] + (this.direction * 2 - 1 + this.length) % this.length;
+	}
 }
 
 export class Polygon_in_cameraSpace {
@@ -622,7 +635,9 @@ export class Polygon_in_cameraSpace {
 					}
 					else {
 						if ( active_vertices[0][1] == active_vertices[1][1]) break; // left and right side already aim at the lowest vertex. No need to set up new Bresenham coefficients
-						var { Bresenham, d, x_at_y_int ,v_val2} = this.streamIn_newVertex(k, active_vertices[k], l, vertex, instanceOfPoint);
+						const ind=new Cyclic_Indexer()
+						ind.length=l, ind.direction=k
+						var { Bresenham, d, x_at_y_int ,v_val2} = this.streamIn_newVertex( active_vertices[k], ind, vertex);
 
 						// Bresenham still needs integer slope
 						slope_accu_c[k] = [d[0] > 0 ? d[1] / d[0] : this.screen[1] * Math.sign(d[1]), x_at_y_int]
@@ -664,11 +679,12 @@ export class Polygon_in_cameraSpace {
 		} //while (active_vertices[0][1] != active_vertices[1][1]) // full circle, bottom vertex found on the fly		
 	}
 
-	private streamIn_newVertex(active_vertices: number[], l: number, vertex: Item[]) {
+	private streamIn_newVertex(active_vertices: number[], ind: Cyclic_Indexer, vertex: Item[]) {
 
 		for (let eat_edges = 0; eat_edges < 10 /* safety */; eat_edges++) {
-			active_vertices[0] = active_vertices[1];
-			active_vertices[1] = active_vertices[1] + (k * 2 - 1 + l) % l;
+			active_vertices[0] = active_vertices[1]; // This might be null.
+			active_vertices[1] = active_vertices[2];  // for debugging I better keep indieces around for a while
+			ind.iterate_by_ref2( active_vertices ) //[2] = active_vertices[2] + (k * 2 - 1 + l) % l;
 			const v_and_e = active_vertices.map(a => vertex[a]); // JRISC does not like addressing modes, but automatic caching in registers is easy for a compiler. I may even want to pack data to save on LOADs with Q-displacement
 			// So I do need a window over two vertices?
 			// tell it like it is! Probable hoist up to the sort
@@ -740,11 +756,15 @@ export class Polygon_in_cameraSpace {
 			}
 			
 			// Inherit edge from screen -- or in the future: from the portal or the (smallest covering) leaf
-			if ( edge == null ) {
-				const b= v_val[1].border 
-				var slope = new Vec2([(v_val[1]).position, v_val[0].position]);
+			if ( v_val[1] instanceof Corner && edge == null && v_val[0] instanceof Corner  ) {
+				const c=[v_val[0].get_one_digit_coords(),v_val[1].get_one_digit_coords()]
+				//const b= v_val.slice(0,2).map(v=>v.get_one_digit_coords() )  // TypeGuard does not understand
+				let d=[0,0]
+				for(let i=0;i<2;i++){
+					if (c[0][i]==c[1][i]) d[i]=1 
+				}
+				if (d[0]==d[1]) throw Error("Diagonal lines need Edge with Slope")
 
-				d=[1,0] // or 0,1
 				Bresenham=0
 				break
 			
