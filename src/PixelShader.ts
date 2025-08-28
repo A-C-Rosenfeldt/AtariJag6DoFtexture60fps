@@ -12,7 +12,7 @@ class a_i{
 }
 
 export class EdgeShader {
-	uvz:Array<a_i>=new a_i[3]   // along edge and edge shifted 1 to the right
+	uvz=new Array<a_i>(3)    // along edge and edge shifted 1 to the right
 	x_at_y_int: number
 
 	constructor(edge:Item , x_at_y_int:number , slope_inc:number ) {  // number is int   @ vertex2d
@@ -64,7 +64,7 @@ export class PixelShader{
 
 		}
 	}
-	es:Array<EdgeShader> =EdgeShader[2]
+	es=Array<EdgeShader>(2)
 
 	span(x0: number, width: number, m: Mapper) { 
 

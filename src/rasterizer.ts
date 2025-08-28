@@ -82,14 +82,14 @@ class vertex_behind_nearPlane implements Item {
 }
 
 // Just as projected
-class Vertex_OnScreen implements Point {
+class Vertex_OnScreen extends Point {
 	position = new Array<number>()
-	get_y() { return Math.floor(this.position[0]) }
+	get_y() { return Math.floor(this.position[1]) }
 	// I use the vector constructor to do this. Seems like a silly hack?
 	fraction() { return this.position.map(p=>p - Math.floor(p)) }  // AI thinks that this looks better than % 1. Floor is explicit and is the way JRISC with twos-complemnt fixed point works
 }
 
-class Corner implements Point {
+class Corner extends Point {
 	static screen: number[]
 	corner: number
 	get_one_digit_coords(){ return [1-(this.corner & 2),1-1*(this.corner+1 & 2)] } // Todo: UnitTest
@@ -162,10 +162,17 @@ class Cyclic_Indexer{
 	length:number
 	direction:number
 	iterate_by_ref2(ref:number[]){
-		ref[2]=ref[2] + (this.direction * 2 - 1 + this.length) % this.length;
+		ref[2]=(ref[2] + this.direction * 2 - 1 + this.length) % this.length;
 	}
 }
 
+
+class Gradient{
+	accumulator: number
+	gradients= new Array<number>(2)
+}
+
+// Todo: God class and too many dated comments
 export class Polygon_in_cameraSpace {
 	near_plane = 0.001
 	// vertex_to_vertex(){} transformation happens elsewhere
@@ -570,11 +577,12 @@ export class Polygon_in_cameraSpace {
 		return pattern4 //head[0] && head[1]
 	}
 
+
 	// The beam tree will make everything convex and trigger a lot of MUL 16*16 in the process. Code uses Exception patter: First check if all vertices are convex -> break . Then check for self-cuts => split, goto first . ZigZag concave vertices. Find nearest for last. Zig-zag schould not self cut? 
 	// For the MVP, we do best effort for polygons with nore than 3 edges: Ignore up slopes. Do backface culling per span. 
 	private rasterize_onscreen(vertex: Array<Item>, Payload: Matrix) {  // may be a second pass like in the original JRISC. Allows us to wait for the backbuffer to become available.
 		const l = vertex.length
-		let min = [0, -1]   //weird to proces second component first. Rotate?
+		let min_max = [[0, this.half_screen[1]],[0, -this.half_screen[1]] ]  //weird to proces second component first. Rotate?
 
 		// todo: why not go over prototype? There is no other class with this property  // perhaps, while designing, there was
 		function instanceOfPoint(object: any): object is Point {
@@ -583,13 +591,16 @@ export class Polygon_in_cameraSpace {
 
 		for (let i = 1; i < l; i++) {
 			let v = vertex[i]
-			if (instanceOfPoint(v) && v.get_y() < min[1]) min = [i, v.get_y()]
+			if (instanceOfPoint(v)){
+				if ( v.get_y() < min_max[0][1]) min_max[0] = [i, v.get_y()]
+				if ( v.get_y() > min_max[1][1]) min_max[1] = [i, v.get_y()]
+			}
 		}
 
-		let i = min[0]
+		let i = min_max[0][0]
 		let v = vertex[i]
-		const active_vertices = [[0, i], [0, i]] // happens in loop first iteration, (i + l - 1) % l], [i, (i + 1) % l]]
-
+		const active_vertices = [[-1,-1, i], [-1,-1, i]] // happens in loop first iteration, (i + l - 1) % l], [i, (i + 1) % l]]
+		const Bresenham = new Array<Gradient>(2).fill(undefined).map(() => new Gradient()); // I need to allocate memory because edges reuse this. Otherwise I would need threads for both sides of the polygon or yield 
 		// active_vertices.forEach(a => {
 		// 	let vs = a.map(b => this.vertices[b])
 		// 	if (vs[0].outside != vs[1].outside) {
@@ -613,10 +624,12 @@ export class Polygon_in_cameraSpace {
 		const slope_accu_c = [[0, 0], [0, 0]]  // (counter) circle around polygon edges as ordered in space / level-mesh geometry
 		//let slope_int = [0, 0]
 		// let slope_accu_s=[[0,0],[0,0]]  // sorted by x on screen  .. uh pre-mature optimization: needs to much code. And time. Check for backfaces in a prior pass? Solid geometry in a portal renderer or beam tree will cull back-faces automatically
-		for (let y = (v as Point).get_y(); y < this.half_screen[1]; y++) {  // the condition is for safety : Todo: remove from release version
+		console.log("min_max", min_max)
+		let count_to_one=false
+		for (let y = min_max[0][1];y< min_max[1][1]; y++) {  // the condition is for safety : Todo: remove from release version
 			let width = 0
 			for (let k = 0; k < 2; k++) {
-				const t0 = active_vertices[k][1]; if (typeof t0 !== "number") throw new Error("Invalid vertex ref")
+				const t0 = active_vertices[k][2]; if (typeof t0 !== "number") throw new Error("Invalid vertex ref")
 				const t1 = vertex[t0];
 				const t3 = t1 instanceof Point;  // duplicated code. Looks like after clipping I should split into vertices and edges. Or at least use a fixed pattern will null placeholders?
 				let t2: number
@@ -634,15 +647,20 @@ export class Polygon_in_cameraSpace {
 						ps.es[k].propagate_along(ca)
 					}
 					else {
-						if ( active_vertices[0][1] == active_vertices[1][1]) break; // left and right side already aim at the lowest vertex. No need to set up new Bresenham coefficients
+						if ( count_to_one && active_vertices[0][2] == active_vertices[1][2]) break; // left and right side already aim at the lowest vertex. No need to set up new Bresenham coefficients
+						count_to_one=true
 						const ind=new Cyclic_Indexer()
 						ind.length=l, ind.direction=k
-						var { Bresenham, d, x_at_y_int ,v_val2} = this.streamIn_newVertex( active_vertices[k], ind, vertex);
+						
+						var{   x_at_y_int ,v_val2} = this.streamIn_newVertex( active_vertices[k],Bresenham[k], ind, vertex);
 
-						// Bresenham still needs integer slope
-						slope_accu_c[k] = [d[0] > 0 ? d[1] / d[0] : this.screen[1] * Math.sign(d[1]), x_at_y_int]
+						{
+							let d=Bresenham[k].gradients
+							// Bresenham still needs integer slope
+							slope_accu_c[k] = [d[0] > 0 ? d[1] / d[0] : this.screen[1] * Math.sign(d[1]), x_at_y_int]
+						}
 
-						const e = new EdgeShader(v_val2, x_at_y_int, slope_accu_c[k][0])
+						const e = new EdgeShader(v_val2, x_at_y_int, slope_accu_c[k][0]) // shades the pixels on the edge, but not the edge itself
 						ps.es[k] = e
 						// Alternatives
 						// ps.inject_checkerboard(k) 
@@ -669,7 +687,7 @@ export class Polygon_in_cameraSpace {
 			}
 
 			ps.y = y
-			console.log("width:", width, "y", ps.y)
+			console.log("width:", width, "y", ps.y) // Test failed: Width is zero all the time
 			if (width > 0) {
 				ps.span(slope_accu_c[0][0], width, m)
 			}
@@ -679,31 +697,34 @@ export class Polygon_in_cameraSpace {
 		} //while (active_vertices[0][1] != active_vertices[1][1]) // full circle, bottom vertex found on the fly		
 	}
 
-	private streamIn_newVertex(active_vertices: number[], ind: Cyclic_Indexer, vertex: Item[]) {
+	private streamIn_newVertex(active_vertices: number[], Bresenham: Gradient, ind: Cyclic_Indexer, vertex: Item[]) {
 
 		for (let eat_edges = 0; eat_edges < 10 /* safety */; eat_edges++) {
 			active_vertices[0] = active_vertices[1]; // This might be null.
 			active_vertices[1] = active_vertices[2];  // for debugging I better keep indieces around for a while
 			ind.iterate_by_ref2( active_vertices ) //[2] = active_vertices[2] + (k * 2 - 1 + l) % l;
-			const v_and_e = active_vertices.map(a => vertex[a]); // JRISC does not like addressing modes, but automatic caching in registers is easy for a compiler. I may even want to pack data to save on LOADs with Q-displacement
 			// So I do need a window over two vertices?
 			// tell it like it is! Probable hoist up to the sort
 			const v_val = new Array<Point>(2)
-			if ((v_and_e[2] instanceof Point)) {
-				var v_val2: Item = v_val[1] = v_and_e[2];
-			} else continue
+			let edge: Edge_on_Screen = null// edge can be impli
+			{
+				const v_and_e = active_vertices.map(a => a<0 ? null : vertex[a]); // JRISC does not like addressing modes, but automatic caching in registers is easy for a compiler. I may even want to pack data to save on LOADs with Q-displacement
 
-			let last=0
-			let edge:Edge_on_Screen=null// edge can be impli
-			if ((v_and_e[1] instanceof Edge_on_Screen)) {
-				edge = v_and_e[1];
-				last=1
+				if ((v_and_e[2] instanceof Point)) {
+					var v_val2: Item = v_val[1] = v_and_e[2];
+				} else continue
+
+				let oldest = 1
+				if ((v_and_e[1] instanceof Edge_on_Screen)) {
+					edge = v_and_e[1];
+					oldest = 0
+				}
+
+				const lv = v_and_e[oldest]
+				if (lv instanceof Point) {
+					v_val[0] = lv
+				} else continue
 			}
-
-			const lv=v_and_e[last]
-			if (lv instanceof Point) {
-				v_val[0] = lv
-			} else continue
 
 
 			if (v_val[0].get_y() >= v_val[1].get_y()) continue;
@@ -715,7 +736,7 @@ export class Polygon_in_cameraSpace {
 				const y_int = for_subpixel.get_y(); // int to seed the Bresenham akkumulator
 
 				var x_at_y_int = for_subpixel.border & 1 ? for_subpixel.pixel_ordinate_int : this.half_screen[0] * (1 - (for_subpixel.border & 2));
-				var Bresenham = edge.bias + slope.wedgeProduct(new Vec2([[x_at_y_int, y_int]])); //y_int*d[0]+x_at_y_int*d[1]
+				Bresenham.accumulator = edge.bias + slope.wedgeProduct(new Vec2([[x_at_y_int, y_int]])); //y_int*d[0]+x_at_y_int*d[1]
 				break
 			}
 
@@ -727,10 +748,10 @@ export class Polygon_in_cameraSpace {
 				// 	d[i]=(v_val[i] as Vertex_OnScreen).postion[i]-v_val[0].postion[i]
 				// }
 				//var slope=d// see belowvar slope_integer=
-				let d = slope.v; if (d[1] <= 0) { continue; }
+				var d = slope.v; if (d[1] <= 0) { continue; }
 				var y_int = v_val[0].get_y(); // int
-				var x_at_y_int = Math.floor(v_and_e[0][0] + d[0] * (y_int - v_and_e[0][1]) / d[1]); // frac -> int
-				var Bresenham = slope.wedgeProduct(new Vec2([[x_at_y_int, y_int], v_val[0].position])); //(y_int- v_val[0][1] )*d[0]+(x_at_y_int- v_val[0][0] )*d[1]  // this should be the same for all edges not instance of Edge_Horizon
+				var x_at_y_int = Math.floor(v_val[0].position[0] + d[0] * (y_int - v_val[0].position[1]) / d[1]); // frac -> int
+				Bresenham.accumulator = slope.wedgeProduct(new Vec2([[x_at_y_int, y_int], v_val[0].position])); //(y_int- v_val[0][1] )*d[0]+(x_at_y_int- v_val[0][0] )*d[1]  // this should be the same for all edges not instance of Edge_Horizon
 				break
 			}
 			if (v_val[0] instanceof Vertex_OnScreen  && edge instanceof Edge_w_slope  && v_val[1] instanceof Onthe_border) {
@@ -741,7 +762,7 @@ export class Polygon_in_cameraSpace {
 				var y_int = v_val[0].get_y(); // int
 
 				var x_at_y_int = Math.floor(v_val[0][0] + d[0] * (y_int - v_val[0][1]) / d[1]); // frac -> int
-				var Bresenham = slope.wedgeProduct(new Vec2([[x_at_y_int, y_int], v_val[0].position])); // this should be the same for all edges not instance of Edge_Horizon
+				Bresenham.accumulator = slope.wedgeProduct(new Vec2([[x_at_y_int, y_int], v_val[0].position])); // this should be the same for all edges not instance of Edge_Horizon
 				break
 			}
 			if (v_val[1] instanceof Vertex_OnScreen && edge instanceof Edge_w_slope && v_val[0] instanceof Onthe_border) {
@@ -751,7 +772,7 @@ export class Polygon_in_cameraSpace {
 				var d = slope.v;
 				var y_int = v_val[1].get_y(); // int
 				var x_at_y_int = v_val[0].border & 1 ? v_val[0].pixel_ordinate_int : this.screen[0] * (1 - (v_val[0].border & 2)); // todo: method!
-				var Bresenham = slope.wedgeProduct(new Vec2([[x_at_y_int, y_int], v_val[1].position])); // this should be the same for all edges not instance of Edge_Horizon					
+				Bresenham.accumulator = slope.wedgeProduct(new Vec2([[x_at_y_int, y_int], v_val[1].position])); // this should be the same for all edges not instance of Edge_Horizon
 				break
 			}
 			
@@ -765,13 +786,13 @@ export class Polygon_in_cameraSpace {
 				}
 				if (d[0]==d[1]) throw Error("Diagonal lines need Edge with Slope")
 
-				Bresenham=0
+				Bresenham.accumulator = 0
 				break
 			
 			}			
 		}
-		
-		return { Bresenham, d, x_at_y_int, v_val2 };
+		Bresenham.gradients=d
+		return {  x_at_y_int, v_val2 };
 	}
 				// JRISC has a reminder, but it is quirky and needs helper code. Probably I'd rather do: 
 			/*
