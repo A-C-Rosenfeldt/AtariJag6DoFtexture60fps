@@ -13,10 +13,10 @@ class a_i{
 
 export class EdgeShader {
 	uvz=new Array<a_i>(3)    // along edge and edge shifted 1 to the right
-	x_at_y_int: number
+	//x_at_y_int: number
 
-	constructor(edge:Item , x_at_y_int:number , slope_inc:number ) {  // number is int   @ vertex2d
-		this.x_at_y_int=x_at_y_int
+	constructor(){ //edge:Item , x_at_y_int:number , slope_inc:number ) {  // number is int   @ vertex2d
+		//this.x_at_y_int=x_at_y_int
 	}
 	propagate_along(direction: boolean) { // Bresenham gives bool: Direction from last to get back on track
 		this.uvz.forEach(s=>s.propagate_along)
@@ -52,7 +52,7 @@ export class PixelShader{
 			
 			r.accumulator=0
 			r.accumulator+=this.uvz_from_viewvecto.nominator[2].v[i]*500 ;  // 2= viewVector.z  . column vector makes positions reverse :-(
-			r.accumulator+=this.uvz_from_viewvecto.nominator[0].v[i]* (this.es[k].x_at_y_int+0.5); // fast changes in x=0 is little Endian . Low level
+		//	r.accumulator+=this.uvz_from_viewvecto.nominator[0].v[i]* (this.es[k].x_at_y_int+0.5); // fast changes in x=0 is little Endian . Low level
 			r.accumulator+=this.uvz_from_viewvecto.nominator[1].v[i]* (this.y+0.5); // fast changes in x=0 is little Endian . Low level(  , this.y )
 
 			// incr
@@ -132,6 +132,7 @@ export class PixelShader{
 		return
 	};
 
+	
 	constructor( uvz_from_viewvector:Matrix, half_screen:number[] ){
 		this.half_screen=half_screen
 		this.uvz_from_viewvecto=uvz_from_viewvector
@@ -141,7 +142,16 @@ export class PixelShader{
 			// bias
 			// I adjusted 	uvz_from_viewvector(C:number[]):Matrix{ so that I can simply.
 
-			let payload_w= uvz_from_viewvector.nominator.slice();
+			// let payload_w= uvz_from_viewvector.nominator.slice();
+
+			// let blitter_slope = payload_w.map(p => p[1])
+			this.es[0].uvz = uvz_from_viewvector.nominator.map(v3 => {
+				 let a = new a_i() //; a.accumulator =0; // accumulator is set by vertex using MUL
+				  a.increment=v3.v.slice(0,2); // Todo: make uvz more like a_i
+				  a.accumulator=v3.v[3] // So all addressing will be relative now?
+				 return a 
+				}) // 500 is near plane z
+		
 
 			// payload_w[0][0] = uvz_from_viewvector.nominator[0][2]  // multiply with [2]=1 compontent of view vector gives us the const coeeficient [][0] for the linerar function. Here: denominaotr [0][]
 			// payload_w[1][0] = uvz_from_viewvector.nominator[1][2]  // same for nominator of s
@@ -204,7 +214,7 @@ export class PixelShader{
 					*/
 
 			// I should fully commit to bresenham at the top of this loop. This is not readable.
-			let blitter_slope = payload_w.map(p => p[1])		
+		
 	}
 
 }

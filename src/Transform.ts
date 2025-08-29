@@ -21,7 +21,7 @@ export class Camera {
 // In the future I may need to rename this to transfomer ?
 // Mesh and camere kinda use the same math. I even decided on a specific implementation : Matrix over quaternions
 export class Mesh {
-  polygon=[new Vec3([[1,0,0]]),new Vec3([[-1,0,0]]),new Vec3([[0,2,0]])]
+  polygon=[new Vec3([[-1,0,0]]),new Vec3([[1,0,0]]),new Vec3([[0,2,0]])]
   transformed: Vec3[];
 
   transform(c:Camera) {
