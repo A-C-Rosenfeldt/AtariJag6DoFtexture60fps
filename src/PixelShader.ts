@@ -1,6 +1,9 @@
 import {  Matrix, Matrix_frac, Vec } from "clipping"
-import {Item } from "rasterizer"
+import {Gradient,Item } from "rasterizer"
 import { Mapper } from "./infinite_plane_mapper"
+
+// Define Gradient type (adjust as needed for your code)
+
 
 class a_i{
 	increment = [0, 0]	
@@ -11,16 +14,43 @@ class a_i{
 	}	
 }
 
+
 export class EdgeShader {
 	uvz=new Array<a_i>(3)    // along edge and edge shifted 1 to the right
-	//x_at_y_int: number
+	x_at_y_int: number
+	Bresenham: a_i
+	slope: number
 
-	constructor(){ //edge:Item , x_at_y_int:number , slope_inc:number ) {  // number is int   @ vertex2d
-		//this.x_at_y_int=x_at_y_int
+	constructor(x_at_y_int:number,y:number, slope_floored:number,Bresenham_k_gradient:Gradient,payload:Matrix){ //edge:Item , x_at_y_int:number , slope_inc:number ) {  // number is int   @ vertex2d
+		this.x_at_y_int=x_at_y_int
+		this.slope=slope_floored
+		this.Bresenham=new a_i()
+		
+		{							
+			const _=Bresenham_k_gradient
+			const floored = this.slope*_[0]  + _[1]  // We always go down by one
+			this.Bresenham.increment = [floored, floored+_[0]]
+			this.Bresenham.accumulator = Bresenham_k_gradient.accumulator + this.Bresenham.increment[0] // We set up the decision value for the next line (y+1)
+		}
+
+		this.uvz = payload.nominator.map(v3 => {
+				const a = new a_i(),v=v3.v //; a.accumulator =0; // accumulator is set by vertex using MUL
+				a.accumulator=v[0] * x_at_y_int + v[1] * y + v[2]  // So all addressing will be relative now? // Why is Bresenham different?
+				const floored = v[0] * slope_floored + v[1]  // We always go down by one
+				a.increment=[floored, floored+v[0]]
+				return a 
+			})
 	}
-	propagate_along(direction: boolean) { // Bresenham gives bool: Direction from last to get back on track
-		this.uvz.forEach(s=>s.propagate_along)
+
+	// += is more efficient in JRISC than C= A*B 
+	propagate_along(): number { // Bresenham gives bool: Direction from last to get back on track
+		let ca = this.Bresenham.accumulator < 0   // Check the constructor to properly set this up. Bresenham needs to already sit on the next y
+		this.Bresenham.propagate_along(ca) 		
+		this.x_at_y_int+=this.slope + (ca ? 1 : 0)  //  JRISC: Either ADC or if I have enough registers free: put in the ca branches.		
+		this.uvz.forEach(s => s.propagate_along(ca))
+		return this.x_at_y_int
 	}
+
 	perspective() {
 		let w=this.uvz[0].accumulator
 		if (w==0) return
@@ -31,6 +61,7 @@ export class EdgeShader {
 		this.uvz[2].projected=z
 	}
 }
+
 
 export class PixelShader{
 	y:number
@@ -44,41 +75,22 @@ export class PixelShader{
 	uvz_from_viewvecto: Matrix
 	half_screen: any
 	// and only on vertices convert from 3d Matrix structure to mutable a incr structure
-	inject_checkerboard(k: number, slope_int:number) {
-		for (let i=0;i<this.es[k].uvz.length;i++){
 
-			
-			let r=this.es[k].uvz[i]  // needs to be a method on a_i
-			
-			r.accumulator=0
-			r.accumulator+=this.uvz_from_viewvecto.nominator[2].v[i]*500 ;  // 2= viewVector.z  . column vector makes positions reverse :-(
-		//	r.accumulator+=this.uvz_from_viewvecto.nominator[0].v[i]* (this.es[k].x_at_y_int+0.5); // fast changes in x=0 is little Endian . Low level
-			r.accumulator+=this.uvz_from_viewvecto.nominator[1].v[i]* (this.y+0.5); // fast changes in x=0 is little Endian . Low level(  , this.y )
 
-			// incr
-			let t= slope_int* this.uvz_from_viewvecto.nominator[0].v[i]  // slope parameter goes here
-			for (let d=0;d<2;d++){
-				t+=this.uvz_from_viewvecto.nominator[d].v[i]  // always go down one pixel
-				r[d].increment=t  // I don't see how 0 1 could be logically mapped ot the input 0 and 1. So I just count up
-			} // Bresenham might decide to go one right
 
-		}
-	}
-	es=Array<EdgeShader>(2)
-
-	span(x0: number, width: number, m: Mapper) { 
+	span(x0: number, width: number, m: Mapper, es:EdgeShader[]) { 
 
 		// debugging perspective is easier with coordinates around (0,0)
 
 		let blitter_slope=[0,0,0]
 		if (width==1){ // slithers and corners  (width 0 never calls) Assert
-			var esp=this.es.slice(0,1).map(e=>{
+			var esp=es.slice(0,1).map(e=>{
 			e.perspective() // Edges propagate / use cursors. No parameter here //  x + (width-1))  // Perspective is calculated within  aka closed interval
 			return e.uvz.map(u=>u.projected )})
 			esp[1]=esp[0]
 			// slope is not set because it will never be read
 		}else{
-			var esp=this.es.map(e=>{
+			var esp=es.map(e=>{
 			e.perspective() //x + (width-1))  // Perspective is calculated within  aka closed interval
 			return e.uvz.map(u=>u.projected )})
 			for(let uvz=0;uvz<2;uvz++){
@@ -145,12 +157,7 @@ export class PixelShader{
 			// let payload_w= uvz_from_viewvector.nominator.slice();
 
 			// let blitter_slope = payload_w.map(p => p[1])
-			this.es[0].uvz = uvz_from_viewvector.nominator.map(v3 => {
-				 let a = new a_i() //; a.accumulator =0; // accumulator is set by vertex using MUL
-				  a.increment=v3.v.slice(0,2); // Todo: make uvz more like a_i
-				  a.accumulator=v3.v[3] // So all addressing will be relative now?
-				 return a 
-				}) // 500 is near plane z
+
 		
 
 			// payload_w[0][0] = uvz_from_viewvector.nominator[0][2]  // multiply with [2]=1 compontent of view vector gives us the const coeeficient [][0] for the linerar function. Here: denominaotr [0][]

@@ -167,7 +167,7 @@ class Cyclic_Indexer{
 }
 
 
-class Gradient{
+export class Gradient{
 	accumulator: number
 	gradients= new Array<number>(2)
 	alongEdge= new Array<number>(2)
@@ -618,11 +618,11 @@ export class Polygon_in_cameraSpace {
 		// Matrix is trans-unit. There is no reason for it to be square
 
 		const ps = new PixelShader(payload, this.half_screen)  // InfiniteCheckerBoard is PixelShader
-
+		const es=Array<EdgeShader>(2)
 		// this is probably pretty standard code. Just I want to explicitely show how what is essential for the inner loop and what is not
 		// JRISC is slow on branches, but unrolling is easy (for my compiler probably), while compacting code is hard. See other files in this project.
 
-		const slope_accu_c = [[0, 0], [0, 0]]  // (counter) circle around polygon edges as ordered in space / level-mesh geometry
+		const slope_accu_c = [[0, 0], [0, 0]]  // for debugging. Todo: remove // (counter) circle around polygon edges as ordered in space / level-mesh geometry
 		//let slope_int = [0, 0]
 		// let slope_accu_s=[[0,0],[0,0]]  // sorted by x on screen  .. uh pre-mature optimization: needs to much code. And time. Check for backfaces in a prior pass? Solid geometry in a portal renderer or beam tree will cull back-faces automatically
 		console.log("min_max", min_max)
@@ -638,14 +638,7 @@ export class Polygon_in_cameraSpace {
 					t2 = t1.get_y(); if (typeof t2 !== "number") throw new Error("Invalid vertex")
 
 					if (y < t2) {	// todo: duplicate this code for the case that on vertex happens on one side
-						Bresenham[k][1] += Bresenham[k][0] // on JRISC this sets flags .. but I still need to persist them. A useless. Just BitTest on sign. Single cycle to 
-						let ca = Bresenham[k][1] < 0   // Bresenham one line in advance would bloat code only by one instruction 
-						if (ca) {
-							Bresenham[k][1] += Bresenham[k][2]
-						}
-						slope_accu_c[k][1] += slope_accu_c[k][0] + (ca ? 1 : 0)  //  JRISC/ADC  todo: rename as x	
-
-						ps.es[k].propagate_along(ca)
+						slope_accu_c[k][1]=es[k].propagate_along()
 					}
 					else {
 						if ( count_to_one && active_vertices[0][2] == active_vertices[1][2]) break; // left and right side already aim at the lowest vertex. No need to set up new Bresenham coefficients
@@ -661,28 +654,10 @@ export class Polygon_in_cameraSpace {
 							slope_accu_c[k] = [d[0] > 0 ? d[1] / d[0] : this.screen[1] * Math.sign(d[1]), x_at_y_int]
 						}
 
+						es[k] = new EdgeShader(x_at_y_int,y, slope_accu_c[k][0],Bresenham[k],payload)
 
-						//////////// All this code seems to be belong to an edge -- An EdgeShader which only lives as long as an edge
-						//  It needs payload information . Some of the payload is stored in the pixel shader. This shader knows how big the vectors in the edge shader are
-						// payload seems to be pure data (owned by rasterizer) and pixelShader is pure behaviour ( interpolation or flat shading ) -- our Interface to the Jaguar Hardware
-						// Bresenham[k].accumulator is already set internally. Todo: collect this subpixel / jump code in one place. Ser uvz
-						{							
-							const _=Bresenham[k].gradients
-							const floored = _[0] * slope_accu_c[k][0] + _[1]  // We always go down by one
-							Bresenham[k].alongEdge = [floored, floored+_[0]]
-						}
 
-						ps.inject_checkerboard(k,slope_accu_c[k][0])   // Todo: Now this is duplicated. I hate the k parameter here.
 
-						// EdgeShaders can be visible to rasterizer. Fire the Methodes, Utilize the Bresenham . EdgeShader should implement two interfaces. The other interface lets pixel shader collect its end points
-						// const e = new EdgeShader(v_val2, x_at_y_int, slope_accu_c[k][0]) // shades the pixels on the edge, but not the edge itself
-						// Todo: split this into methods after I know all dependencies
-						payload.nominator.forEach((_, i) => {    // each being uvz
-							ps.es[k].uvz[i].accumulator=_.v[0] * x_at_y_int + _.v[1] * y + _.v[2]  // we start at the vertex. This is sub-pixel correct because x_at_y_int is calculated from the real slope
-							const floored = _.v[0] * slope_accu_c[k][0] + _.v[1]  // We always go down by one
-							ps.es[k].uvz[i].increment = [floored, floored+_.v[0]] // Alternative is a different step. Rounding means that I don't know the sign? So I should floor?
-						})
-						//////////////////////
 
 
 						// Alternatives
@@ -715,7 +690,7 @@ export class Polygon_in_cameraSpace {
 
 			console.log("width:", width, "y", ps.y) // Test failed: Width is zero all the time
 			if (width > 0) {
-				ps.span(slope_accu_c[0][0], width, m)
+				ps.span(slope_accu_c[0][0], width, m, es)
 			}
 
 
