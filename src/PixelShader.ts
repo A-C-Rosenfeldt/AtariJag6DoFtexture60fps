@@ -33,6 +33,8 @@ export class EdgeShader {
 			this.Bresenham.accumulator = Bresenham_k_gradient.accumulator + this.Bresenham.increment[0] // We set up the decision value for the next line (y+1)
 		}
 
+		console.log("edge",slope_floored,this.Bresenham.increment,this.Bresenham.accumulator)
+
 		this.uvz = payload.nominator.map(v3 => {
 				const a = new a_i(),v=v3.v //; a.accumulator =0; // accumulator is set by vertex using MUL
 				a.accumulator=v[0] * x_at_y_int + v[1] * y + v[2]  // So all addressing will be relative now? // Why is Bresenham different?
@@ -107,7 +109,7 @@ export class PixelShader{
 		const yu=this.y+ this.half_screen[1]
 		for (let x=xu; x < xu+width; x++) { // the blitter does this. Todo: move this code ... . But what about perspective correction? Also not in this source file!
 			m.putpixel(source, [x, yu])
-			blitter_slope.forEach((p, i) => { source[i] += p[1] })  // x-gradient = slope ( different name for 1-dimensional aka scalar case )
+			blitter_slope.forEach((p, i) => { source[i] += p})  // x-gradient = slope ( different name for 1-dimensional aka scalar case )
 		}
 	
 		/*

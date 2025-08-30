@@ -209,12 +209,17 @@ export class Mapper{
 		// Elements are so fat, we pick cherries
 	}
 	putpixel(source: number[], target: number[]){
-		const s=(Math.floor(source[0])+this.source_width*Math.floor(source[1]))*4
+		const s=(Math.floor(Math.abs(source[0])%64)+this.source_width*Math.floor(Math.abs(source[1])%64))*4
 		const t=(Math.floor(target[0])+this.target_width*Math.floor(target[1]))*4
 
 		for(let i=0;i<4;i++){
 			this.frame.pixel[t+i]=this.imageData.data[s+i]
 		}
+
+		{
+			const i=3
+			this.frame.pixel[t+i]=255
+		}		
 	}
 
 	getImageData(texture_inspected: HTMLImageElement) {  // binding
@@ -233,16 +238,27 @@ export class Mapper{
 
 		const obj = { pixelFormat: "rgba-unorm8" }  // dated lib.dom.d.ts?? 2025-07-18
 		this.imageData = ctx.getImageData(0, 0, this.texture_inspected.width, this.texture_inspected.height, obj as ImageDataSettings);
+		this.drawCanvas();
 		this.source_width = texture_inspected.width  // no style on the image. Browser extracts size after loading the image
 	}
 	drawCanvas(){
 		const canvas = document.getElementById("Canvas2d") as HTMLCanvasElement;
 		const ctx = canvas.getContext("2d");
 		if (ctx) {
-			ctx.putImageData(this.imageData, 0, 0);
+			ctx.putImageData(this.imageData, 0, 0);console.log("put Canvas2d") // works
 		}
-
 	}
+	drawCanvasGame(){
+		const canvas = document.getElementById("Canvas2dGame") as HTMLCanvasElement;
+		const ctx = canvas.getContext("2d");
+		if (ctx) {
+			//const obj = { pixelFormat: "rgba-unorm8" }; // dated lib.dom.d.ts?? 2025-07-18
+			const imageData = new ImageData(this.frame.pixel, 320, 200);
+			ctx.putImageData(imageData, 0, 0);console.log("put Canvas2dGame")
+		}
+	}
+	
+
 	span(){
 			// no synergy in code. Deltas cost too much lines. Later?
 			// Maybe start with "The hidden below": Do end points exaclty and then span. Then add Quake subspans?

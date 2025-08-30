@@ -688,14 +688,15 @@ export class Polygon_in_cameraSpace {
 
 			width=slope_accu_c[1][1]-slope_accu_c[0][1]
 
-			console.log("width:", width, "y", ps.y) // Test failed: Width is zero all the time
+			console.log("left",slope_accu_c[0][1],"right",slope_accu_c[1][1], "y", ps.y) // Test failed: Width is zero all the time
 			if (width > 0) {
 				ps.span(slope_accu_c[0][0], width, m, es)
+			}else{	
+				ps.span(-155, 310, m, es)
 			}
-
-
-
 		} //while (active_vertices[0][1] != active_vertices[1][1]) // full circle, bottom vertex found on the fly		
+
+		m.drawCanvasGame()
 	}
 
 	private streamIn_newVertex(active_vertices: number[], Bresenham: Gradient, ind: Cyclic_Indexer, vertex: Item[]) {
