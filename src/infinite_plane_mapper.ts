@@ -209,6 +209,7 @@ export class Mapper{
 		// Elements are so fat, we pick cherries
 	}
 	putpixel(source: number[], target: number[]){
+		//console.log("x",target[0])
 		const s=(Math.floor(Math.abs(source[0])%64)+this.source_width*Math.floor(Math.abs(source[1])%64))*4
 		const t=(Math.floor(target[0])+this.target_width*Math.floor(target[1]))*4
 
