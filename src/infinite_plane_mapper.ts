@@ -66,8 +66,8 @@ export class Camera_in_stSpace{
 		return pl
 	}
 
-	uvz_from_viewvector(C:number[]):Matrix{
-		const st_from_viewvector=this.infinte_checkerBoard_m(C)
+	uvzw_from_viewvector(C:number[]):Matrix{
+		const stz_from_viewvector=this.infinte_checkerBoard_m(C)
 
 		// the rest should result in new PixelShader( at_bottomRight_of_Center, gradient )  // InfiniteCheckerBoard is PixelShader
 		// view vector has fixed z component => at_bottomRight_of_Center
@@ -77,7 +77,7 @@ export class Camera_in_stSpace{
 		// UV mapping is great to map one rectangular texture onto a mesh
 		// But we don't depend on it here.
 		// what mesh?    // First occurence of matrix mul. Not sure about interface. Clearly I need this for rotation (frame to frame), and generally transformation (within frame)
-		const uvz_mapped=new Matrix()
+		const uvzw_mapped=new Matrix()
 		// the first Vec is the w component of homogenous coordinates (okay, usually w is last?). It feeds the 1/ve[2] through
 		// So for the infinite plane, the first two components are actually the view vectors, but the last component is the camer hover height over the plane. Still a naming convention?
 		// I need to change to names. One component here adds bias. So it does not bind to the (x,y) input row (mul from left). The other feeds into the denominator on the left. This comes later
@@ -87,15 +87,18 @@ export class Camera_in_stSpace{
 		if (this.z.length>2) throw "z length >2 not supported"
 
 		// ToDo: I probably should do away with pos0 and last_pos stuff because I use it for different purposes. Needs names!
-		uvz_mapped.nominator=	[new Vec3( [[1,0,0]] ) ].concat( this.UVmapping_fromST.map(p=>new Vec3([[0,...p]])) , new Vec3( [[0,...this.z]] )); // Error: jaggies. In the trivial test with billboard polygon z=00 ( a third 0 is padded )
+		// Todo: Offset for UV (taken from the model) after the MUL. Also offset for z(affected by camera movement). All refering to the (x,t)=(0,0) vertex
+		// stz -> uvzz ( z in texture space becomes w=nominator in camera space) . Nominator goes last because tests start with billboards
+		// So the screen z (of camera position) is queezed in before the in texture coordinates z (of the camera vector)
+		uvzw_mapped.nominator=	this.UVmapping_fromST.map(p=>new Vec3([[...p,0]])).concat( new Vec3( [[...this.z,0]] ), new Vec3( [[0,0,1]] )); // Error: jaggies. In the trivial test with billboard polygon z=00 ( a third 0 is padded )
 			// Everone uses the general proof that 1/z is linear in screen space (far plane can be substracted.). Sorry that I cannot utilize my: "just calculate with fractions as in school!"
 			// Linear allows for an offset. So 0 does not need to be the horizon. Together with scaling there are two degrees of freedom which can change from polygon to polygon
 			// Do polygons bring their far-plane along? Perhaps due to vertex position
 			// for inter-polygon comparison ( z-buffer ) we need a standard. So the multiplication with [s.z,t.z.0] 
 			// with viewVector should fix scaling
 			// with cameraPostion should fix offset  ( both indirectly through cv.nominator)
-		//console.log("uvz_mapped",uvz_mapped.nominator,st_from_viewvector.nominator) // Error
-		const uvz_from_viewvector=Matrix.mul__Matrices_of_Rows( [uvz_mapped.nominator, st_from_viewvector.nominator]  ) // Error
+		console.log("uvzw_mapped",uvzw_mapped.nominator,stz_from_viewvector.nominator)  // For a billboard, uv should interpolate. z=0  w=const. And math says that polygon facing camera gives us -1 ( view vector facing down)
+		const uvzw_from_viewvector=Matrix.mul__Matrices_of_Rows( [uvzw_mapped.nominator, stz_from_viewvector.nominator]  ) 
 		//cv_p.viewVector=Matrix.mul( [mesh.nominator, cv.viewVector.nominator] )
 
 		// We may need to measure if it is faster to have two different 1/z or to compensate the s,t nominators
@@ -111,7 +114,7 @@ export class Camera_in_stSpace{
 		// So there cannot be an offset
 		// So multiplication with this.z really is just to scale?
 		// infinte_checkerBoard_m mixes cv.viewVector.nominator[2] into these components
-		return uvz_from_viewvector
+		return uvzw_from_viewvector
 	}
 
 	infinte_checkerBoard(C:number[],V:number[]):number[]{
@@ -151,7 +154,7 @@ export class Camera_in_stSpace{
 			cv.viewVector.nominator[st].v[2]+=cv.cameraPosition.v[st]   // [][2] (bias) is not to be confuced with [2] (denominator)
 			//}
 		}
-		return cv.viewVector
+		return cv.viewVector   // xyz   stz  convention. [2] actually is not a nominator, but denominator (when calcualting the cut)
 	}
 	
 	transform_into_texture_space(v:number[],UV_offset?:number[]):number[]{

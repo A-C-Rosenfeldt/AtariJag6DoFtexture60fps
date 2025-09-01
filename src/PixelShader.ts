@@ -55,7 +55,7 @@ export class EdgeShader {
 	}
 
 	perspective() {
-		let w=this.uvz[0].accumulator
+		let w=this.uvz[2].accumulator  // yeah, I really should not use indices to indicate the special z
 		if (w==0) return
 		let z = 1 /w     // perspective correction  // Attention: JRISC bug: use register "left" before next division instruction!
 		for (let st = 0; st < 2; st++) {
