@@ -21,15 +21,15 @@ export class EdgeShader {
 	Bresenham: a_i
 	slope: number
 
-	constructor(x_at_y_int:number,y:number, slope_floored:number,Bresenham_k_gradient:Gradient,payload:Matrix){ //edge:Item , x_at_y_int:number , slope_inc:number ) {  // number is int   @ vertex2d
+	constructor(x_at_y_int:number,y:number, slope_floored:number,Bresenham_k_gradient:Gradient,payload:Matrix,infinite_plane_FoV:number[]){ //edge:Item , x_at_y_int:number , slope_inc:number ) {  // number is int   @ vertex2d
 		this.x_at_y_int=x_at_y_int
 		this.slope=slope_floored
 		this.Bresenham=new a_i()
 		
 		{							
 			const _=Bresenham_k_gradient.gradients
-			const floored = this.slope*_[0]  + _[1]  // We always go down by one
-			this.Bresenham.increment = [floored, floored+_[0]]
+			const floored = this.slope*_[1]  - _[0]  // We always go down by one- Wedge product
+			this.Bresenham.increment = [floored, floored+_[1]]
 			this.Bresenham.accumulator = Bresenham_k_gradient.accumulator + this.Bresenham.increment[0] // We set up the decision value for the next line (y+1)
 		}
 
@@ -37,7 +37,8 @@ export class EdgeShader {
 
 		this.uvz = payload.nominator.map(v3 => {
 				const a = new a_i(),v=v3.v //; a.accumulator =0; // accumulator is set by vertex using MUL
-				a.accumulator=v[0] * x_at_y_int + v[1] * y + v[2]  // So all addressing will be relative now? // Why is Bresenham different?
+				const s=[v[0]*infinite_plane_FoV[0],v[1]*infinite_plane_FoV[1]] // slope along the edge in screen space
+				a.accumulator=s[0] * x_at_y_int + s[1] * y + v[2]  // So all addressing will be relative now? // Why is Bresenham different?
 				const floored = v[0] * slope_floored + v[1]  // We always go down by one
 				a.increment=[floored, floored+v[0]]
 				return a 

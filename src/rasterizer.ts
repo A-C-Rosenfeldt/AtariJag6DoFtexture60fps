@@ -196,6 +196,7 @@ export class Polygon_in_cameraSpace {
 	FoV = [1.6, 1.0]
 	FoV_rezi = this.FoV.map(f => 1 / f)  // todo: Multiply with rotation matrix . Need to be 1 <=   < 2
 	screen_FoV = this.FoV_rezi.map((f, i) => f * this.half_screen[i])     // Needs to be this.screen <  < 2*this.screen for the machine language optimized clipping
+	infinite_plane_FoV = this.FoV.map((f, i) => f / this.half_screen[i])
 
 	epsilon = 0.001  // epsilon depends on the number of bits goint into IMUL. We need to factor-- in JRISC . So that floor() will work.
 	readonly m: Mapper;
@@ -651,10 +652,10 @@ export class Polygon_in_cameraSpace {
 						{
 							let d = Bresenham[k].gradients
 							// Bresenham still needs integer slope
-							slope_accu_c[k] = [d[1] > 0 ? d[0] / d[1] : this.screen[1] * Math.sign(d[1]), x_at_y_int]
+							slope_accu_c[k] = [d[1] > 0 ? Math.floor(d[0] / d[1]) : this.screen[1] * Math.sign(d[1]), x_at_y_int]
 						}
 
-						es[k] = new EdgeShader(x_at_y_int, y, slope_accu_c[k][0], Bresenham[k], payload)
+						es[k] = new EdgeShader(x_at_y_int, y, slope_accu_c[k][0], Bresenham[k], payload,this.infinite_plane_FoV)
 
 
 
