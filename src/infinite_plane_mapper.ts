@@ -67,7 +67,10 @@ export class Camera_in_stSpace{
 	}
 
 	uvzw_from_viewvector(C:number[]):Matrix{
-		const stz_from_viewvector=this.infinte_checkerBoard_m(C)
+
+		// s, t  = texture cooridinates ( t like texture ). The third is "along Normal" or should I write "Altitude" ?
+
+		const stn_from_viewvector=this.infinte_checkerBoard_m(C)
 
 		// the rest should result in new PixelShader( at_bottomRight_of_Center, gradient )  // InfiniteCheckerBoard is PixelShader
 		// view vector has fixed z component => at_bottomRight_of_Center
@@ -91,14 +94,15 @@ export class Camera_in_stSpace{
 		// stz -> uvzz ( z in texture space becomes w=nominator in camera space) . Nominator goes last because tests start with billboards
 		// So the screen z (of camera position) is queezed in before the in texture coordinates z (of the camera vector)
 		uvzw_mapped.nominator=	this.UVmapping_fromST.map(p=>new Vec3([[...p,0]])).concat( new Vec3( [[...this.z,0]] ), new Vec3( [[0,0,1]] )); // Error: jaggies. In the trivial test with billboard polygon z=00 ( a third 0 is padded )
+		// JRISC: replace 001 with code
 			// Everone uses the general proof that 1/z is linear in screen space (far plane can be substracted.). Sorry that I cannot utilize my: "just calculate with fractions as in school!"
 			// Linear allows for an offset. So 0 does not need to be the horizon. Together with scaling there are two degrees of freedom which can change from polygon to polygon
 			// Do polygons bring their far-plane along? Perhaps due to vertex position
 			// for inter-polygon comparison ( z-buffer ) we need a standard. So the multiplication with [s.z,t.z.0] 
 			// with viewVector should fix scaling
 			// with cameraPostion should fix offset  ( both indirectly through cv.nominator)
-		console.log("uvzw_mapped",uvzw_mapped.nominator,stz_from_viewvector.nominator)  // For a billboard, uv should interpolate. z=0  w=const. And math says that polygon facing camera gives us -1 ( view vector facing down)
-		const uvzw_from_viewvector=Matrix.mul__Matrices_of_Rows( [uvzw_mapped.nominator, stz_from_viewvector.nominator]  ) 
+		console.log("uvzw_mapped",uvzw_mapped.nominator,stn_from_viewvector.nominator)  // For a billboard, uv should interpolate. z=0  w=const. And math says that polygon facing camera gives us -1 ( view vector facing down)
+		const uvzw_from_viewvector=Matrix.mul__Matrices_of_Rows( [uvzw_mapped.nominator, stn_from_viewvector.nominator]  ) 
 		//cv_p.viewVector=Matrix.mul( [mesh.nominator, cv.viewVector.nominator] )
 
 		// We may need to measure if it is faster to have two different 1/z or to compensate the s,t nominators

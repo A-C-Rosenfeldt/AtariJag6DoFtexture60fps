@@ -61,30 +61,30 @@ export class Vec {
     constructor(points) {
         if (points.length < 2) {
             if (points[0].length < 2)
-                this.v = new Array(points[0][0]);
+                this.v = new Array(points[0][0]).fill(0);
             else
                 this.v = new Array(...points[0]);
         }
         else {
             this.v = new Array(points[0].length);
-            for (let i = 0; i++; i < points[0].length) {
+            for (let i = 0; i < points[0].length; i++) {
                 this.v[i] = points[0][i] - points[1][i];
             }
         }
     }
     innerProduct(o) {
         let sum = 0;
-        for (let i = 0; i++; i < this.v.length) {
+        for (let i = 0; i < this.v.length; i++) {
             sum += this.v[i] * o.v[i];
         }
-        return 0;
+        return sum;
     }
     innerProductM(o, k) {
         let sum = 0;
-        for (let i = 0; i++; i < this.v.length) {
+        for (let i = 0; i < this.v.length; i++) {
             sum += this.v[i] * o[i].v[k];
         }
-        return 0;
+        return sum;
     }
     // no overloaded parameter in this critical part. JRISC can't overlaod anyway
     // in-place also not
@@ -95,14 +95,30 @@ export class Vec {
     subtract(other) {
         return new Vec([this.v, other.v]);
     }
+    add(other, weight) {
+        for (let i = 0; i < this.v.length; i++) {
+            this.v[i] += other.v[i] * (weight || 1);
+        }
+    }
+}
+export class Vec2 extends Vec {
+    wedgeProduct(o) {
+        return this.v[0] * o.v[1] - this.v[1] * o.v[0];
+    }
 }
 export class Vec3 extends Vec {
     crossProduct(o) {
         let v = new Vec3([[this.v.length]]);
-        for (let i = 0; i++; i < this.v.length) {
-            v[i] = o.v[(i + 1) % 3] * o.v[(i + 2) % 3] - o.v[(i + 2) % 3] * o.v[(i + 1) % 3];
+        for (let i = 0; i < this.v.length; i++) {
+            v.v[i] = this.v[(i + 1) % 3] * o.v[(i + 2) % 3] - this.v[(i + 2) % 3] * o.v[(i + 1) % 3];
         }
         return v;
+    }
+}
+export class Vec2_den extends Vec2 {
+    constructor(v, den) {
+        super([v]);
+        this.den = den;
     }
 }
 class Frac {
@@ -114,6 +130,10 @@ class Frac {
     }
 }
 export class Matrix {
+    constructor(cols) {
+        if (typeof cols == 'number')
+            this.nominator = new Array(cols);
+    }
     static inverse(spanning2d) {
         throw new Error("Method not implemented.");
     }
@@ -124,10 +144,24 @@ export class Matrix {
     // So here the right Matrix is seen as a collection of vectors. Somehow this works great to interpolate, but badly for rotation.
     // Thinking of column major for the vector. We store along columns, we mmult along columns
     // But obviously here, Matrix is row major, and the vector is considered trans.
+    // inner product works well to let the camera coordinate system pull in world coordinates
+    // this means that this Matrix has rows. So the vectors are rotated by 90° (transposed). Weird.
+    // Rotating the camera coordinate system, cannot use the inner product.
+    // But I just don't write it a Matrix. Just vector adds. So that I can skip some zeroes.
     mul_left(trans) {
-        let res = new Matrix();
-        for (let i = 0; i++; i < this.nominator.length) {
-            res[i] = this.nominator[i].innerProductM(trans, i); // base would want vector add, while JRISC wants inner product
+        let res = new Matrix(this.nominator.length);
+        let k = 0;
+        for (let i = 0; i < this.nominator.length; i++) {
+            res.nominator[i].v[k] = this.nominator[i].innerProductM(trans, k); // base would want vector add, while JRISC wants inner product
+        }
+        return res;
+    }
+    // for some reason Matrix makes the code unreadable in many places. VertexId as Matrix dimension makes no sense
+    mul_left_vec(trans) {
+        let res = new Vec([[this.nominator.length]]);
+        //let k=0
+        for (let i = 0; i < this.nominator.length; i++) {
+            res.v[i] = this.nominator[i].innerProduct(trans); // base would want vector add, while JRISC wants inner product
         }
         return res;
     }
@@ -148,21 +182,40 @@ export class Matrix {
     // So we do full precision z on the edge and then affine ( style of 1993 ). For sub spans, ah I get it. Interpolation is naturally an integer thing. We want to use the full machine integer range for this.
     // So both, texture subspans and z buffer, want the viewing frustum. It feels weird to keep dependencies for spans, like I would run along the span, and then suddenly will have to MUL to up the precision at one point,
     // or generally pull in more precision on a lot of.. But hey, grazing incidence is not suited to subspans. So I would fall back to full software and full precision, anyway.
-    static mul(A) {
-        let res = new Matrix();
-        for (let j = 0; j++; j < A[0].length) {
-            for (let i = 0; i++; i < A[0].length) {
-                res[i][j] = 0;
-                for (let k = 0; k++; k < A[1].length) {
-                    res[i][j] += A[0][i][k] * A[1][k][j]; // base would want vector add, while JRISC wants inner product
+    // Matrix multiplication cannot utilize inner product. It has to break up vectors of one of the factors.
+    // Do we need transposed versions? This is used only for uv -> st mapping, so no.
+    // uvz <- st <- viewVector  is pulling. So again, I use row major (Matrix of rows). It is an accident that rotation and texture mapping are both row major?
+    static mul__Matrices_of_Rows(A) {
+        const row_count = A[0].length;
+        const res = new Matrix(row_count);
+        for (let row_i = 0; row_i < row_count; row_i++) {
+            //if (row_i==row_count-1) console.log("mul row",A[0][row_i],A[1]) // debug
+            const field_per_row__count = A[1][0].v.length; // 0=any
+            const row = new Vec([[field_per_row__count]]); // jagged array does not work here. The 90° rotate picture in my head for V=M&*V does not deal with the fields in the result well. My head cannot do multply from right like V=V &* M . I mean, there is no application in 3d graphics. Of course it is useful for eigen values for differential equations or the stress-strain tensor. But we are lucky, zero overlap with computer graphics here.
+            for (let field_i = 0; field_i < field_per_row__count; field_i++) {
+                if (A[0][field_i].v.length != A[1].length)
+                    throw new Error("Incompatible matrix sizes");
+                for (let inner = 0; inner < A[1].length; inner++) { // k inner ? inner loop? Encapsulated. Inner working?
+                    row.v[field_i] += A[0][row_i].v[inner] * A[1][inner].v[field_i]; // notice how indeces in second factor are interleaved. It looks like this transposed form is not natural for the application. So I have to transpose here.
                     // for Vector Add, we want the last index select the component
                     // So no matter what picture you have in your head ( row or column, left or right multiply),
                     // Like in OpenGL Vectors would need to live in the right factor ( the inner loop ) as input
                     // Output uses the other index
                 }
             }
+            res.nominator[row_i] = row;
         }
         return res;
+    }
+}
+export class Matrix2 extends Matrix {
+    inverse_rn(result_row) {
+        let m = this.nominator;
+        let det = m[0].wedgeProduct(m[1]);
+        if (det === 0)
+            throw new Error("Matrix is not invertible");
+        let vd = new Vec2_den([m[1 - result_row].v[result_row], m[result_row].v[1 - result_row]], det); // Vectors are always vertical. Otherwise my head would hurt
+        return vd;
     }
 }
 // So some engines don't seem to care, but I care about rounding
@@ -273,17 +326,18 @@ Just this gets a little weird for screen corners. Like I would raytrace exactly 
 // I should not care about the precision. I can switch the code later on, to use time coherence .. or even build bounding volumes for the camera
 // All the math is 3d with some non-normalized vectors. But the edges can still be drawn on screen.
 // So uh, okay fantasy world without rounding
-class Matrix_Rotation extends Matrix {
+export class Matrix_Rotation extends Matrix {
     // for rotation matrices this is the same as multiplying with inverse
+    // I always multiply from the left ( MAtrix=rows aka row major ). Vectors are on the right and "vertical"
     // First version only uses vectors because beam tree has a lot of rays to trace which are not projected
     // I want to leak the implementation because I count the bits. It is research code!
     // transpose only confuses me with other Matrices
     // Looks like Quaternions and Rotation Matrix belong together, while other Matrices don't
     MUL_left_transposed(v) {
         let res = new Vec([[0, 0, 0]]);
-        for (let i = 0; i++; i < this.nominator.length) {
-            for (let k = 0; k++; k < this.nominator.length) {
-                res[i] = this.nominator[k][i]; //.innerProductM(trans,i)  // base would want vector add, while JRISC wants inner product
+        for (let k = 0; k < this.nominator.length; k++) {
+            for (let i = 0; i < this.nominator[k].v.length; i++) {
+                res[i] += this.nominator[k].v[i] * v[k]; //.innerProductM(trans,i)  // base would want vector add, while JRISC wants inner product
             }
         }
         return res;
@@ -292,44 +346,38 @@ class Matrix_Rotation extends Matrix {
     // It only affects two oridinates
     // Only these need to be modified, but all be read
     // Only reason for this is here is this rotation!
+    // The Camera is not rotated along world axes, but along the camera axes.
+    // Thus the generator is multiplied from right. This allows me to add vectors.
     Rotate_along_axis_Orthonormalize(axis, sine) {
         // rotate an normalize
         // orthogonal: 3 products. Correction is shared 50:50
         //let cosine=Math.sqrt(1-sine*sine)
-        let n;
+        // Rotate by mixing two axes
+        let n = [];
+        n[axis] = this.nominator[axis]; // copy the axis
+        for (let i = 0; i < 2; i++) { // copy the other two axes
+            let others = [(axis + 1 + i) % 3, (axis + 2 - i) % 3];
+            n[others[0]] = this.nominator[others[0]].scalarProduct(sine[0]).subtract(this.nominator[others[1]].scalarProduct(sine[1])); // rotate the other two axes
+        }
+        // normalize
         for (let i = 0; i < 3; i++) { // left transpose = right normal? I do row major as normal. So second index [i] just goes through. Right index mates.
-            let k = (axis + 1) % 3, l = (k + 1) % 3, n, sqs = Math.pow(this.nominator[axis][i], 2);
-            for (let j = 0; j < 2; j++) { // Maybe I should have both versions available
-                n[k][i] += sine[0] * this.nominator[k][i] + sine[1] * this.nominator[l][i];
-                k = l, l = (k + 1) % 3;
-                sine[1] = -1 * sine[1];
-                sqs += Math.pow(n[k], 2);
-            }
-            let rsq = 1 / Math.sqrt(sqs); // see Quake for Taylor series
-            n[k][i] *= rsq;
-            n[axis][i] = this.nominator[k][i];
+            n[i] = n[i].scalarProduct(1 - (1 / 2) * n[i].innerProduct(n[i]));
         }
+        // orthogonalize
+        // Inner products
         let sums = []; // So do I need a transpose?	
-        for (let i = 0; i < 3; i++) {
-            let sum = 0, j = (i + 1) % 3;
-            for (let k = 0; k < 3;) {
-                sum += n[k][i] * n[k][j];
-            }
-            sums[i] = sum;
+        for (let i = 0; i < 3; i++) { // between each pair of axes (only once)
+            let j = (i + 1) % 3;
+            sums[i] = n[i].innerProduct(n[j]) / 2; // inner product    . 2 is for fair removal of the cross-talk
         }
+        // compensate any "cross-talk" to first order
         for (let i = 0; i < 3; i++) {
-            let sum = 0, j = (i + 1) % 3, l = (j + 1) % 3;
-            for (let k = 0; k < 3; k++) {
-                this.nominator[k][i] = n[k][j];
-                if (k != axis) {
-                    this.nominator[k][i] -= sums[i] * n[k][j] / 2;
-                    this.nominator[k][i] -= sums[l] * n[k][l] / 2;
-                }
-            }
+            let j = (i + 1) % 3, k = (j + 1) % 3;
+            this.nominator[i] = n[i].subtract(n[j].scalarProduct(sums[i])).subtract(n[k].scalarProduct(sums[k]));
         }
     }
 }
-class Matrix_frac extends Matrix {
+export class Matrix_frac extends Matrix {
 }
 class Plane {
 }
@@ -397,19 +445,17 @@ class Camera extends Player {
         this.fov = 256; // It hurts me that magic values help with float. OpenGL runs on float hardware and combines this into one Matrix
         this.scale = [];
     }
-    // pre multiply matrix or not? 
-    pixel_projection_texel(pixel) {
-        var backwards_ray = new Vec3([[this.fov, pixel[0] - screen[0] + .5, pixel[1] - screen[0] + .5]]);
-        this.rotation.mul_left([backwards_ray]); // I support both directions of rotations nativeley because that is how I think of them, generally (when solving equations, or physcs, or synergy with HBV). SO3 just does not have a common denominator in neither direction.
-        // something position?
-    }
-    // I need a start pixel of the polygon for the rasterizer
-    // I know that it feels weird that edges and texture are then projected backwards
-    vertex_projection_pixel(vertex) {
-        let forward_ray = new Vec3([vertex, this.position]);
-        let fr = this.rotation.MUL_left_transposed(forward_ray);
-        let pixel = [Math.floor(fr[1] * this.fov / fr[0]), Math.floor(fr[2] * this.fov / fr[0])];
-    }
+    // // pre multiply matrix or not? 
+    // private pixel_projection_texel(pixel:number[]){
+    // 	var backwards_ray=new Vec3( [[ this.fov,pixel[0]-screen[0]+.5  , pixel[1]-screen[0]+.5 ]] )
+    // 	this.rotation.mul_left([backwards_ray])  // I support both directions of rotations nativeley because that is how I think of them, generally (when solving equations, or physcs, or synergy with HBV). SO3 just does not have a common denominator in neither direction.
+    // 	// something position?
+    // }
+    // private vertex_projection_pixel(vertex:number[]){
+    // 	let forward_ray=new Vec3([vertex,this.position])
+    // 	let fr=this.rotation.MUL_left_transposed(forward_ray)
+    // 	let pixel=[ Math.floor(fr[1]*this.fov/fr[0]), Math.floor(fr[2]*this.fov/fr[0]) ]
+    // }
     // very similar to Jaguar SDK. Guard band clipping only bloats the code.
     // actually, JRISC only has unsigned DIV. So we are forced to clip the near plane beforehand (no divide by zero). We are also forced to skew and make two sides of the screen axis aligned. Then again: clip using the sign.
     // Also to use full precision of DIV ( which sets no flags ), in fixedPoint mode, I need to make sure that the result does not overflow fixedPoint.
@@ -422,22 +468,21 @@ class Camera extends Player {
     // short refresher: After transformation we don't store 1/z, but we subtract the far plane to use the whole scale (and that is the only reason: Memory is expensive!).
     // this gives us a far plane. I see how 1/z still has to be linear after this substraction
     // Perspective correction works by using W also for UV just as for the other coordinates. W is the unbiased Z and U and V have not been transformed.
-    vertex_projection_clip(forward_ray) {
-        var clipcode = [];
-        for (let side = 0; side < 4; side++) {
-            var pyramid_normal;
-            if (side & 1) {
-                pyramid_normal = new Vec3([[side & 2 ? -160 : 160, 0, this.fov]]); //-160, -220 )
-            }
-            else {
-                pyramid_normal = new Vec3([[0, side & 2 ? -120 : 120, this.fov]]);
-            }
-            let nr = this.rotation.mul_left([pyramid_normal]); // forward or backwards? I dunno
-            clipcode[side] = forward_ray.innerProduct(nr[0]);
-        }
-        var plane = []; // near and far
-        clipcode[5] = forward_ray[0] - plane[0];
-    }
+    // private vertex_projection_clip(forward_ray:Vec3){
+    // 	var clipcode:number[]=[]
+    // 	for(let side=0;side<4;side++){
+    // 		var pyramid_normal:Vec3
+    // 		if (side&1){
+    // 			pyramid_normal=new Vec3([[ side&2?-160:160 ,0, this.fov]]) //-160, -220 )
+    // 		}else{
+    // 			pyramid_normal=new Vec3([[ 0,side&2?-120:120, this.fov]])
+    // 		}
+    // 		let nr=this.rotation.mul_left([pyramid_normal]) // forward or backwards? I dunno
+    // 		clipcode[side]=forward_ray.innerProduct(nr[0])
+    // 	}
+    // 	var plane:number[]=[] // near and far
+    // 	clipcode[5]=forward_ray[0]-plane[0]
+    // }
     // Todo: Find my text about this. I only use rotation matrix to be able to debug this
     // BeamTree language. Precision is no problem
     edge_clip(origin) {

@@ -36,9 +36,9 @@ export class EdgeShader {
 		console.log("edge",slope_floored,this.Bresenham.increment,this.Bresenham.accumulator)
 
 		this.uvz = payload.nominator.map(v3 => {
-				const a = new a_i(),v=v3.v //; a.accumulator =0; // accumulator is set by vertex using MUL
-				const s=[v[0]*infinite_plane_FoV[0],v[1]*infinite_plane_FoV[1]] // slope along the edge in screen space
-				a.accumulator=s[0] * x_at_y_int + s[1] * y + v[2]  // So all addressing will be relative now? // Why is Bresenham different?
+				const a = new a_i()//,v=v3.v //; a.accumulator =0; // accumulator is set by vertex using MUL
+				const v=[v3.v[0]*infinite_plane_FoV[0],v3.v[1]*infinite_plane_FoV[1]] // slope along the edge in screen space    Todo: Move factor in infiniteCheckerBoard (at the end)
+				a.accumulator=v[0] * x_at_y_int + v[1] * y + v3.v[2]  // So all addressing will be relative now? // Why is Bresenham different? 
 				const floored = v[0] * slope_floored + v[1]  // We always go down by one
 				a.increment=[floored, floored+v[0]]
 				return a 
@@ -54,10 +54,12 @@ export class EdgeShader {
 		return this.x_at_y_int
 	}
 
+	// The vector math results in a symmetric array of  a+bx / cx+d  elements (xcx+d shared). But everyone transforms z into a / cx+d   + const . cx+d describes the horizon. Const = altitude?
+	// And then the u and v term is expressed as a/a+b/a*x * z  -  a+bx * const/a   -- so yeah, s and t are linear in z . But the calculation is not shorter. We get an official offset
 	perspective() {
-		let w=this.uvz[2].accumulator  // yeah, I really should not use indices to indicate the special z
+		let w=this.uvz[3].accumulator  // yeah, I really should not use indices to indicate the special w  . 
 		if (w==0) return
-		let z = 1 /w     // perspective correction  // Attention: JRISC bug: use register "left" before next division instruction!
+		let z = 64 /w     // 64 is Wolfenstein3d((c)id software) Todo: pull from canvas   ToDo : It is not even z because z is reciprok + const (important)  <=> linear / w .
 		for (let st = 0; st < 2; st++) {
 			this.uvz[st].projected = this.uvz[st].accumulator*z
 		}

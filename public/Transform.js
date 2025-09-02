@@ -1,0 +1,31 @@
+import { Matrix_Rotation, Vec3 } from "./clipping.js";
+export class Camera {
+    constructor() {
+        this.sine = [Math.cos(0.1), Math.sin(0.1)];
+        this.position = new Vec3([[0, 0, -5]]); // input device => position
+        this.rotation = new Matrix_Rotation(3); // this is actually the rotation of the scene, not the camera. It is the transpose.
+        // I did not need unity matrix elsewhere. IF that happens: move to clipping.ts
+        let nos = [0, 0, 1]; // Matlab equivalent: eye(3)
+        for (let i = 2; i >= 0; i--) {
+            this.rotation.nominator[i] = new Vec3([nos]); // Vec3 has a copy-constructor
+            nos.shift();
+            nos = nos.concat(0);
+        }
+    }
+}
+// game.ts right now creates the test data for the rasterizer
+// In the future I may need to rename this to transfomer ?
+// Mesh and camere kinda use the same math. I even decided on a specific implementation : Matrix over quaternions
+export class Mesh {
+    constructor() {
+        this.polygon = [new Vec3([[1, 0, 0]]), new Vec3([[-1, 0, 0]]), new Vec3([[0, -2, 0]])];
+    }
+    transform(c) {
+        this.transformed = this.polygon.map((v) => {
+            const test = v.subtract(c.position);
+            const rotated = c.rotation.mul_left_vec(test);
+            return rotated; // cast should work
+        });
+    }
+}
+//# sourceMappingURL=Transform.js.map
