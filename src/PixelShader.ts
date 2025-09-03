@@ -99,7 +99,7 @@ export class PixelShader{
 			e.perspective() //x + (width-1))  // Perspective is calculated within  aka closed interval
 			return e.uvz.map(u=>u.projected )})
 			for(let uvz=0;uvz<2;uvz++){
-				blitter_slope[uvz] = (esp[1][uvz]-esp[1][uvz]) / width  ; // linear interpolation. Quake bloats the code for small values. I have some JRISC ideas in the project: scan for first bit. shift one more. Zero flag? then apply shift to argument. Else: div			
+				blitter_slope[uvz] = (esp[1][uvz]-esp[0][uvz]) / width  ; // linear interpolation. Quake bloats the code for small values. I have some JRISC ideas in the project: scan for first bit. shift one more. Zero flag? then apply shift to argument. Else: div			
 			}
 		}
 
