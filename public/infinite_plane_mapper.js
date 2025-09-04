@@ -82,7 +82,7 @@ export class Camera_in_stSpace {
         // for inter-polygon comparison ( z-buffer ) we need a standard. So the multiplication with [s.z,t.z.0] 
         // with viewVector should fix scaling
         // with cameraPostion should fix offset  ( both indirectly through cv.nominator)
-        console.log("uvzw_mapped", uvzw_mapped.nominator, stn_from_viewvector.nominator); // For a billboard, uv should interpolate. z=0  w=const. And math says that polygon facing camera gives us -1 ( view vector facing down)
+        //console.log("uvzw_mapped",uvzw_mapped.nominator,stn_from_viewvector.nominator)  // For a billboard, uv should interpolate. z=0  w=const. And math says that polygon facing camera gives us -1 ( view vector facing down)
         const uvzw_from_viewvector = Matrix.mul__Matrices_of_Rows([uvzw_mapped.nominator, stn_from_viewvector.nominator]);
         //cv_p.viewVector=Matrix.mul( [mesh.nominator, cv.viewVector.nominator] )
         // We may need to measure if it is faster to have two different 1/z or to compensate the s,t nominators
@@ -163,6 +163,12 @@ export class Mapper {
         //this.image.src = "texture.png";
         const frame_inspected = document.getElementById("Canvas2d");
         this.frame.pixel = new Uint8ClampedArray(frame_inspected.width * frame_inspected.height * 4);
+        for (let i = 0; i < this.frame.pixel.length;) {
+            this.frame.pixel[i++] = 0;
+            this.frame.pixel[i++] = 0;
+            this.frame.pixel[i++] = 0;
+            this.frame.pixel[i++] = 255;
+        }
         this.target_width = frame_inspected.width;
         this.frame.height = frame_inspected.height;
         // Elements are so fat, we pick cherries
@@ -201,14 +207,20 @@ export class Mapper {
             console.log("put Canvas2d"); // works
         }
     }
-    drawCanvasGame() {
+    drawCanvasGame(vertices) {
         const canvas = document.getElementById("Canvas2dGame");
         const ctx = canvas.getContext("2d");
         if (ctx) {
             //const obj = { pixelFormat: "rgba-unorm8" }; // dated lib.dom.d.ts?? 2025-07-18
+            ctx.fillStyle = "black";
+            ctx.fillRect(0, 0, canvas.width, canvas.height);
             const imageData = new ImageData(this.frame.pixel, 320, 200);
             ctx.putImageData(imageData, 0, 0);
             console.log("put Canvas2dGame");
+            vertices.forEach(v => {
+                ctx.fillStyle = "white";
+                ctx.fillRect(v[0] - 1, v[1] - 1, 3, 3);
+            });
         }
     }
     span() {

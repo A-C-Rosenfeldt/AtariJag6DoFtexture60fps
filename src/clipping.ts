@@ -395,12 +395,14 @@ export class Matrix_Rotation extends Matrix{
 		n[axis]=this.nominator[axis] // copy the axis
 		for(let i=0;i<2;i++){ // copy the other two axes
 			let others=[(axis+1+i)%3,(axis+2-i)%3]
-			n[others[0]]=this.nominator[others[0]].scalarProduct(sine[0]).subtract(this.nominator[others[1]].scalarProduct(sine[1])) // rotate the other two axes
+			n[others[0]]=this.nominator[others[0]].scalarProduct(sine[0]).subtract(this.nominator[others[1]].scalarProduct((1-2*i)*sine[1])) // rotate the other two axes
 		}
 
 		// normalize
 		for(let i=0;i<3;i++){ // left transpose = right normal? I do row major as normal. So second index [i] just goes through. Right index mates.
-			n[i]=n[i].scalarProduct(1-(1/2)*n[i].innerProduct(n[i]))
+			const around1 = 1 - (1 / 2) * (n[i].innerProduct(n[i]) -1 ) // Taylor series in all its glory. Quake fast inverse square root. x^(-1/2) -> 1/2 * x (-3/2) v. At x = 1
+			console.log("around1",around1)
+			n[i]=n[i].scalarProduct(around1)
 		}
 
 		// orthogonalize
@@ -409,6 +411,7 @@ export class Matrix_Rotation extends Matrix{
 		for(let i=0;i<3;i++){   // between each pair of axes (only once)
 			let j=(i+1)%3
 			sums[i]=n[i].innerProduct(n[j])/2 // inner product    . 2 is for fair removal of the cross-talk
+			console.log("sums0",sums[i])
 		}
 		// compensate any "cross-talk" to first order
 		for(let i=0;i<3;i++){

@@ -216,7 +216,7 @@ export class Polygon_in_cameraSpace {
 	// corners of the rectangle!
 
 
-	project(vertices: Array<Vertex_in_cameraSpace>): boolean {
+	project(vertices: Array<Vertex_in_cameraSpace>): boolean {		
 		Corner.screen = this.screen
 		this.outside = [false, false]; let pattern32 = 0
 		vertices.forEach(v => {
@@ -271,6 +271,8 @@ export class Polygon_in_cameraSpace {
 			this.outside[0] ||= outside
 			this.outside[1] &&= outside
 		})
+
+		const vertex_control=vertices.map(v=>v.onScreen.position.map((p,i)=>p+this.half_screen[i]))
 
 		pattern32 = pattern32 << vertices.length | pattern32// pattern allows look ahead
 		// Cull invisble Edges. Faces pull their z,s,t from 3d anyway. I cannot really clip edges here because it lets data explode which will be needed by the rasterizer (not for face culling)
@@ -407,7 +409,7 @@ export class Polygon_in_cameraSpace {
 
 		//console.log("payload",payload.nominator) ; // Error: payload is not really constructed
 
-		this.rasterize_onscreen(with_corners, payload);  // JRISC seems to love signed multiply. So, to use the full 16bit, (0,0) is center of screen at least after all occlusion and gradients are solved. The blitter on the other hand wants 12-bit unsigned values
+		this.rasterize_onscreen(with_corners, payload, vertex_control);  // JRISC seems to love signed multiply. So, to use the full 16bit, (0,0) is center of screen at least after all occlusion and gradients are solved. The blitter on the other hand wants 12-bit unsigned values
 		return true
 
 		/*
@@ -582,7 +584,7 @@ export class Polygon_in_cameraSpace {
 
 	// The beam tree will make everything convex and trigger a lot of MUL 16*16 in the process. Code uses Exception patter: First check if all vertices are convex -> break . Then check for self-cuts => split, goto first . ZigZag concave vertices. Find nearest for last. Zig-zag schould not self cut? 
 	// For the MVP, we do best effort for polygons with nore than 3 edges: Ignore up slopes. Do backface culling per span. 
-	private rasterize_onscreen(vertex: Array<Item>, payload: Matrix) {  // may be a second pass like in the original JRISC. Allows us to wait for the backbuffer to become available.
+	private rasterize_onscreen(vertex: Array<Item>, payload: Matrix, vertex_control:number[][]) {  // may be a second pass like in the original JRISC. Allows us to wait for the backbuffer to become available.
 		const l = vertex.length
 		let min_max = [[0, this.half_screen[1]], [0, -this.half_screen[1]]]  //weird to proces second component first. Rotate?
 
@@ -626,7 +628,7 @@ export class Polygon_in_cameraSpace {
 		const slope_accu_c = [[0, 0], [0, 0]]  // for debugging. Todo: remove // (counter) circle around polygon edges as ordered in space / level-mesh geometry
 		//let slope_int = [0, 0]
 		// let slope_accu_s=[[0,0],[0,0]]  // sorted by x on screen  .. uh pre-mature optimization: needs to much code. And time. Check for backfaces in a prior pass? Solid geometry in a portal renderer or beam tree will cull back-faces automatically
-		console.log("min_max", min_max)
+		//console.log("min_max", min_max)
 		let count_to_one = false
 		for (let y = min_max[0][1]; y < min_max[1][1]; y++) {  // the condition is for safety : Todo: remove from release version
 			let width = 0
@@ -689,7 +691,7 @@ export class Polygon_in_cameraSpace {
 
 			width = slope_accu_c[1][1] - slope_accu_c[0][1]
 
-			console.log("left", slope_accu_c[0][1], "right", slope_accu_c[1][1], "y", ps.y) // Test failed: Width is zero all the time
+			//console.log("left", slope_accu_c[0][1], "right", slope_accu_c[1][1], "y", ps.y) // Test failed: Width is zero all the time
 			if (width > 0) {
 				ps.span(slope_accu_c[0][1], width, m, es)
 			} else {
@@ -697,7 +699,7 @@ export class Polygon_in_cameraSpace {
 			}
 		} //while (active_vertices[0][1] != active_vertices[1][1]) // full circle, bottom vertex found on the fly		
 
-		m.drawCanvasGame()
+		m.drawCanvasGame(vertex_control)
 	}
 
 	private streamIn_newVertex(active_vertices: number[], Bresenham: Gradient, ind: Cyclic_Indexer, vertex: Item[]) {
@@ -733,7 +735,7 @@ export class Polygon_in_cameraSpace {
 
 			{
 				const a = v_val[0].get_y(),b=v_val[1].get_y();
-				console.log("a", a, "b", b);
+				//console.log("a", a, "b", b);
 				if (a >= b) continue;
 			}
 

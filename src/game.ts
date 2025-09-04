@@ -3,15 +3,15 @@ import { Camera, Mesh } from "./Transform.js"
 import { Polygon_in_cameraSpace, Vertex_in_cameraSpace } from "./rasterizer.js";
 import { Mapper } from "./infinite_plane_mapper.js";
 
-let controller=new Camera()
-let mesh=new Mesh()
-let mapper=new Mapper() // Loads assets (names are just one hop away). So Better invert control! Load it here in the start-up script and inject into the business logic (infinite plane). OOP would make the plane logic hide this because no one else here deals with bitmaps when this runs in production. But here we need to see the bitmap to debug the rasterizer.
-let p=new Polygon_in_cameraSpace(mapper)
+let controller = new Camera()
+let mesh = new Mesh()
+let mapper = new Mapper() // Loads assets (names are just one hop away). So Better invert control! Load it here in the start-up script and inject into the business logic (infinite plane). OOP would make the plane logic hide this because no one else here deals with bitmaps when this runs in production. But here we need to see the bitmap to debug the rasterizer.
+let p = new Polygon_in_cameraSpace(mapper)
 mesh.transform(controller) //.polygon
 
 // Todo: Test assert that transform is not 000
 
-p.project(mesh.transformed.map(cs=>new Vertex_in_cameraSpace(cs.v)))  // Interleave 3d and projected vertices for debugging and easy loops when back tracking. I guess that for debugging a reference at both places helps
+p.project(mesh.transformed.map(cs => new Vertex_in_cameraSpace(cs.v)))  // Interleave 3d and projected vertices for debugging and easy loops when back tracking. I guess that for debugging a reference at both places helps
 
 
 document.addEventListener(
@@ -24,20 +24,33 @@ document.addEventListener(
     //   return;
     // }
 
+    if (keyName.startsWith("Arrow")) {
+      const tail = keyName.substring(5)
+      switch (tail) {
+        case "Left":
+          controller.rotation.Rotate_along_axis_Orthonormalize(1, controller.sine);
+          break;
+        case "Right":
+          controller.rotation.Rotate_along_axis_Orthonormalize(1, [controller.sine[0], -controller.sine[1]]);
+          break;
+        case "Up":
+          controller.rotation.Rotate_along_axis_Orthonormalize(0, controller.sine);
+          break;
+        case "Down":
+          controller.rotation.Rotate_along_axis_Orthonormalize(0, [controller.sine[0], -controller.sine[1]]);
+          break;
+        default: return
+      }
+
+      event.preventDefault(); // Prevent the default action to avoid scrolling when pressing arrow keys
+
+      mesh.transform(controller)
+      p.project(mesh.transformed.map(cs => new Vertex_in_cameraSpace(cs.v)))
+      return;
+    }
 
     switch (keyName) {
-      case "Left":
-        controller.rotation.Rotate_along_axis_Orthonormalize(1, controller.sine);
-        break;
-      case "Right":
-        controller.rotation.Rotate_along_axis_Orthonormalize(1, [controller.sine[0], -controller.sine[1]]);
-        break;
-      case "up":
-        controller.rotation.Rotate_along_axis_Orthonormalize(0, controller.sine);
-        break;
-      case "down":
-        controller.rotation.Rotate_along_axis_Orthonormalize(0, [controller.sine[0], -controller.sine[1]]);
-        break;
+
       case "w":
         controller.position.add(controller.rotation.nominator[2], 1);
         break;
@@ -49,8 +62,18 @@ document.addEventListener(
         break;
       case "a":
         controller.position.add(controller.rotation.nominator[0], -1);
-        break
+        break;
+      case ",":
+        controller.rotation.Rotate_along_axis_Orthonormalize(2, controller.sine);
+        break;
+      case ".":
+        controller.rotation.Rotate_along_axis_Orthonormalize(2, [controller.sine[0], -controller.sine[1]]);
+        break;
+      default: return
     }
+
+    mesh.transform(controller)
+    p.project(mesh.transformed.map(cs => new Vertex_in_cameraSpace(cs.v)))
 
     // if (event.ctrlKey) {
     //   // Even though event.key is not 'Control' (e.g., 'a' is pressed),
