@@ -56,7 +56,7 @@ class Vertex_OnScreen extends Point {
         super(...arguments);
         this.position = new Array();
     }
-    get_y() { return Math.floor(this.position[1]); }
+    get_y() { return Math.ceil(this.position[1]); } // subpixel correction and drawing with increasing y mandates ceil() instead of my standard floor(). +1 wleads to minimal glitches. Ah, why risk. Addq 1. SAR .
     // I use the vector constructor to do this. Seems like a silly hack?
     fraction() { return this.position.map(p => p - Math.floor(p)); } // AI thinks that this looks better than % 1. Floor is explicit and is the way JRISC with twos-complemnt fixed point works
 }
@@ -503,17 +503,15 @@ export class Polygon_in_cameraSpace {
         function instanceOfPoint(object) {
             return 'get_y' in object;
         }
-        for (let i = 1; i < l; i++) {
-            let v = vertex[i];
+        vertex.forEach((v, i) => {
             if (instanceOfPoint(v)) {
                 if (v.get_y() < min_max[0][1])
                     min_max[0] = [i, v.get_y()];
                 if (v.get_y() > min_max[1][1])
                     min_max[1] = [i, v.get_y()];
             }
-        }
-        let i = min_max[0][0];
-        let v = vertex[i];
+        });
+        const i = min_max[0][0];
         const active_vertices = [[-1, -1, i], [-1, -1, i]]; // happens in loop first iteration, (i + l - 1) % l], [i, (i + 1) % l]]
         const Bresenham = new Array(2).fill(undefined).map(() => new Gradient()); // I need to allocate memory because edges reuse this. Otherwise I would need threads for both sides of the polygon or yield 
         // active_vertices.forEach(a => {
@@ -551,7 +549,7 @@ export class Polygon_in_cameraSpace {
                     t2 = t1.get_y();
                     if (typeof t2 !== "number")
                         throw new Error("Invalid vertex");
-                    if (y < t2) { // todo: duplicate this code for the case that on vertex happens on one side
+                    if (y < t2) { //  y < t2   <=  for y=t2             .todo: duplicate this code for the case that on vertex happens on one side
                         slope_accu_c[k][1] = es[k].propagate_along();
                     }
                     else {
@@ -658,7 +656,16 @@ export class Polygon_in_cameraSpace {
                     continue;
                 }
                 var y_int = v_val[0].get_y(); // int
-                var x_at_y_int = Math.floor(v_val[0].position[0] + d[0] * (y_int - v_val[0].position[1]) / d[1]); // frac -> int
+                const x_at_y = (v_val[0].position[0] + d[0] * (y_int - v_val[0].position[1]) / d[1]); // frac -> int
+                {
+                    const range = v_val.map(v => v.position[0]);
+                    range.sort((a, b) => a - b);
+                    if (!(range[0] <= x_at_y && x_at_y <= range[1])) {
+                        console.log("x_at_y", x_at_y, "y - vertex_y", y_int - v_val[0].position[1]);
+                        let x = 1;
+                    }
+                }
+                var x_at_y_int = Math.floor(x_at_y); // float -> int
                 Bresenham.accumulator = slope.wedgeProduct(new Vec2([[x_at_y_int, y_int], v_val[0].position])); //(y_int- v_val[0][1] )*d[0]+(x_at_y_int- v_val[0][0] )*d[1]  // this should be the same for all edges not instance of Edge_Horizon
                 break;
             }

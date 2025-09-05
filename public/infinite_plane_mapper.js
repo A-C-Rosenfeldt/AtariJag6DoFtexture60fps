@@ -163,15 +163,18 @@ export class Mapper {
         //this.image.src = "texture.png";
         const frame_inspected = document.getElementById("Canvas2d");
         this.frame.pixel = new Uint8ClampedArray(frame_inspected.width * frame_inspected.height * 4);
+        this.clear();
+        this.target_width = frame_inspected.width;
+        this.frame.height = frame_inspected.height;
+        // Elements are so fat, we pick cherries
+    }
+    clear() {
         for (let i = 0; i < this.frame.pixel.length;) {
             this.frame.pixel[i++] = 0;
             this.frame.pixel[i++] = 0;
             this.frame.pixel[i++] = 0;
             this.frame.pixel[i++] = 255;
         }
-        this.target_width = frame_inspected.width;
-        this.frame.height = frame_inspected.height;
-        // Elements are so fat, we pick cherries
     }
     putpixel(source, target) {
         //console.log("x",target[0])
@@ -203,8 +206,7 @@ export class Mapper {
         const canvas = document.getElementById("Canvas2d");
         const ctx = canvas.getContext("2d");
         if (ctx) {
-            ctx.putImageData(this.imageData, 0, 0);
-            console.log("put Canvas2d"); // works
+            //	ctx.putImageData(this.imageData, 0, 0);console.log("put Canvas2d") // works
         }
     }
     drawCanvasGame(vertices) {
@@ -212,13 +214,14 @@ export class Mapper {
         const ctx = canvas.getContext("2d");
         if (ctx) {
             //const obj = { pixelFormat: "rgba-unorm8" }; // dated lib.dom.d.ts?? 2025-07-18
-            ctx.fillStyle = "black";
-            ctx.fillRect(0, 0, canvas.width, canvas.height);
+            //ctx.fillStyle = "black";
+            //ctx.fillRect(0, 0, canvas.width, canvas.height);
             const imageData = new ImageData(this.frame.pixel, 320, 200);
             ctx.putImageData(imageData, 0, 0);
             console.log("put Canvas2dGame");
+            this.clear();
+            ctx.fillStyle = "white";
             vertices.forEach(v => {
-                ctx.fillStyle = "white";
                 ctx.fillRect(v[0] - 1, v[1] - 1, 3, 3);
             });
         }

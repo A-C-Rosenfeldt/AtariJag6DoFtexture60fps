@@ -211,16 +211,20 @@ export class Mapper{
 
 		const frame_inspected=document.getElementById("Canvas2d") as HTMLCanvasElement
 		this.frame.pixel=new Uint8ClampedArray(frame_inspected.width*frame_inspected.height*4)
-		for (let i=0;i<this.frame.pixel.length;) {
-			this.frame.pixel[i++]=0
-			this.frame.pixel[i++]=0
-			this.frame.pixel[i++]=0
-			this.frame.pixel[i++]=255
-		}
+		this.clear();
 		this.target_width=frame_inspected.width
 		this.frame.height=frame_inspected.height
 		// Elements are so fat, we pick cherries
 	}
+	private clear() {
+		for (let i = 0; i < this.frame.pixel.length;) {
+			this.frame.pixel[i++] = 0;
+			this.frame.pixel[i++] = 0;
+			this.frame.pixel[i++] = 0;
+			this.frame.pixel[i++] = 255;
+		}
+	}
+
 	putpixel(source: number[], target: number[]){
 		//console.log("x",target[0])
 		const s=(Math.floor(Math.abs(source[0])%64)+this.source_width*Math.floor(Math.abs(source[1])%64))*4
@@ -259,7 +263,7 @@ export class Mapper{
 		const canvas = document.getElementById("Canvas2d") as HTMLCanvasElement;
 		const ctx = canvas.getContext("2d");
 		if (ctx) {
-			ctx.putImageData(this.imageData, 0, 0);console.log("put Canvas2d") // works
+		//	ctx.putImageData(this.imageData, 0, 0);console.log("put Canvas2d") // works
 		}
 	}
 	drawCanvasGame(vertices: number[][]){
@@ -267,12 +271,13 @@ export class Mapper{
 		const ctx = canvas.getContext("2d");
 		if (ctx) {
 			//const obj = { pixelFormat: "rgba-unorm8" }; // dated lib.dom.d.ts?? 2025-07-18
-			ctx.fillStyle = "black";
-			ctx.fillRect(0, 0, canvas.width, canvas.height);
+			//ctx.fillStyle = "black";
+			//ctx.fillRect(0, 0, canvas.width, canvas.height);
 			const imageData = new ImageData(this.frame.pixel, 320, 200);
-			ctx.putImageData(imageData, 0, 0);console.log("put Canvas2dGame")
-			vertices.forEach(v=>{
-				ctx.fillStyle = "white";
+			ctx.putImageData(imageData, 0, 0); console.log("put Canvas2dGame")
+			this.clear();
+			ctx.fillStyle = "white";
+			vertices.forEach(v => {
 				ctx.fillRect(v[0]-1, v[1]-1, 3, 3);
 			})
 		}
