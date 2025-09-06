@@ -272,7 +272,7 @@ export class Polygon_in_cameraSpace {
 			this.outside[1] &&= outside
 		})
 
-		const vertex_control=vertices.map(v=>v.onScreen.position.map((p,i)=>p+this.half_screen[i]))
+		const vertex_control=[] //vertices.map(v=>v.onScreen.position.map((p,i)=>p+this.half_screen[i]))
 
 		pattern32 = pattern32 << vertices.length | pattern32// pattern allows look ahead
 		// Cull invisble Edges. Faces pull their z,s,t from 3d anyway. I cannot really clip edges here because it lets data explode which will be needed by the rasterizer (not for face culling)
@@ -326,7 +326,7 @@ export class Polygon_in_cameraSpace {
 				on_screen.push(v.onScreen)
 				if (neighbours[1].outside) {
 					// todo move into following method
-					let cut_r = this.edge_fromVertex_toBorder([vertices[k], vertices[i]], l);
+					let cut_r = this.edge_fromVertex_toBorder([vertices[i], vertices[k]], l);
 					on_screen.push(...cut_r)
 					//let border=new Onthe_border()
 				}
@@ -907,7 +907,7 @@ export class Polygon_in_cameraSpace {
 		let cc = 0;
 
 		for (var corner = -1; corner <= +1; corner += 2) {
-			if ((corner - vs[0].onScreen[0]) * slope[1] > (-1 - vs[0].onScreen[1]) * slope[0]) {
+			if ((corner - vs[0].onScreen[0]) * slope[1] > (-1 - vs[0].onScreen[1]) * slope[0]) {  // ERror Verex 1 is on screen, but vertex 2 is not. outside=true should mean a diferent type!
 				vs[1].onScreen[0] = corner //, vs[1].onScreen.border=corner // Todo: I need corners with rotation sense to fill the polygon
 				switch (this.mode) { // todo: different edge clases?
 					case modes.NDC:
@@ -923,7 +923,8 @@ export class Polygon_in_cameraSpace {
 			}
 		}
 		if (cc == 0) {
-			vs[1].onScreen[1] = -1;
+			vs[1].onScreen=new Vertex_OnScreen()  // todo: looks like this object will be destroyed right after this function. Or rather: it leaks!!
+			vs[1].onScreen[0] = -1;
 			vs[1].onScreen[1] = (vs[0].onScreen[0] * slope[1] + this.screen[1 & 1] * (-1 - vs[0].onScreen[1]) * slope[0]) / slope[1]; // no rounding error allowed
 		}
 		vs[1].onScreen[1] = -1;
@@ -934,7 +935,7 @@ export class Polygon_in_cameraSpace {
 
 		border.z_gt_nearplane = vs[1].onScreen[1] > this.near_plane
 
-		on_screen.push(border)
+		on_screen.push(border)  // todo check if border edge is defined enough. Then check out why rasterizer cannot get a gradient ( fromt the border / corner info)
 		//}
 
 		return on_screen

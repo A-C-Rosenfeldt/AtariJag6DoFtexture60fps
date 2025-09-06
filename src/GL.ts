@@ -194,7 +194,7 @@ function loadShader(gl, type, source) {
 }
 
 export class Squeeze{
-  width: number
+  width: number   // Todo change to number[]  . I use numbers for axes because only they allow me to write loops for products 
   height: number
   extent?: number[]  // todo: switch to this. I think a class with a single member is no anit-pattern  . I guess TypeScript has something for this
 }
