@@ -195,8 +195,8 @@ export class Polygon_in_cameraSpace {
 	half_screen = this.screen.map(s => s / 2);
 	FoV = [1.6, 1.0]
 	FoV_rezi = this.FoV.map(f => 1 / f)  // todo: Multiply with rotation matrix . Need to be 1 <=   < 2
-	screen_FoV = this.FoV_rezi.map((f, i) => f * this.half_screen[i])     // Needs to be this.screen <  < 2*this.screen for the machine language optimized clipping
-	infinite_plane_FoV = this.FoV.map((f, i) => f / this.half_screen[i])
+	screen_FoV = this.FoV_rezi.map((f, i) => f * this.half_screen[i])     // Forward for vertices  ..Needs to be this.screen <  < 2*this.screen for the machine language optimized clipping
+	infinite_plane_FoV = this.FoV.map((f, i) => f / this.half_screen[i])    // backwards for "ray tracing"
 
 	epsilon = 0.001  // epsilon depends on the number of bits goint into IMUL. We need to factor-- in JRISC . So that floor() will work.
 	readonly m: Mapper;
@@ -478,7 +478,7 @@ export class Polygon_in_cameraSpace {
 		*/
 
 	private edge_crossing_two_borders(vertex: Vertex_in_cameraSpace[], pattern4: number): Item[] {
-		const slope = this.get_edge_slope_onScreen(vertex)
+		const slope = this.get_edge_slope_onScreen(vertex,this.infinite_plane_FoV)
 		let border_count = 0
 
 		// with zero border crossing, no edge is visible. Or when both vertices are in front of the near plane. For speed
@@ -836,7 +836,7 @@ export class Polygon_in_cameraSpace {
 
 		const on_screen = new Array<Item>()
 
-		const slope = this.get_edge_slope_onScreen(vs).slice(0, 2); // 3d cros  product with meaningful sign. Swap x,y to get a vector pointint to the outside vertex. float the fractions
+		const slope = this.get_edge_slope_onScreen(vs,this.infinite_plane_FoV).slice(0, 2); // 3d cros  product with meaningful sign. Swap x,y to get a vector pointint to the outside vertex. float the fractions
 		let edge = new Edge_w_slope()
 		edge.slope = new Vec2([slope])
 		on_screen.push(edge)
@@ -924,16 +924,16 @@ export class Polygon_in_cameraSpace {
 		}
 		if (cc == 0) {
 			vs[1].onScreen=new Vertex_OnScreen()  // todo: looks like this object will be destroyed right after this function. Or rather: it leaks!!
-			vs[1].onScreen[0] = -1;
-			vs[1].onScreen[1] = (vs[0].onScreen[0] * slope[1] + this.screen[1 & 1] * (-1 - vs[0].onScreen[1]) * slope[0]) / slope[1]; // no rounding error allowed
+			vs[1].onScreen.position[0] = -1;
+			vs[1].onScreen.position[1] = (vs[0].onScreen.position[0] * slope[1] + this.screen[1 & 1] * (-1 - vs[0].onScreen.position[1]) * slope[0]) / slope[1]; // no rounding error allowed // Error: slope is NaN
 		}
-		vs[1].onScreen[1] = -1;
+		else vs[1].onScreen.position[1] = -1;
 
-		let border = new Onthe_border(this.half_screen)
+		let border = new Onthe_border(this.half_screen) // todo
 		border.border = corner  // todo : or 0
-		border.pixel_ordinate_int = vs[1].onScreen[1]
+		border.pixel_ordinate_int = vs[1].onScreen.position[1]
 
-		border.z_gt_nearplane = vs[1].onScreen[1] > this.near_plane
+		border.z_gt_nearplane = vs[1].onScreen.position[1] > this.near_plane
 
 		on_screen.push(border)  // todo check if border edge is defined enough. Then check out why rasterizer cannot get a gradient ( fromt the border / corner info)
 		//}
@@ -941,7 +941,7 @@ export class Polygon_in_cameraSpace {
 		return on_screen
 	}
 
-	private get_edge_slope_onScreen(vertex: Array<Vertex_in_cameraSpace>): Array<number> {
+	private get_edge_slope_onScreen(vertex: Array<Vertex_in_cameraSpace>, half_screen: number[]): Array<number> {
 		/*
 		view Vector(x,y,1)
 		edge= v1-v0
@@ -951,13 +951,15 @@ export class Polygon_in_cameraSpace {
 		const view = new Vec3([vertex[0].inSpace])
 		const edge = new Vec3([vertex[0].inSpace, vertex[1].inSpace])
 		const normal = view.crossProduct(edge)  // The sign has a meaning 
-
+		for(let i=0;i<2;i++){
+			normal.v[i]*=half_screen[i]   // Todo: Move up to the rotation transformation
+		}
 		// normalize for jrisc
 		// mul.w will be applied to x and y components only . 
 		// I need to know the screen expontent . x and y on screen need the same exponent to match bias in implicict function.
 		// Ah, basicall 16.16
-		const list = normal.v.slice(0, 2).map(s => Math.ceil(Math.log2(s)))  // z = bias and can stay 32 bit because FoV ( Sniper view? ) will always keep z-viewing compontenc < 16 bits for 8 bit pixel coords 
-		const f = Math.pow(2, 16 - Math.max(...list)), n = normal.v.map(c => c * f)   // Bitshift in JRISC. SHA accepts sign shifter values!   
+		const list = normal.v.slice(0, 2).map(s => Math.ceil(Math.log2(Math.abs(s))))  // z = bias and can stay 32 bit because FoV ( Sniper view? ) will always keep z-viewing compontenc < 16 bits for 8 bit pixel coords 
+		const f = Math.pow(2, 16 - Math.max(...list)), n = normal.v.map(c => Math.floor( c * f))   // Bitshift in JRISC. SHA accepts sign shifter values!   
 
 		// Even for a float slope 16.8 I would float the fraction before-hand
 		// I cannot have two inner loops. So vertex-vertex needs to use floats and may hit the border before the vertex due to rounding
