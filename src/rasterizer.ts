@@ -841,20 +841,20 @@ export class Polygon_in_cameraSpace {
 		edge.slope = new Vec2([slope])
 		on_screen.push(edge)
 
-		const abs = slope.map(s => Math.abs(s))
+		// const abs = slope.map(s => Math.abs(s))
 
-		switch (this.mode) {
-			case modes.NDC:
-				var swap = abs[0] > abs[1]
-				if (swap) { slope.reverse() }
+		// switch (this.mode) {
+		// 	case modes.NDC:
+		// 		var swap = abs[0] > abs[1]
+		// 		if (swap) { slope.reverse() }
 
-				if (slope[0] == 0) return
-				break
-			case modes.guard_band:
-				// I guess that this is not really about guard bands, but the second version of my code where roudning of slope can have ( polymorphism, will need a branch ) with positions.
-				if (Math.abs(slope[0]) * this.screen[0] < Math.abs(slope[1])) return
-				break
-		}
+		// 		if (slope[0] == 0) return
+		// 		break
+		// 	case modes.guard_band:
+		// 		// I guess that this is not really about guard bands, but the second version of my code where roudning of slope can have ( polymorphism, will need a branch ) with positions.
+		// 		if (Math.abs(slope[0]) * this.screen[0] < Math.abs(slope[1])) return
+		// 		break
+		// }
 
 		/*
 		// check the top screen corners. Why not check all corners (ah that is the case if both vertices are outside) ? Or rather one!
@@ -904,38 +904,57 @@ export class Polygon_in_cameraSpace {
 		// correct order . At least every other vertex need to be on inside for this function
 
 
-		let cc = 0;
-
-		for (var corner = -1; corner <= +1; corner += 2) {
-			if ((corner - vs[0].onScreen[0]) * slope[1] > (-1 - vs[0].onScreen[1]) * slope[0]) {  // ERror Verex 1 is on screen, but vertex 2 is not. outside=true should mean a diferent type!
-				vs[1].onScreen[0] = corner //, vs[1].onScreen.border=corner // Todo: I need corners with rotation sense to fill the polygon
-				switch (this.mode) { // todo: different edge clases?
-					case modes.NDC:
-						vs[1].onScreen[1] = vs[0].onScreen[1] + (this.screen[1 & 1] * corner - vs[0].onScreen[0]) * slope[1] / slope[0];
-						break;
-					case modes.guard_band: // The displacement is given by the other vertex. We store the float 
-						// check for overflow
-						vs[1].onScreen[1] = slope[1] * (2 << 16) / slope[0] // JRISC fixed point
-						break;
-				}
-				cc++;
-				break;
-			}
+		let border=-1
+		{
+			const t=Math.max(0,Math.sign(slope[0]) | Math.max(0,(Math.sign(slope[1])) << 1))  // corner
+			// border before. I just went through the truth table in my head
+			border=~((t&1)^(t&2)) 
+			border|=t & 2
 		}
-		if (cc == 0) {
-			vs[1].onScreen=new Vertex_OnScreen()  // todo: looks like this object will be destroyed right after this function. Or rather: it leaks!!
-			vs[1].onScreen.position[0] = -1;
-			vs[1].onScreen.position[1] = (vs[0].onScreen.position[0] * slope[1] + this.screen[1 & 1] * (-1 - vs[0].onScreen.position[1]) * slope[0]) / slope[1]; // no rounding error allowed // Error: slope is NaN
+		// The signs of the slope have a meaning.
+		let corner=this.half_screen.map((s,i)=>s*Math.sign(slope[i]))  // I need the corner coordinates to calculate the intersection with the border
+		
+		let verts=new Vec2([vs[0].onScreen.position,corner])
+		let slope_v= new Vec2([slope])
+		if (verts.wedgeProduct(slope_v) > 0) { 
+			border++
 		}
-		else vs[1].onScreen.position[1] = -1;
+		//for (var corner = -1; corner <= +1; corner += 2) {
+		//	if ((corner - vs[0].onScreen[0]) * slope[1] > (-1 - vs[0].onScreen[1]) * slope[0]) {  // ERror Verex 1 is on screen, but vertex 2 is not. outside=true should mean a diferent type!
+		// 		vs[1].onScreen[0] = corner //, vs[1].onScreen.border=corner // Todo: I need corners with rotation sense to fill the polygon
+		// 		switch (this.mode) { // todo: different edge clases?
+		// 			case modes.NDC:
+		
 
-		let border = new Onthe_border(this.half_screen) // todo
-		border.border = corner  // todo : or 0
-		border.pixel_ordinate_int = vs[1].onScreen.position[1]
+		// 				break;
+		// 			case modes.guard_band: // The displacement is given by the other vertex. We store the float 
+		// 				// check for overflow
+		// 				vs[1].onScreen[1] = slope[1] * (2 << 16) / slope[0] // JRISC fixed point
+		// 				break;
+		// 		}
+		// 		cc++;
+		// 		break;	
+		// 	}
+		// }
+		// if (cc == 0) {
+		// 	vs[1].onScreen=new Vertex_OnScreen()  // todo: looks like this object will be destroyed right after this function. Or rather: it leaks!!
+		// 	vs[1].onScreen.position[0] = -1;
+		// 	vs[1].onScreen.position[1] = (vs[0].onScreen.position[0] * slope[1] + this.screen[1 & 1] * (-1 - vs[0].onScreen.position[1]) * slope[0]) / slope[1]; // no rounding error allowed // Error: slope is NaN
+		// }
+		// else vs[1].onScreen.position[1] = -1;
 
-		border.z_gt_nearplane = vs[1].onScreen.position[1] > this.near_plane
+		let onborder = new Onthe_border(this.half_screen) // todo
+		onborder.border = border
 
-		on_screen.push(border)  // todo check if border edge is defined enough. Then check out why rasterizer cannot get a gradient ( fromt the border / corner info)
+		const axis = border & 1  // border++ implies that we need to look at the lsb
+		{
+			const nxs = (~border & 1)
+			onborder.pixel_ordinate_int = vs[0].onScreen.position[axis] - (corner[nxs] - vs[0].onScreen.position[nxs]) * slope[nxs] / slope[axis]   // wedge product // The index galore would be a bunch of move in JRISC in the if above.
+		}
+
+		onborder.z_gt_nearplane =true // todo    . vs[1].onScreen.position[1] > this.near_plane
+
+		on_screen.push(onborder)  // todo check if border edge is defined enough. Then check out why rasterizer cannot get a gradient ( fromt the border / corner info)
 		//}
 
 		return on_screen

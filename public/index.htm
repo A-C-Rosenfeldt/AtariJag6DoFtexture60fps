@@ -13,6 +13,9 @@
 	Thanks to some serious design flaws, the Atari blitter falls back from 64 bit to 16 bit mode all the time and is slow so slow that it makes the JRISC GPU look fast:
 	JRISC has single cycle multiplication and a separate division unit.  
 	</p>
+		<canvas id="Canvas2dGame" width="320" height="200" style="border:1px solid #000000;image-rendering: pixelated;
+    image-rendering: crisp-edges;" class=""></canvas> 
+		<script src="game.js" type="module" ></script>
 	<p>
 		Multiplication has lower precision (16x16->32) than on contemporary PCs. I already had planned a 3d engine for Commodore plus4 (8 bit) and had ideas for variable length integers to manage graphics quality.
 		It turns out that this management code is slower than just composing instructions for higher precision, at least on Jaguar.
@@ -51,9 +54,7 @@
 
 		<img src="texture.png" id="texture" alt="Image loader">
 		<canvas id="texture_check"></canvas>
-	<canvas id="Canvas2dGame" width="320" height="200" style="border:1px solid #000000;image-rendering: pixelated;
-    image-rendering: crisp-edges;" class=""></canvas> 
-		<script src="game.js" type="module" ></script>
+
 
 
 	</p>
