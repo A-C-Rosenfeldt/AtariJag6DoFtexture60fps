@@ -94,9 +94,13 @@ class Corner extends Point {
 	corner: number
 	get_one_digit_coords() { return [1 - (this.corner & 2), 1 - 1 * (this.corner + 1 & 2)] } // Todo: UnitTest
 	get_y() { return screen[this.corner & 1] * (1 - (this.corner & 2)) }
+	constructor() {
+		super();
+		this.corner = -1;
+	}
 }
 
-class Onthe_border extends Corner {
+class Onthe_border extends Point {  // extends Corner leads to errors. So I guess that (once again ) inheritance is not the right tool here
 	// the edge after the corner in mathematical sense of rotation
 	border: number
 	get_one_digit_coords() { // Todo. Unit Test . Could be the wrong direction of rotation
@@ -104,12 +108,22 @@ class Onthe_border extends Corner {
 		if ((this.border & 1) == 1) return t
 		return [0, t[0]]
 	}
-	pixel_ordinate_int: number
+	private _pixel_ordinate_int: number;
+	public get pixel_ordinate_int(): number {
+		return this._pixel_ordinate_int;
+	}
+	public set pixel_ordinate_int(value: number) {
+		if (value<-160 || value>160) throw "out of range for all axes. btw, border is "+this.border+" value is "+value
+		this._pixel_ordinate_int = value;
+	}
 	z_gt_nearplane: boolean
 	half_screen: any;
 
 	get_y() {
-		return this.border & 1 ? this.pixel_ordinate_int : this.half_screen[this.corner & 1] * (1 - (this.corner & 2))
+
+		return this.border & 1 ? this.pixel_ordinate_int : this.half_screen[ 1] * ( (this.border & 2)-1)
+		// this has to follow the generation of these objects. This was the orignal shortes formulation. It failed
+		// return this.border & 1 ? this.pixel_ordinate_int : this.half_screen[this.corner & 1] * (1 - (this.corner & 2))
 	}
 
 	constructor(half_screen: number[]) {
@@ -320,7 +334,7 @@ export class Polygon_in_cameraSpace {
 					}
 				} else {
 					let cut_r = this.edge_fromVertex_toBorder([vertices[k], vertices[i]], l);
-					on_screen.push(...cut_r)
+					on_screen.push(...cut_r.reverse())
 				}
 			} else {
 				on_screen.push(v.onScreen)
@@ -354,7 +368,7 @@ export class Polygon_in_cameraSpace {
 				var j = ((i % n) + n) % n
 				if (j == 3) {
 					let t = new Corner(); t.corner = neighbours[1].border
-					with_corners.push(t)
+					with_corners.push(t) // debug.  This happens already when I check borders
 					return
 				} else {
 					var range = neighbours.map(n => (n as Onthe_border).border)  // typeGuard failed
@@ -366,11 +380,12 @@ export class Polygon_in_cameraSpace {
 				// BSP always wanrs heuristcs. The simple linear polygon-add will use all info about two polygons to decide how to construct the BSP,
 				// though, the leaf is already integrated into the beam tree. I would need to consider tree vs convex polygon. 
 				// When rendering a mesh in a stripe, surely I should reuse shared edges
+				 with_corners.push(v)
 				if ((v instanceof Onthe_border && neighbours[1] instanceof Onthe_border))  // previous loop discards the vertex marker. This is for symmetry: not a property. Asymmetric code looks ugly. Perhaps optimize the container: Type in a pattern, but use same getter and setter
 				{
 					var range = [v.border, neighbours[1].border]
 				}
-				else with_corners.push(v)  // this loop only adds corners. No need to skip due to a pattern nearby
+				//else with_corners.push(v)  // this loop only adds corners. No need to skip due to a pattern nearby
 				return
 			}
 
@@ -379,7 +394,7 @@ export class Polygon_in_cameraSpace {
 			for (let k = range[0]; k < range[2]; k++) // corner is named after the border before it ( math sense of rotation )
 			{
 				let t = new Corner(); t.corner = k % n
-				with_corners.push(t)
+				with_corners.push(t) // debug.  This happens already when I check borders
 			}
 		})
 
@@ -594,7 +609,12 @@ export class Polygon_in_cameraSpace {
 		}
 
 		vertex.forEach((v, i) => {
+			const checkme=v instanceof Onthe_border//;console.log("checkme",checkme)
+			if (checkme) {
+				console.log("border", v.border, v.pixel_ordinate_int,v.get_y())
+			}
 			if (instanceOfPoint(v)) {
+				
 				if (v.get_y() < min_max[0][1]) min_max[0] = [i, v.get_y()]
 				if (v.get_y() > min_max[1][1]) min_max[1] = [i, v.get_y()]
 			}
@@ -644,11 +664,12 @@ export class Polygon_in_cameraSpace {
 					}
 					else {
 						if (count_to_one && active_vertices[0][2] == active_vertices[1][2]) break; // left and right side already aim at the lowest vertex. No need to set up new Bresenham coefficients
-						count_to_one = true
+						
 						const ind = new Cyclic_Indexer()
 						ind.length = l, ind.direction = k
 
-						var { x_at_y_int, v_val2 } = this.streamIn_newVertex(active_vertices[k], Bresenham[k], ind, vertex);
+						var {x_at_y_int, overshot} = this.streamIn_newVertex(active_vertices[k], Bresenham[k], ind, vertex,count_to_one);
+						count_to_one = true; if (overshot) {console.log("overshot", overshot); break}; // if the last edge is horizontal between two vertices on screen
 
 						{
 							let d = Bresenham[k].gradients
@@ -701,16 +722,25 @@ export class Polygon_in_cameraSpace {
 		m.drawCanvasGame(vertex_control)
 	}
 
-	private streamIn_newVertex(active_vertices: number[], Bresenham: Gradient, ind: Cyclic_Indexer, vertex: Item[]) {
-
+	private streamIn_newVertex(active_vertices: number[], Bresenham: Gradient, ind: Cyclic_Indexer, vertex: Item[],count_to_one:boolean):{ x_at_y_int: number, overshot: boolean } {
+		let v_val =null, edge: Edge_on_Screen = null // for debugging
+		let other_path_already_met=false
 		for (let eat_edges = 0; eat_edges < 10 /* safety */; eat_edges++) {
 			active_vertices[0] = active_vertices[1]; // This might be null.
 			active_vertices[1] = active_vertices[2];  // for debugging I better keep indieces around for a while
+
 			ind.iterate_by_ref2(active_vertices) //[2] = active_vertices[2] + (k * 2 - 1 + l) % l;
+
+			if (other_path_already_met) {
+				return { x_at_y_int: 0, overshot: false };
+			}
+			if (count_to_one && active_vertices[0][2] == active_vertices[1][2])other_path_already_met=true
+			count_to_one = true
+
 			// So I do need a window over two vertices?
 			// tell it like it is! Probable hoist up to the sort
-			const v_val = new Array<Point>(2)
-			let edge: Edge_on_Screen = null// edge can be impli
+			v_val = new Array<Point>(2)
+			edge = null// edge can be impli
 			{
 				const v_and_e = active_vertices.map(a => a < 0 ? null : vertex[a]); // JRISC does not like addressing modes, but automatic caching in registers is easy for a compiler. I may even want to pack data to save on LOADs with Q-displacement
 
@@ -729,7 +759,9 @@ export class Polygon_in_cameraSpace {
 					v_val[0] = lv
 				} else continue
 			}
-
+			// if (edge==null){
+			// 	console.log("edge is null");
+			// }
 
 
 			{
@@ -753,6 +785,7 @@ export class Polygon_in_cameraSpace {
 			if (v_val[0] instanceof Vertex_OnScreen && edge === null && v_val[1] instanceof Vertex_OnScreen) {
 
 				var slope = new Vec2([(v_val[1]).position, v_val[0].position]);
+				//console.log("slope", slope.v)
 				// for(let i=0;i< v_val[0].postion.length;i+=2){
 				// 	d[i]=(v_val[i] as Vertex_OnScreen).postion[i]-v_val[0].postion[i]
 				// }
@@ -777,12 +810,12 @@ export class Polygon_in_cameraSpace {
 			if (v_val[0] instanceof Vertex_OnScreen && edge instanceof Edge_w_slope && v_val[1] instanceof Onthe_border) {
 				var slope = edge.slope; // see belowvar slope_integer=
 
-				// duplicated code. Function call?
+				// duplicated code. Function call? The other code block is more debugged
 				var d = slope.v;
 				var y_int = v_val[0].get_y(); // int
 
-				var x_at_y_int = Math.floor(v_val[0][0] + d[0] * (y_int - v_val[0][1]) / d[1]); // frac -> int
-				Bresenham.accumulator = slope.wedgeProduct(new Vec2([[x_at_y_int, y_int], v_val[0].position])); // this should be the same for all edges not instance of Edge_Horizon
+				var x_at_y_int = Math.floor( v_val[0].position[0]); // Math.floor(v_val[0][0] + d[0] * (y_int - v_val[0][1]) / d[1]); // frac -> int
+				Bresenham.accumulator = slope.wedgeProduct(new Vec2([[x_at_y_int, y_int], v_val[0].position])); // get fraction would be SHL 16 in JRISC
 				break
 			}
 			if (v_val[1] instanceof Vertex_OnScreen && edge instanceof Edge_w_slope && v_val[0] instanceof Onthe_border) {
@@ -790,8 +823,9 @@ export class Polygon_in_cameraSpace {
 
 				// duplicated code. Function call?
 				var d = slope.v;
-				var y_int = v_val[1].get_y(); // int
-				var x_at_y_int = v_val[0].border & 1 ? v_val[0].pixel_ordinate_int : this.screen[0] * (1 - (v_val[0].border & 2)); // todo: method!
+				var y_int = v_val[0].get_y(); // int
+				var x_at_y_int = !(v_val[0].border & 1) ? v_val[0].pixel_ordinate_int : this.screen[0] * ((v_val[0].border & 2)-1); // todo: method!
+
 				Bresenham.accumulator = slope.wedgeProduct(new Vec2([[x_at_y_int, y_int], v_val[1].position])); // this should be the same for all edges not instance of Edge_Horizon
 				break
 			}
@@ -811,8 +845,10 @@ export class Polygon_in_cameraSpace {
 
 			}
 		}
+		if (typeof d === "undefined") throw new Error("No valid edge found")
 		Bresenham.gradients = d
-		return { x_at_y_int, v_val2 };
+	const overshot=false
+		return  { x_at_y_int , overshot}
 	}
 	// JRISC has a reminder, but it is quirky and needs helper code. Probably I'd rather do: 
 	/*
@@ -908,17 +944,27 @@ export class Polygon_in_cameraSpace {
 		{
 			const t=Math.max(0,Math.sign(slope[0]) | Math.max(0,(Math.sign(slope[1])) << 1))  // corner
 			// border before. I just went through the truth table in my head
-			border=~((t&1)^(t&2)) 
+			border=((t&1)^(t&2)) ^ 1
 			border|=t & 2
 		}
+		 console.log("slope => border",border)
 		// The signs of the slope have a meaning.
-		let corner=this.half_screen.map((s,i)=>s*Math.sign(slope[i]))  // I need the corner coordinates to calculate the intersection with the border
+		let corner=this.half_screen.map((s,i)=>s*Math.sign((2*i-1)*slope[1-i]))  // slope from 3d vector is permutated // I need the corner coordinates to calculate the intersection with the border
 		
 		let verts=new Vec2([vs[0].onScreen.position,corner])
-		let slope_v= new Vec2([slope])
-		if (verts.wedgeProduct(slope_v) > 0) { 
+		let slope_v= new Vec2([slope]) // slope is already wedged. Just apply the inner product
+		const g=(verts.innerProduct(slope_v) > 0) 
+		// todo: g == value on border .. Somehow the signs seem to flip? .
+		if (g) {   // lower border says <0   upper borders says>0
 			border++
+			border&=3 ; console.log("adjusted border",border)
 		}
+
+		const from_border=verts.v[1^border&1]
+		const gradient_builing_up=from_border*slope[border&1]
+		const compensate_along_border=gradient_builing_up/slope[1^(border&1)]  // can be infinite
+		const pixel_ordinate=vs[0].onScreen.position[1^(border&1)]-compensate_along_border  // compensate means minus
+
 		//for (var corner = -1; corner <= +1; corner += 2) {
 		//	if ((corner - vs[0].onScreen[0]) * slope[1] > (-1 - vs[0].onScreen[1]) * slope[0]) {  // ERror Verex 1 is on screen, but vertex 2 is not. outside=true should mean a diferent type!
 		// 		vs[1].onScreen[0] = corner //, vs[1].onScreen.border=corner // Todo: I need corners with rotation sense to fill the polygon
@@ -948,8 +994,8 @@ export class Polygon_in_cameraSpace {
 
 		const axis = border & 1  // border++ implies that we need to look at the lsb
 		{
-			const nxs = (~border & 1)
-			onborder.pixel_ordinate_int = vs[0].onScreen.position[axis] - (corner[nxs] - vs[0].onScreen.position[nxs]) * slope[nxs] / slope[axis]   // wedge product // The index galore would be a bunch of move in JRISC in the if above.
+			const nxs = (~border & 1)  // fail for border=2
+			onborder.pixel_ordinate_int =  Math.floor(pixel_ordinate) //vs[0].onScreen.position[axis] - (corner[nxs] - vs[0].onScreen.position[nxs]) * slope[nxs] / slope[axis]   // wedge product // The index galore would be a bunch of move in JRISC in the if above.
 		}
 
 		onborder.z_gt_nearplane =true // todo    . vs[1].onScreen.position[1] > this.near_plane

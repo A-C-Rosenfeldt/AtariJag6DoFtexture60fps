@@ -15,6 +15,11 @@
 	</p>
 		<canvas id="Canvas2dGame" width="320" height="200" style="border:1px solid #000000;image-rendering: pixelated;
     image-rendering: crisp-edges;" class=""></canvas> 
+		<p>
+	simple model. Move camera using arrow keys, WASD and ,.   . 
+	rasterizer checks for overdraw.
+	Show  graph.
+</p>	
 		<script src="game.js" type="module" ></script>
 	<p>
 		Multiplication has lower precision (16x16->32) than on contemporary PCs. I already had planned a 3d engine for Commodore plus4 (8 bit) and had ideas for variable length integers to manage graphics quality.
@@ -58,11 +63,7 @@
 
 
 	</p>
-	<p>
-	simple model. Move camera using arrow keys, WASD and ,.   . 
-	rasterizer checks for overdraw.
-	Show  graph.
-</p>	
+
 <h2>Beam tree and large integers</h2>
 <p>The beam tree is motivation alone. Start with a low number of polygons in a soup. Add BSP and portals to render roughly front to back and to terminate rendering in a dungeon ( yeah, old 90s look ).</p>
 <p>Pure beam tree has the smallest code size (important for the cache in Tom) and a low number of comparison. Probalby neither large integers nor float will fit into the cache.
