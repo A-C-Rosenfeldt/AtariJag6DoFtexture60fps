@@ -83,7 +83,14 @@ class vertex_behind_nearPlane implements Item {
 
 // Just as projected
 class Vertex_OnScreen extends Point {
-	position = new Array<number>()
+	private _position = new Array<number>();
+	public get position() {
+		return this._position;
+	}
+	public set position(value) {
+		if (isNaN(value[0]) || isNaN(value[0])) throw new Error(" value is nan")
+		this._position = value;
+	}
 	get_y() { return Math.ceil(this.position[1]) }   // subpixel correction and drawing with increasing y mandates ceil() instead of my standard floor(). +1 wleads to minimal glitches. Ah, why risk. Addq 1. SAR .
 	// I use the vector constructor to do this. Seems like a silly hack?
 	fraction() { return this.position.map(p => p - Math.floor(p)) }  // AI thinks that this looks better than % 1. Floor is explicit and is the way JRISC with twos-complemnt fixed point works
@@ -91,9 +98,22 @@ class Vertex_OnScreen extends Point {
 
 class Corner extends Point {
 	static screen: number[]
+	static throttle=10000
 	corner: number
-	get_one_digit_coords() { return [1 - (this.corner & 2), 1 - 1 * (this.corner + 1 & 2)] } // Todo: UnitTest
-	get_y() { return screen[this.corner & 1] * (1 - (this.corner & 2)) }
+	get_one_digit_coords() {
+		const r = [ (this.corner+1 & 2)-1,  (this.corner + 0 & 2)-1];
+		 return r 
+		} // Todo: UnitTest
+	get_y() { 
+		// if (Corner.throttle--<0) {
+		// 	throw new Error("endless loop")}
+		const y = Corner.screen[ 1] * ( (this.corner & 2)-1);
+		// console.log("Corner ",this.corner," -> y", y)
+		// if (isNaN(y)) {
+		// 	let lll=0
+		// }
+		return y
+ 	}
 	constructor() {
 		super();
 		this.corner = -1;
@@ -122,7 +142,7 @@ class Onthe_border extends Point {  // extends Corner leads to errors. So I gues
 		return this._pixel_ordinate_int;
 	}
 	public set pixel_ordinate_int(value: number) {
-		if (value < -160 || value > 160) {
+		if (isNaN(value) || value < -160 || value > 160) {
 			throw "out of range for all axes. btw, border is " + this.border + " value is " + value
 		}
 		this._pixel_ordinate_int = value;
@@ -244,7 +264,7 @@ export class Polygon_in_cameraSpace {
 
 
 	project(vertices: Array<Vertex_in_cameraSpace>): boolean {
-		Corner.screen = this.screen
+		Corner.screen = this.half_screen //.screen
 		this.outside = [false, false]; let pattern32 = 0
 		vertices.forEach(v => {
 			let z = v.inSpace[v.inSpace.length - 1], outside = false  // sometimes string would be easier: -1 . Field have name and id ?
@@ -406,15 +426,16 @@ export class Polygon_in_cameraSpace {
 				if ((v instanceof Onthe_border && neighbours[1] instanceof Onthe_border))  // previous loop discards the vertex marker. This is for symmetry: not a property. Asymmetric code looks ugly. Perhaps optimize the container: Type in a pattern, but use same getter and setter
 				{
 					var range = [v.border, neighbours[1].border]
-				}
+				}else return
 				//else with_corners.push(v)  // this loop only adds corners. No need to skip due to a pattern nearby
-				return
+				
 			}
 
 			if (range[1] < range[0]) range[1] += n
 
-			for (let k = range[0]; k < range[2]; k++) // corner is named after the border before it ( math sense of rotation )
-			{
+			//console.log("may add corner", range[0], range[1])
+			for (let k = range[0]; k < range[1]; k++) { // corner is named after the border before it ( math sense of rotation )
+				console.log("going to add corner")
 				let t = new Corner(); t.corner = k % n
 				with_corners.push(t) // debug.  This happens already when I check borders
 			}
@@ -630,12 +651,13 @@ export class Polygon_in_cameraSpace {
 			return 'get_y' in object;
 		}
 
+		console.log("vertex.length",vertex.length)
 		vertex.forEach((v, i) => {
-			const checkme = v instanceof Onthe_border//;console.log("checkme",checkme)
-			if (checkme) {
-				//console.log("border", v.border, v.pixel_ordinate_int, v.get_y())
-				const d = v.get_y()
-			}
+			// const checkme = v instanceof Onthe_border//;console.log("checkme",checkme)
+			// if (checkme) {
+			// 	//console.log("border", v.border, v.pixel_ordinate_int, v.get_y())
+			// 	const d = v.get_y()
+			// }
 			if (instanceOfPoint(v)) {
 
 				if (v.get_y() < min_max[0][1]) min_max[0] = [i, v.get_y()]
@@ -643,7 +665,7 @@ export class Polygon_in_cameraSpace {
 			}
 		});
 
-		console.log("min_max", [].concat.apply([], min_max), vertex_control)  // change ES to newer then 2019? todo
+		//console.log("min_max", [].concat.apply([], min_max), vertex_control)  // change ES to newer then 2019? todo
 
 		const i = min_max[0][0]
 		const active_vertices = [[-1, -1, i], [-1, -1, i]] // happens in loop first iteration, (i + l - 1) % l], [i, (i + 1) % l]]
@@ -691,7 +713,7 @@ export class Polygon_in_cameraSpace {
 
 						const ind = new Cyclic_Indexer()
 						ind.length = l, ind.direction = k
-						console.log("y",y)
+						//console.log("y",y)
 						var { x_at_y_int, overshot } = this.streamIn_newVertex(active_vertices[k],active_vertices[1-k][2], Bresenham[k], ind, vertex, count_to_one);
 						if (overshot) {
 							console.log("overshot")
@@ -718,11 +740,11 @@ export class Polygon_in_cameraSpace {
 							if (way_to_go_to_horizontal_border < 0) {
 								throw new Error("I figured this is positive") // I messed up the sign
 								}
-							slope_accu_c[k] = [d[1] * way_to_go_to_horizontal_border > d[0] ? Math.floor(d[0] / d[1]) : way_to_go_to_horizontal_border, x_at_y_int] // debug with small values
-							if (isNaN(slope_accu_c[k][0])) {
+							slope_accu_c[k] = [d[1] * way_to_go_to_horizontal_border > Math.abs(d[0]) ? Math.floor(d[0] / d[1]) : way_to_go_to_horizontal_border, x_at_y_int] // debug with small values
+							if (!isFinite(slope_accu_c[k][0]) ||!isFinite(slope_accu_c[k][1]) || isNaN(slope_accu_c[k][0])) {
 								throw new Error("slope is NaN")
 							}
-							console.log("slope_accu_c", k, slope_accu_c[k], "d", d, "x_at_y_int", x_at_y_int, "y", y)
+							//console.log("slope_accu_c", k, slope_accu_c[k], "d", d, "x_at_y_int", x_at_y_int, "y", y)
 							if (x_at_y_int==160)
 							{
 								let lll=0
@@ -769,7 +791,7 @@ export class Polygon_in_cameraSpace {
 			width = slope_accu_c[1][1] - slope_accu_c[0][1]
 
 			//console.log("left", slope_accu_c[0][1], "right", slope_accu_c[1][1], "y", ps.y) // Test failed: Width is zero all the time
-			if (width > 0) {
+			if (width > 0 && width < this.screen[0]) {
 				ps.span(slope_accu_c[0][1], width, m, es)
 			} else {
 				//	ps.span(-155, 310, m, es)
@@ -876,7 +898,7 @@ export class Polygon_in_cameraSpace {
 				if (Bresenham.slope[1] < 0) {
 					throw new Error("go down!.")
 				} // I messed up the sign
-				console.log("Bresenham.slope",Bresenham.slope)
+				//console.log("Bresenham.slope",Bresenham.slope)  Todo: 32bit integer
 				break
 			}
 			var done = false
@@ -884,7 +906,7 @@ export class Polygon_in_cameraSpace {
 				const both_ways = v_val.slice()
 				for (let k = 0; k < 2; k++) {
 					var { done, x_at_y_int } = this.clipped_edge_to_Bresenham(both_ways, edge, Bresenham);
-					console.log("x_at_y_int",x_at_y_int)
+					//console.log("x_at_y_int",x_at_y_int)
 					if (x_at_y_int === undefined || x_at_y_int<-160 || x_at_y_int>160) {
 						throw new Error("No edge found")
 					}					
@@ -912,42 +934,59 @@ export class Polygon_in_cameraSpace {
 				if (done) break
 			}
 
-			// todo: unite with corner. 
-			if (v_val[1] instanceof Onthe_border && edge == null && v_val[0] instanceof Onthe_border) {
-				const c = [v_val[0].get_one_digit_coords(), v_val[1].get_one_digit_coords()]
-				//const b= v_val.slice(0,2).map(v=>v.get_one_digit_coords() )  // TypeGuard does not understand
-				let d = [1,1]
-				for (let i = 0; i < 2; i++) {
-					if (c[0][i] == c[1][i] && c[1][i]!=0) d[i] = 0
+			// todo: unite with corner.
+			if (edge == null) {
+				const c = [[0, 0], [0, 0]]
+				let checker=true  // center of screen would be vertex on screen
+				for (let j = 0; j < 2; j++) {
+					const v= v_val[j]  // I had a problem with intheritnace.  InstanceOf only here fits both these types
+					if (v instanceof Onthe_border) {c[j]=v.get_one_digit_coords()}//;console.log("border",v.border)}
+					if (v instanceof Corner) {c[j]=v.get_one_digit_coords()}//;console.log("corner",v.corner)}
+					checker &&=  (c[j][0]!=0 || c[j][1]!=0 )
 				}
-				if (d[0] == d[1]) {
-					throw Error("Diagonal lines need Edge with Slope")
-				}
-				Bresenham.slope=d
-				x_at_y_int=(v_val[1].border&1) ==0? this.half_screen[0]*c[1][0]: v_val[1].pixel_ordinate_int   // This is a dupe
-				console.log("x_at_y_int=",(v_val[1].border&1) ==1,"?", this.half_screen[0]*c[1][0],":", v_val[1].pixel_ordinate_int)
-				Bresenham.accumulator = 0
-				console.log("y",v_val[1].get_y(),">",v_val[0].get_y())
-				break
+				console.log("checks", c[0],c[1],checker )
+				if (  checker ) {  //v_val[1] instanceof Onthe_border && edge == null && v_val[0] instanceof Onthe_border) {
+					//const c = [v_val[0].get_one_digit_coords(), v_val[1].get_one_digit_coords()]
+					//const b= v_val.slice(0,2).map(v=>v.get_one_digit_coords() )  // TypeGuard does not understand
+					let d = [1, 1]
+					for (let i = 0; i < 2; i++) {
+						if (c[0][i] == c[1][i] && c[1][i] != 0) d[i] = 0
+					}
+					if (d[0] == d[1]) {
+						throw Error("Diagonal lines need Edge with Slope")
+					}
+					Bresenham.slope = d
+					if (v_val[1] instanceof Onthe_border) {
+						x_at_y_int = (v_val[1].border & 1) == 0 ? this.half_screen[0] * c[1][0] : v_val[1].pixel_ordinate_int   // This is a dupe
+						console.log("x_at_y_int=", (v_val[1].border & 1) == 1, "?", this.half_screen[0] * c[1][0], ":", v_val[1].pixel_ordinate_int)
+					}
+					if (v_val[1] instanceof Corner) {
+						x_at_y_int =  this.half_screen[0] * c[1][0] 
+						console.log("x_at_y_int=",  this.half_screen[0] * c[1][0] )
+					}
+					Bresenham.accumulator = 0
+					console.log("y", v_val[1].get_y(), ">", v_val[0].get_y()) ; // Sometiems after hits the code crashes
+					break
 
+				}
 			}
-			// Inherit edge from screen -- or in the future: from the portal or the (smallest covering) leaf
-			if (v_val[1] instanceof Corner && edge == null && v_val[0] instanceof Corner) {
-				const c = [v_val[0].get_one_digit_coords(), v_val[1].get_one_digit_coords()]
-				//const b= v_val.slice(0,2).map(v=>v.get_one_digit_coords() )  // TypeGuard does not understand
-				let d = [0, 0]
-				for (let i = 0; i < 2; i++) {
-					if (c[0][i] == c[1][i]) d[i] = 1
-				}
-				if (d[0] == d[1]) throw Error("Diagonal lines need Edge with Slope")
+			// // Inherit edge from screen -- or in the future: from the portal or the (smallest covering) leaf
+			// if (v_val[1] instanceof Corner && edge == null && v_val[0] instanceof Corner) {
+			// 	const c = [v_val[0].get_one_digit_coords(), v_val[1].get_one_digit_coords()]
+			// 	//const b= v_val.slice(0,2).map(v=>v.get_one_digit_coords() )  // TypeGuard does not understand
+			// 	let d = [0, 0]
+			// 	for (let i = 0; i < 2; i++) {
+			// 		if (c[0][i] == c[1][i]) d[i] = 1
+			// 	}
+			// 	if (d[0] == d[1]) throw Error("Diagonal lines need Edge with Slope")
 
-				Bresenham.accumulator = 0
-				break
+			// 	Bresenham.accumulator = 0
+			// 	break
 
-			}
+			// }
 		}
 		const overshot = false
-		console.log("x_at_y_int",x_at_y_int)
+		//console.log("x_at_y_int",x_at_y_int)
 		if (x_at_y_int === undefined|| x_at_y_int<-160 || x_at_y_int>160) {
 			throw new Error("No edge found")
 		}
@@ -970,7 +1009,8 @@ export class Polygon_in_cameraSpace {
 			const d = gradient.v;
 			const y_int = v_val[0].get_y(); // int
 			var x_at_y_int = (v_val[0].border & 1) == 1 ? v_val[0].pixel_ordinate_int : this.half_screen[0] * ((v_val[0].border & 2) - 1); // todo: method!
-				console.log("x_at_y_int",x_at_y_int);if (x_at_y_int === undefined || x_at_y_int<-160 || x_at_y_int>160) {
+				//console.log("x_at_y_int",x_at_y_int);
+				if (x_at_y_int === undefined || isNaN(x_at_y_int) || x_at_y_int<-160 || x_at_y_int>160) {
 					throw new Error("No edge found")
 				}		
 			Bresenham.accumulator = gradient.innerProduct(new Vec2([[x_at_y_int, y_int], v_val[1].position])); // this should be the same for all edges not instance of Edge_Horizon
@@ -1105,7 +1145,9 @@ export class Polygon_in_cameraSpace {
 
 		const to_border_signed = verts.v[border & 1]
 		const gradient_builing_up = to_border_signed * gradient[border & 1]
-		const compensate_along_border = gradient_builing_up / gradient[1 ^ (border & 1)]  // can be infinite
+		let chosen_gradient=gradient[1 ^ (border & 1)]  // int 
+		//if (chosen_gradient!=0) throw new Error("averted a crash") //chosen_gradient=100 // probably some bug
+		const compensate_along_border = chosen_gradient==0 ? 0: gradient_builing_up / chosen_gradient  // can be infinite
 		const pixel_ordinate = vs[0].onScreen.position[1 ^ (border & 1)] - compensate_along_border  // compensate means minus
 
 		//for (var corner = -1; corner <= +1; corner += 2) {

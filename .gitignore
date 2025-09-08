@@ -1,7 +1,7 @@
 src/**/*.js
 UnderTest/**/*.js
 test/**/*.js
-*.js.map
+# *.js.map
 
 # Logs
 logs

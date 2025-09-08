@@ -219,6 +219,7 @@ export class Mapper {
             const imageData = new ImageData(this.frame.pixel, 320, 200);
             ctx.putImageData(imageData, 0, 0);
             console.log("put Canvas2dGame");
+            //ctx.drawImage(ctx.canvas,0,0)
             this.clear();
             ctx.fillStyle = "white";
             vertices.forEach(v => {

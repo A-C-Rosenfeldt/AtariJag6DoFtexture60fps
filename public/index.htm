@@ -3,6 +3,16 @@
 <head>
 
 </head>
+<body>
+	<h2>Software rasterizer with comments in code about compiling to JRISC</h2>
+		<canvas id="Canvas2dGame" width="320" height="200" style="border:1px solid #000000;image-rendering: pixelated;
+    image-rendering: crisp-edges;" class=""></canvas> 
+		<p>
+	Click into this viewport. Use keyboard to fly around this simple model. Rotate camera using arrow keys,.  WASD for movement.
+	Try out the view frustum clipping routines.
+
+	Zoom in with your desktop browser. I think I need to implment scale somewhere too deep in code.
+</p>	
 
 <h2>Motivation</h2>
 <p>
@@ -13,13 +23,7 @@
 	Thanks to some serious design flaws, the Atari blitter falls back from 64 bit to 16 bit mode all the time and is slow so slow that it makes the JRISC GPU look fast:
 	JRISC has single cycle multiplication and a separate division unit.  
 	</p>
-		<canvas id="Canvas2dGame" width="320" height="200" style="border:1px solid #000000;image-rendering: pixelated;
-    image-rendering: crisp-edges;" class=""></canvas> 
-		<p>
-	Click into this viewport. Use keyboard to fly around this simple model. Rotate camera using arrow keys,.  WASD for movement.
-	rasterizer checks for overdraw.
-	Show  graph.
-</p>	
+
 		<script src="game.js" type="module" ></script>
 	<p>
 		Multiplication has lower precision (16x16->32) than on contemporary PCs. I already had planned a 3d engine for Commodore plus4 (8 bit) and had ideas for variable length integers to manage graphics quality.

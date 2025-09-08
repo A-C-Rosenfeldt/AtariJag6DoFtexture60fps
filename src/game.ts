@@ -52,16 +52,16 @@ document.addEventListener(
     switch (keyName) {
 
       case "w":
-        controller.position.add(controller.rotation.nominator[2], 1);
+        controller.position.add(controller.rotation.nominator[2], 0.1);
         break;
       case "s":
-        controller.position.add(controller.rotation.nominator[2], -1);
+        controller.position.add(controller.rotation.nominator[2], -0.1);
         break
       case "d":
-        controller.position.add(controller.rotation.nominator[0], 1);
+        controller.position.add(controller.rotation.nominator[0], 0.1);
         break;
       case "a":
-        controller.position.add(controller.rotation.nominator[0], -1);
+        controller.position.add(controller.rotation.nominator[0], -0.1);
         break;
       case ",":
         controller.rotation.Rotate_along_axis_Orthonormalize(2, controller.sine);
