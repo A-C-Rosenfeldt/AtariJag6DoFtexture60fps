@@ -89,7 +89,7 @@ class Onthe_border extends Point {
         this._pixel_ordinate_int = value;
     }
     get_y() {
-        return this.border & 1 ? this.pixel_ordinate_int : this.half_screen[1] * ((this.border & 2) - 1);
+        return (this.border & 1) == 0 ? this.pixel_ordinate_int : this.half_screen[1] * ((this.border & 2) - 1);
         // this has to follow the generation of these objects. This was the orignal shortes formulation. It failed
         // return this.border & 1 ? this.pixel_ordinate_int : this.half_screen[this.corner & 1] * (1 - (this.corner & 2))
     }
@@ -138,7 +138,7 @@ class Cyclic_Indexer {
 }
 export class Gradient {
     constructor() {
-        this.gradients = new Array(2);
+        this.slope = new Array(2);
         //	alongEdge = new Array<number>(2) // I use a new type for this callen accumulator_increment -- todo: Harmonize names!
     }
 }
@@ -527,6 +527,7 @@ export class Polygon_in_cameraSpace {
             const checkme = v instanceof Onthe_border; //;console.log("checkme",checkme)
             if (checkme) {
                 console.log("border", v.border, v.pixel_ordinate_int, v.get_y());
+                const d = v.get_y();
             }
             if (instanceOfPoint(v)) {
                 if (v.get_y() < min_max[0][1])
@@ -535,6 +536,7 @@ export class Polygon_in_cameraSpace {
                     min_max[1] = [i, v.get_y()];
             }
         });
+        console.log("min_max", [].concat.apply([], min_max), vertex_control); // change ES to newer then 2019? todo
         const i = min_max[0][0];
         const active_vertices = [[-1, -1, i], [-1, -1, i]]; // happens in loop first iteration, (i + l - 1) % l], [i, (i + 1) % l]]
         const Bresenham = new Array(2).fill(undefined).map(() => new Gradient()); // I need to allocate memory because edges reuse this. Otherwise I would need threads for both sides of the polygon or yield 
@@ -581,7 +583,14 @@ export class Polygon_in_cameraSpace {
                             break; // left and right side already aim at the lowest vertex. No need to set up new Bresenham coefficients
                         const ind = new Cyclic_Indexer();
                         ind.length = l, ind.direction = k;
-                        var { x_at_y_int, overshot } = this.streamIn_newVertex(active_vertices[k], Bresenham[k], ind, vertex, count_to_one);
+                        var { x_at_y_int, overshot } = this.streamIn_newVertex(active_vertices[k], active_vertices[1 - k][2], Bresenham[k], ind, vertex, count_to_one);
+                        if (overshot) {
+                            console.log("overshot");
+                            break;
+                        }
+                        if (Bresenham[k].slope[1] < 0 || (x_at_y_int === undefined)) {
+                            throw new Error("go down!." + x_at_y_int);
+                        } // I messed up the sign
                         count_to_one = true;
                         if (overshot) {
                             console.log("overshot", overshot);
@@ -589,9 +598,26 @@ export class Polygon_in_cameraSpace {
                         }
                         ; // if the last edge is horizontal between two vertices on screen
                         {
-                            let d = Bresenham[k].gradients;
+                            let d = Bresenham[k].slope;
+                            console.log("Bresenham.slope", Bresenham[k].slope);
+                            if (Bresenham[k].slope[0] == undefined) {
+                                const lll = 0;
+                            }
+                            for (let j = 0; j < 2; j++)
+                                if (Bresenham[k].slope[j] == undefined)
+                                    Bresenham[k].slope[j] = j;
                             // Bresenham still needs integer slope
-                            slope_accu_c[k] = [d[1] > 0 ? Math.floor(d[0] / d[1]) : this.screen[1] * Math.sign(d[1]), x_at_y_int];
+                            if (d[1] < 0) {
+                                throw new Error("go down!.");
+                            } // I messed up the sign
+                            const way_to_go_to_vhorizontal_border = this.half_screen[0] - x_at_y_int * Math.sign(d[0]);
+                            if (way_to_go_to_vhorizontal_border < 0)
+                                throw new Error("I figured this is positive"); // I messed up the sign
+                            slope_accu_c[k] = [d[1] * way_to_go_to_vhorizontal_border > d[0] ? Math.floor(d[0] / d[1]) : way_to_go_to_vhorizontal_border, x_at_y_int]; // debug with small values
+                            if (isNaN(slope_accu_c[k][0])) {
+                                throw new Error("slope is NaN");
+                            }
+                            console.log("slope_accu_c", k, slope_accu_c[k], "d", d, "x_at_y_int", x_at_y_int, "y", y);
                         }
                         es[k] = new EdgeShader(x_at_y_int, y, slope_accu_c[k][0], Bresenham[k], payload, this.infinite_plane_FoV);
                         // Alternatives
@@ -617,6 +643,10 @@ export class Polygon_in_cameraSpace {
                     }
                 }
             }
+            if (overshot) {
+                console.log("overshot");
+                break;
+            }
             ps.y = y;
             width = slope_accu_c[1][1] - slope_accu_c[0][1];
             //console.log("left", slope_accu_c[0][1], "right", slope_accu_c[1][1], "y", ps.y) // Test failed: Width is zero all the time
@@ -629,7 +659,7 @@ export class Polygon_in_cameraSpace {
         } //while (active_vertices[0][1] != active_vertices[1][1]) // full circle, bottom vertex found on the fly		
         m.drawCanvasGame(vertex_control);
     }
-    streamIn_newVertex(active_vertices, Bresenham, ind, vertex, count_to_one) {
+    streamIn_newVertex(active_vertices, other_verticex, Bresenham, ind, vertex, count_to_one) {
         let v_val = null, edge = null; // for debugging
         let other_path_already_met = false;
         for (let eat_edges = 0; eat_edges < 10 /* safety */; eat_edges++) {
@@ -637,10 +667,12 @@ export class Polygon_in_cameraSpace {
             active_vertices[1] = active_vertices[2]; // for debugging I better keep indieces around for a while
             ind.iterate_by_ref2(active_vertices); //[2] = active_vertices[2] + (k * 2 - 1 + l) % l;
             if (other_path_already_met) {
-                return { x_at_y_int: 0, overshot: false };
+                return { x_at_y_int: 0, overshot: true };
             }
-            if (count_to_one && active_vertices[0][2] == active_vertices[1][2])
+            if (count_to_one && active_vertices[2] == other_verticex) {
+                console.log("vertices meet", active_vertices[2], active_vertices[1][2]);
                 other_path_already_met = true;
+            } // only stream in the last (shared) vertex once
             count_to_one = true;
             // So I do need a window over two vertices?
             // tell it like it is! Probable hoist up to the sort
@@ -681,18 +713,21 @@ export class Polygon_in_cameraSpace {
                     throw new Error("Expected Onthe_border");
                 const y_int = for_subpixel.get_y(); // int to seed the Bresenham akkumulator
                 var x_at_y_int = for_subpixel.border & 1 ? for_subpixel.pixel_ordinate_int : this.half_screen[0] * (1 - (for_subpixel.border & 2));
-                Bresenham.accumulator = edge.bias + slope.wedgeProduct(new Vec2([[x_at_y_int, y_int]])); //y_int*d[0]+x_at_y_int*d[1]
+                if (x_at_y_int === undefined) {
+                    throw new Error("No edge found");
+                }
+                Bresenham.accumulator = edge.bias + gradient.wedgeProduct(new Vec2([[x_at_y_int, y_int]])); //y_int*d[0]+x_at_y_int*d[1]
                 break;
             }
             // Point supports get_y . So I only need to consider mirror cases for pattern matchting and subpixel, but not for the for(y) .
             if (v_val[0] instanceof Vertex_OnScreen && edge === null && v_val[1] instanceof Vertex_OnScreen) {
-                var slope = new Vec2([(v_val[1]).position, v_val[0].position]);
+                var gradient = new Vec2([(v_val[1]).position, v_val[0].position]);
                 //console.log("slope", slope.v)
                 // for(let i=0;i< v_val[0].postion.length;i+=2){
                 // 	d[i]=(v_val[i] as Vertex_OnScreen).postion[i]-v_val[0].postion[i]
                 // }
                 //var slope=d// see belowvar slope_integer=
-                var d = slope.v;
+                var d = gradient.v;
                 if (d[1] <= 0) {
                     continue;
                 }
@@ -707,26 +742,38 @@ export class Polygon_in_cameraSpace {
                     }
                 }
                 var x_at_y_int = Math.floor(x_at_y); // float -> int
-                Bresenham.accumulator = slope.wedgeProduct(new Vec2([[x_at_y_int, y_int], v_val[0].position])); //(y_int- v_val[0][1] )*d[0]+(x_at_y_int- v_val[0][0] )*d[1]  // this should be the same for all edges not instance of Edge_Horizon
+                if (x_at_y_int === undefined) {
+                    throw new Error("No edge found");
+                }
+                Bresenham.accumulator = gradient.wedgeProduct(new Vec2([[x_at_y_int, y_int], v_val[0].position])); //(y_int- v_val[0][1] )*d[0]+(x_at_y_int- v_val[0][0] )*d[1]  // this should be the same for all edges not instance of Edge_Horizon
+                Bresenham.slope = d;
+                if (Bresenham.slope[1] < 0) {
+                    throw new Error("go down!.");
+                } // I messed up the sign
+                console.log("Bresenham.slope", Bresenham.slope);
                 break;
             }
-            if (v_val[0] instanceof Vertex_OnScreen && edge instanceof Edge_w_slope && v_val[1] instanceof Onthe_border) {
-                var slope = edge.gradient; // see belowvar slope_integer=
-                // duplicated code. Function call? The other code block is more debugged
-                var d = slope.v;
-                var y_int = v_val[0].get_y(); // int
-                var x_at_y_int = Math.floor(v_val[0].position[0]); // Math.floor(v_val[0][0] + d[0] * (y_int - v_val[0][1]) / d[1]); // frac -> int
-                Bresenham.accumulator = slope.wedgeProduct(new Vec2([[x_at_y_int, y_int], v_val[0].position])); // get fraction would be SHL 16 in JRISC
-                break;
-            }
-            if (v_val[1] instanceof Vertex_OnScreen && edge instanceof Edge_w_slope && v_val[0] instanceof Onthe_border) {
-                var slope = edge.gradient; // see belowvar slope_integer=
-                // duplicated code. Function call?
-                var d = slope.v;
-                var y_int = v_val[0].get_y(); // int
-                var x_at_y_int = !(v_val[0].border & 1) ? v_val[0].pixel_ordinate_int : this.screen[0] * ((v_val[0].border & 2) - 1); // todo: method!
-                Bresenham.accumulator = slope.wedgeProduct(new Vec2([[x_at_y_int, y_int], v_val[1].position])); // this should be the same for all edges not instance of Edge_Horizon
-                break;
+            var done = false;
+            if (edge instanceof Edge_w_slope) {
+                const both_ways = v_val.slice();
+                for (let k = 0; k < 2; k++) {
+                    var { done, x_at_y_int } = this.clipped_edge_to_Bresenham(both_ways, edge, Bresenham);
+                    console.log("Bresenham.slope", Bresenham.slope, done, k);
+                    if (done) {
+                        if (k == 0) {
+                            Bresenham.slope = [-Bresenham.slope[0], -Bresenham.slope[1]];
+                            Bresenham.accumulator = -Bresenham.accumulator; // I guess
+                        }
+                        if (Bresenham.slope[1] < 0) {
+                            throw new Error("go down!." + k);
+                        } // I messed up the sign
+                        console.log("Bresenham.slope", Bresenham.slope);
+                        break;
+                    }
+                    both_ways.reverse();
+                }
+                if (done)
+                    break;
             }
             // Inherit edge from screen -- or in the future: from the portal or the (smallest covering) leaf
             if (v_val[1] instanceof Corner && edge == null && v_val[0] instanceof Corner) {
@@ -743,11 +790,33 @@ export class Polygon_in_cameraSpace {
                 break;
             }
         }
-        if (typeof d === "undefined")
-            throw new Error("No valid edge found");
-        Bresenham.gradients = d;
         const overshot = false;
+        if (x_at_y_int === undefined) {
+            throw new Error("No edge found");
+        }
+        if (Bresenham.slope[0] == undefined) {
+            const lll = 0;
+        }
         return { x_at_y_int, overshot };
+    }
+    // So again sorting is a big thing. Sorting by z, sorting around the polygon in world space, sorting inside outside of the screen
+    clipped_edge_to_Bresenham(v_val, edge, Bresenham) {
+        let done = false;
+        if (v_val[1] instanceof Vertex_OnScreen && v_val[0] instanceof Onthe_border) {
+            const gradient = edge.gradient; // see belowvar slope_integer=
+            // duplicated code. Function call?
+            const d = gradient.v;
+            const y_int = v_val[0].get_y(); // int
+            var x_at_y_int = (v_val[0].border & 1) == 1 ? v_val[0].pixel_ordinate_int : this.screen[0] * ((v_val[0].border & 2) - 1); // todo: method!
+            Bresenham.accumulator = gradient.innerProduct(new Vec2([[x_at_y_int, y_int], v_val[1].position])); // this should be the same for all edges not instance of Edge_Horizon
+            Bresenham.slope = [-d[1], d[0]]; // I messed up the sign somewhere. Check with test case;
+            console.log("Bresenham.slope", Bresenham.slope);
+            done = true;
+        }
+        else {
+            var x_at_y_int = 0;
+        }
+        return { done, x_at_y_int };
     }
     // JRISC has a reminder, but it is quirky and needs helper code. Probably I'd rather do: 
     /*
@@ -830,7 +899,7 @@ export class Polygon_in_cameraSpace {
             // border before. I just went through the truth table in my head
             border = ((t & 1) ^ ((t >> 1) & 1));
             border |= t & 2;
-            console.log("slope => border: ", Math.sign(slope[0]), Math.sign(slope[1]), " => " + t + " => " + border);
+            // console.log("slope => border: ",Math.sign(slope[0]), Math.sign(slope[1])," => "+t+" => "+border)
             let d = 0;
         }
         // The signs of the slope have a meaning.
