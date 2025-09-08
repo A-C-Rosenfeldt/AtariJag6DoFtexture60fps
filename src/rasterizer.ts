@@ -66,7 +66,7 @@ class Edge_on_Screen implements Item {
 // }
 
 class Edge_w_slope extends Edge_on_Screen {
-	slope: Vec2
+	gradient: Vec2
 }
 
 class Edge_Horizon extends Edge_w_slope {
@@ -113,7 +113,9 @@ class Onthe_border extends Point {  // extends Corner leads to errors. So I gues
 		return this._pixel_ordinate_int;
 	}
 	public set pixel_ordinate_int(value: number) {
-		if (value<-160 || value>160) throw "out of range for all axes. btw, border is "+this.border+" value is "+value
+		if (value<-160 || value>160) {
+			throw "out of range for all axes. btw, border is "+this.border+" value is "+value
+		}
 		this._pixel_ordinate_int = value;
 	}
 	z_gt_nearplane: boolean
@@ -207,8 +209,10 @@ export class Polygon_in_cameraSpace {
 	// NDC -> pixel
 	screen = [320, 200];
 	half_screen = this.screen.map(s => s / 2);
-	FoV = [1.6, 1.0]
+	FoV = [0.8,0.5]//[1.6, 1.0]  //
 	FoV_rezi = this.FoV.map(f => 1 / f)  // todo: Multiply with rotation matrix . Need to be 1 <=   < 2
+
+	// Square pixels on my dev machine make thise elements equal
 	screen_FoV = this.FoV_rezi.map((f, i) => f * this.half_screen[i])     // Forward for vertices  ..Needs to be this.screen <  < 2*this.screen for the machine language optimized clipping
 	infinite_plane_FoV = this.FoV.map((f, i) => f / this.half_screen[i])    // backwards for "ray tracing"
 
@@ -238,19 +242,28 @@ export class Polygon_in_cameraSpace {
 
 			let l = v.inSpace.length - 1   // weird that special component z is last. Probably in assembler I will interate backwards
 			for (let i = 0; i < l; i++) {
-				if (Math.abs(v.inSpace[i]) > z) { outside = true; break }  // abs works because there is a (0,0) DMZ between the four center pixels. DMZ around the pixels are used as a kindof mini guard band. symmetric NDC. For Jaguar with its 2-port register file it may makes sense to skew and check for the sign bit (AND r0,r0 sets N-flag). Jaguar has abs()
+				if (Math.abs(v.inSpace[i]) > z) { 
+					outside = true; break 
+				}  // abs works because there is a (0,0) DMZ between the four center pixels. DMZ around the pixels are used as a kindof mini guard band. symmetric NDC. For Jaguar with its 2-port register file it may makes sense to skew and check for the sign bit (AND r0,r0 sets N-flag). Jaguar has abs()
 			}
-			if (v[2] < this.near_plane) outside = true; else v.onScreen = new Vertex_OnScreen()
+			if (v[2] < this.near_plane) {
+				outside = true;
+			} else v.onScreen = new Vertex_OnScreen()
 
 			// stupid low level performance optimization: Apply 32 bit MUL only on some vertices .  NDC would apply 16 bit MUL on all visible vertices. NDC is so violating anything which brought me to engines: Bounding boxes and portals. Still, NDC has far less branches and code and wins if occlusion culling is not possible. Rounding is always a problem on the border -- not worse for NDC
 			// On a computer without fast MUL, this would be the code. JRISC has single cycle MUL 16*16=>32 ( as fast as ADD !? )
 			if (outside == false) {	 // this.mode==modes.guard_band &&   I only support this mode because it is compatible to portals and perhaps later also to the beamtree.
 
+				// check critical pixels first   ( I know that this looks complicates. This is resarch to see how much I can trade code for DIVs. I guess for JRISC just doing DIV is faster)
+				// NDCs are faster for the vertices here, but more difficult to clip the edge. Now I feel like vertices between FoV/2 and FoV are many, edges are a few. So even super complicated MUL32 just for the last bit precsion after clipping is better than this.
+				const z2=Math.floor(z/2)  // JRISC SAR
 				for (let i = 0; i < l; i++) {  // square pixels. Otherwise I need this.FoV[] ( not the real one w)
-					// notice how thie method loses on bit on the 3d side. But 32 bit are enough there. 16 bit on 2d are plency also though for SD -- hmm
-					if (Math.abs(v.inSpace[i]) > z) {
-						v.onScreen.position[i] = v.inSpace[i] * this.screen_FoV[i] / z;
-						if (Math.abs(v.onScreen.position[i]) > this.half_screen[i]) { outside = true; break }
+					// notice how thie method loses on bit on the 3d side. But 32 bit are enough there. 16 bit on 2d are plency also though for SD -- hmm					
+					if (Math.abs(v.inSpace[i]) > z2) {
+						v.onScreen.position[i] = v.inSpace[i] * this.screen_FoV[i] / z;  // screen_Fov just smaller than half_screen
+						if (Math.abs(v.onScreen.position[i]) > this.half_screen[i]) { 
+							outside = true; break 
+						}
 					} // Similar to early out in BSP union
 
 					//if (Math.abs(v[i] * this.screen_FoV[i]) > z*this.screen_FoV[2]) { outside = true }  // Notice how z will be shifted, but two register because 3d is 32 bit
@@ -259,7 +272,7 @@ export class Polygon_in_cameraSpace {
 				}
 				if (outside == false)
 					for (let i = 0; i < l; i++) {
-						if (Math.abs(v.inSpace[i]) <= z) {
+						if (Math.abs(v.inSpace[i]) <= z2) {
 							v.onScreen.position[i] = v.inSpace[i] * this.screen_FoV[i] / z
 						}  // This makes no sense behind a portal
 
@@ -286,7 +299,7 @@ export class Polygon_in_cameraSpace {
 			this.outside[1] &&= outside
 		})
 
-		const vertex_control=[] //vertices.map(v=>v.onScreen.position.map((p,i)=>p+this.half_screen[i]))
+		const vertex_control=vertices.filter(v=>v.onScreen !== null).map(v=>v.onScreen.position.map((p,i)=>p+this.half_screen[i]))
 
 		pattern32 = pattern32 << vertices.length | pattern32// pattern allows look ahead
 		// Cull invisble Edges. Faces pull their z,s,t from 3d anyway. I cannot really clip edges here because it lets data explode which will be needed by the rasterizer (not for face culling)
@@ -540,7 +553,7 @@ export class Polygon_in_cameraSpace {
 				o.pixel_ordinate_int = coords[~border_count & 1]
 				on_screen.push(o)
 				let e = new Edge_Horizon()
-				e.slope = new Vec2([slope.slice(0, 2)])
+				e.gradient = new Vec2([slope.slice(0, 2)])
 				e.bias = slope[2]
 				if (j == 0) on_screen.push(e)
 
@@ -808,7 +821,7 @@ export class Polygon_in_cameraSpace {
 				break
 			}
 			if (v_val[0] instanceof Vertex_OnScreen && edge instanceof Edge_w_slope && v_val[1] instanceof Onthe_border) {
-				var slope = edge.slope; // see belowvar slope_integer=
+				var slope = edge.gradient; // see belowvar slope_integer=
 
 				// duplicated code. Function call? The other code block is more debugged
 				var d = slope.v;
@@ -819,7 +832,7 @@ export class Polygon_in_cameraSpace {
 				break
 			}
 			if (v_val[1] instanceof Vertex_OnScreen && edge instanceof Edge_w_slope && v_val[0] instanceof Onthe_border) {
-				var slope = edge.slope; // see belowvar slope_integer=
+				var slope = edge.gradient; // see belowvar slope_integer=
 
 				// duplicated code. Function call?
 				var d = slope.v;
@@ -872,12 +885,12 @@ export class Polygon_in_cameraSpace {
 
 		const on_screen = new Array<Item>()
 
-		const slope = this.get_edge_slope_onScreen(vs,this.infinite_plane_FoV).slice(0, 2); // 3d cros  product with meaningful sign. Swap x,y to get a vector pointint to the outside vertex. float the fractions
+		const gradient = this.get_edge_slope_onScreen(vs,this.infinite_plane_FoV).slice(0, 2); // 3d cros  product with meaningful sign. Swap x,y to get a vector pointint to the outside vertex. float the fractions
 		let edge = new Edge_w_slope()
-		edge.slope = new Vec2([slope])
+		edge.gradient = new Vec2([gradient])
 		on_screen.push(edge)
 
-		// const abs = slope.map(s => Math.abs(s))
+		const slope= [-gradient[1],gradient[0]]  // check in test: when hitting the upper border, slope[1] should be negative.
 
 		// switch (this.mode) {
 		// 	case modes.NDC:
@@ -942,27 +955,34 @@ export class Polygon_in_cameraSpace {
 
 		let border=-1
 		{
-			const t=Math.max(0,Math.sign(slope[0]) | Math.max(0,(Math.sign(slope[1])) << 1))  // corner
+			const t=Math.max(0,Math.sign(slope[0]) ) | Math.max(0,(Math.sign(slope[1])) )<< 1  // corner
 			// border before. I just went through the truth table in my head
-			border=((t&1)^(t&2)) ^ 1
+			border=((t&1)^((t>>1)&1)) 
 			border|=t & 2
+
+			 console.log("slope => border: ",Math.sign(slope[0]), Math.sign(slope[1])," => "+t+" => "+border)
+
+			 let d=0
 		}
-		 console.log("slope => border",border)
-		// The signs of the slope have a meaning.
-		let corner=this.half_screen.map((s,i)=>s*Math.sign((2*i-1)*slope[1-i]))  // slope from 3d vector is permutated // I need the corner coordinates to calculate the intersection with the border
 		
-		let verts=new Vec2([vs[0].onScreen.position,corner])
-		let slope_v= new Vec2([slope]) // slope is already wedged. Just apply the inner product
-		const g=(verts.innerProduct(slope_v) > 0) 
+		// The signs of the slope have a meaning.
+		let corner=this.half_screen.map((s,i)=>s*Math.sign(slope[i]))  // slope from 3d vector is permutated // I need the corner coordinates to calculate the intersection with the border
+
+		let verts=new Vec2([corner,vs[0].onScreen.position])  // going from vertex to corner. Vertex is sure, corner just a candidate. I hate how minus makes me reverse the entries in this list. Todo?
+		let slope_v= new Vec2([gradient]) // slope is already wedged. Just apply the inner product
+		const g=(verts.innerProduct(slope_v) >0 )  // Vector going outside. Checking with the corner in the same sense of rotation.
+		//  Sign for ++ should always be the same. No, the vector selects a corner, not an edge. 
+		// Imagine a vertex close to a border. The vector points towards this border. But now it looks slight left or right;
+		// hence it checks out differnt corners.
 		// todo: g == value on border .. Somehow the signs seem to flip? .
 		if (g) {   // lower border says <0   upper borders says>0
 			border++
 			border&=3 ; console.log("adjusted border",border)
 		}
 
-		const from_border=verts.v[1^border&1]
-		const gradient_builing_up=from_border*slope[border&1]
-		const compensate_along_border=gradient_builing_up/slope[1^(border&1)]  // can be infinite
+		const to_border_signed=verts.v[border&1]
+		const gradient_builing_up=to_border_signed*gradient[border&1]
+		const compensate_along_border=gradient_builing_up/gradient[1^(border&1)]  // can be infinite
 		const pixel_ordinate=vs[0].onScreen.position[1^(border&1)]-compensate_along_border  // compensate means minus
 
 		//for (var corner = -1; corner <= +1; corner += 2) {
@@ -992,11 +1012,11 @@ export class Polygon_in_cameraSpace {
 		let onborder = new Onthe_border(this.half_screen) // todo
 		onborder.border = border
 
-		const axis = border & 1  // border++ implies that we need to look at the lsb
-		{
-			const nxs = (~border & 1)  // fail for border=2
+		// const axis = border & 1  // border++ implies that we need to look at the lsb
+		// {
+		// 	const nxs = (~border & 1)  // fail for border=2
 			onborder.pixel_ordinate_int =  Math.floor(pixel_ordinate) //vs[0].onScreen.position[axis] - (corner[nxs] - vs[0].onScreen.position[nxs]) * slope[nxs] / slope[axis]   // wedge product // The index galore would be a bunch of move in JRISC in the if above.
-		}
+	//	}
 
 		onborder.z_gt_nearplane =true // todo    . vs[1].onScreen.position[1] > this.near_plane
 

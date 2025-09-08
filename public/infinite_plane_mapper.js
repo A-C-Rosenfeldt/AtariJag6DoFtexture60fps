@@ -179,7 +179,7 @@ export class Mapper {
     putpixel(source, target) {
         //console.log("x",target[0])
         const s = (Math.floor(Math.abs(source[0]) % 64) + this.source_width * Math.floor(Math.abs(source[1]) % 64)) * 4;
-        const t = (Math.floor(target[0]) + this.target_width * Math.floor(target[1])) * 4;
+        const t = (Math.floor(target[0] % this.target_width) + this.target_width * Math.floor(target[1] % this.frame.height)) * 4;
         for (let i = 0; i < 4; i++) {
             this.frame.pixel[t + i] = this.imageData.data[s + i];
         }
