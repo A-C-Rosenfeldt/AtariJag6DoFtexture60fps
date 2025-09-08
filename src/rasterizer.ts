@@ -624,7 +624,7 @@ export class Polygon_in_cameraSpace {
 		vertex.forEach((v, i) => {
 			const checkme = v instanceof Onthe_border//;console.log("checkme",checkme)
 			if (checkme) {
-				console.log("border", v.border, v.pixel_ordinate_int, v.get_y())
+				//console.log("border", v.border, v.pixel_ordinate_int, v.get_y())
 				const d = v.get_y()
 			}
 			if (instanceOfPoint(v)) {
@@ -695,7 +695,7 @@ export class Polygon_in_cameraSpace {
 
 						{
 							let d = Bresenham[k].slope
-							console.log("Bresenham.slope",Bresenham[k].slope)
+							//console.log("Bresenham.slope",Bresenham[k].slope)
 							if (Bresenham[k].slope[0]==undefined){
 								const lll=0
 							}
@@ -706,7 +706,9 @@ export class Polygon_in_cameraSpace {
 								throw new Error("go down!.")
 							} // I messed up the sign
 							const way_to_go_to_vhorizontal_border = this.half_screen[0] - x_at_y_int * Math.sign(d[0])
-							if (way_to_go_to_vhorizontal_border < 0) throw new Error("I figured this is positive") // I messed up the sign
+							if (way_to_go_to_vhorizontal_border < 0) {
+								throw new Error("I figured this is positive") // I messed up the sign
+								}
 							slope_accu_c[k] = [d[1] * way_to_go_to_vhorizontal_border > d[0] ? Math.floor(d[0] / d[1]) : way_to_go_to_vhorizontal_border, x_at_y_int] // debug with small values
 							if (isNaN(slope_accu_c[k][0])) {
 								throw new Error("slope is NaN")
@@ -822,7 +824,7 @@ export class Polygon_in_cameraSpace {
 				const y_int = for_subpixel.get_y(); // int to seed the Bresenham akkumulator
 
 				var x_at_y_int = for_subpixel.border & 1 ? for_subpixel.pixel_ordinate_int : this.half_screen[0] * (1 - (for_subpixel.border & 2));
-				if (x_at_y_int === undefined) {
+				if (x_at_y_int === undefined  || x_at_y_int<-160 || x_at_y_int>160) {
 					throw new Error("No edge found")
 				}				
 				Bresenham.accumulator = edge.bias + gradient.wedgeProduct(new Vec2([[x_at_y_int, y_int]])); //y_int*d[0]+x_at_y_int*d[1]
@@ -851,7 +853,7 @@ export class Polygon_in_cameraSpace {
 
 				}
 				var x_at_y_int = Math.floor(x_at_y); // float -> int
-				if (x_at_y_int === undefined) {
+				if (x_at_y_int === undefined || x_at_y_int<-160 || x_at_y_int>160) {
 					throw new Error("No edge found")
 				}
 
@@ -869,18 +871,27 @@ export class Polygon_in_cameraSpace {
 				const both_ways = v_val.slice()
 				for (let k = 0; k < 2; k++) {
 					var { done, x_at_y_int } = this.clipped_edge_to_Bresenham(both_ways, edge, Bresenham);
-					console.log("Bresenham.slope",Bresenham.slope,done,k)
+					console.log("x_at_y_int",x_at_y_int)
+					if (x_at_y_int === undefined || x_at_y_int<-160 || x_at_y_int>160) {
+						throw new Error("No edge found")
+					}					
+					//console.log("Bresenham.slope",Bresenham.slope,done,k)
 					if (done) {
 						if (k==0)
 						{
 							Bresenham.slope = [-Bresenham.slope[0], -Bresenham.slope[1]]
 							Bresenham.accumulator = -Bresenham.accumulator;  // I guess
-						}
 
+						}
+						if (v_val[0] instanceof Vertex_OnScreen){
+
+							x_at_y_int= v_val[0].position[0]; // Todo remove cliiped edge to bresenham calc
+							console.log("x_at_y_int overwrite",x_at_y_int)
+						}
 						if (Bresenham.slope[1] < 0) {
 							throw new Error("go down!." + k);
 						} // I messed up the sign
-						console.log("Bresenham.slope",Bresenham.slope)
+						//console.log("Bresenham.slope",Bresenham.slope)
 						break;
 					}
 					both_ways.reverse();
@@ -905,7 +916,8 @@ export class Polygon_in_cameraSpace {
 			}
 		}
 		const overshot = false
-		if (x_at_y_int === undefined) {
+		console.log("x_at_y_int",x_at_y_int)
+		if (x_at_y_int === undefined|| x_at_y_int<-160 || x_at_y_int>160) {
 			throw new Error("No edge found")
 		}
 
@@ -926,11 +938,13 @@ export class Polygon_in_cameraSpace {
 			// duplicated code. Function call?
 			const d = gradient.v;
 			const y_int = v_val[0].get_y(); // int
-			var x_at_y_int = (v_val[0].border & 1) == 1 ? v_val[0].pixel_ordinate_int : this.screen[0] * ((v_val[0].border & 2) - 1); // todo: method!
-
+			var x_at_y_int = (v_val[0].border & 1) == 1 ? v_val[0].pixel_ordinate_int : this.half_screen[0] * ((v_val[0].border & 2) - 1); // todo: method!
+				console.log("x_at_y_int",x_at_y_int);if (x_at_y_int === undefined || x_at_y_int<-160 || x_at_y_int>160) {
+					throw new Error("No edge found")
+				}		
 			Bresenham.accumulator = gradient.innerProduct(new Vec2([[x_at_y_int, y_int], v_val[1].position])); // this should be the same for all edges not instance of Edge_Horizon
 			Bresenham.slope = [-d[1], d[0]]; // I messed up the sign somewhere. Check with test case;
-			console.log("Bresenham.slope",Bresenham.slope)
+			//console.log("Bresenham.slope",Bresenham.slope)
 			done=true
 			
 		}else{
