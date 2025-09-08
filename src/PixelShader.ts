@@ -27,7 +27,7 @@ export class EdgeShader {
 		this.Bresenham=new a_i()
 		
 		{							
-			const _=Bresenham_k_gradient.gradients
+			const _=Bresenham_k_gradient.slope
 			const floored = this.slope*_[1]  - _[0]  // We always go down by one- Wedge product
 			this.Bresenham.increment = [floored, floored+_[1]]
 			this.Bresenham.accumulator = Bresenham_k_gradient.accumulator + this.Bresenham.increment[0] // We set up the decision value for the next line (y+1)

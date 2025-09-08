@@ -123,7 +123,7 @@ class Onthe_border extends Point {  // extends Corner leads to errors. So I gues
 
 	get_y() {
 
-		return this.border & 1 ? this.pixel_ordinate_int : this.half_screen[ 1] * ( (this.border & 2)-1)
+		return (this.border & 1)==0 ? this.pixel_ordinate_int : this.half_screen[ 1] * ( (this.border & 2)-1)
 		// this has to follow the generation of these objects. This was the orignal shortes formulation. It failed
 		// return this.border & 1 ? this.pixel_ordinate_int : this.half_screen[this.corner & 1] * (1 - (this.corner & 2))
 	}
@@ -185,7 +185,7 @@ class Cyclic_Indexer {
 
 export class Gradient {
 	accumulator: number
-	gradients = new Array<number>(2)
+	slope = new Array<number>(2)
 	//	alongEdge = new Array<number>(2) // I use a new type for this callen accumulator_increment -- todo: Harmonize names!
 }
 
@@ -625,6 +625,7 @@ export class Polygon_in_cameraSpace {
 			const checkme=v instanceof Onthe_border//;console.log("checkme",checkme)
 			if (checkme) {
 				console.log("border", v.border, v.pixel_ordinate_int,v.get_y())
+				const d=v.get_y()
 			}
 			if (instanceOfPoint(v)) {
 				
@@ -633,6 +634,7 @@ export class Polygon_in_cameraSpace {
 			}
 		});
 		
+		console.log("min_max", min_max)
 
 		const i = min_max[0][0]
 		const active_vertices = [[-1, -1, i], [-1, -1, i]] // happens in loop first iteration, (i + l - 1) % l], [i, (i + 1) % l]]
@@ -685,9 +687,12 @@ export class Polygon_in_cameraSpace {
 						count_to_one = true; if (overshot) {console.log("overshot", overshot); break}; // if the last edge is horizontal between two vertices on screen
 
 						{
-							let d = Bresenham[k].gradients
+							let d = [-Bresenham[k].slope[1], Bresenham[k].slope[0]]
 							// Bresenham still needs integer slope
-							slope_accu_c[k] = [d[1] > 0 ? Math.floor(d[0] / d[1]) : this.screen[1] * Math.sign(d[1]), x_at_y_int]
+							if (d[1]<0) throw new Error("go down!.") // I messed up the sign
+							const way_to_go_to_vhorizontal_border=this.half_screen[0]-x_at_y_int*Math.sign(d[0]) 
+							if (way_to_go_to_vhorizontal_border<0) throw new Error("I figured this is positive") // I messed up the sign
+							slope_accu_c[k] = [d[1]*way_to_go_to_vhorizontal_border > d[0] ? Math.floor(d[0] / d[1]) : way_to_go_to_vhorizontal_border, x_at_y_int] // debug with small values
 						}
 
 						es[k] = new EdgeShader(x_at_y_int, y, slope_accu_c[k][0], Bresenham[k], payload,this.infinite_plane_FoV)
@@ -790,20 +795,20 @@ export class Polygon_in_cameraSpace {
 				const y_int = for_subpixel.get_y(); // int to seed the Bresenham akkumulator
 
 				var x_at_y_int = for_subpixel.border & 1 ? for_subpixel.pixel_ordinate_int : this.half_screen[0] * (1 - (for_subpixel.border & 2));
-				Bresenham.accumulator = edge.bias + slope.wedgeProduct(new Vec2([[x_at_y_int, y_int]])); //y_int*d[0]+x_at_y_int*d[1]
+				Bresenham.accumulator = edge.bias + gradient.wedgeProduct(new Vec2([[x_at_y_int, y_int]])); //y_int*d[0]+x_at_y_int*d[1]
 				break
 			}
 
 			// Point supports get_y . So I only need to consider mirror cases for pattern matchting and subpixel, but not for the for(y) .
 			if (v_val[0] instanceof Vertex_OnScreen && edge === null && v_val[1] instanceof Vertex_OnScreen) {
 
-				var slope = new Vec2([(v_val[1]).position, v_val[0].position]);
+				var gradient = new Vec2([(v_val[1]).position, v_val[0].position]);
 				//console.log("slope", slope.v)
 				// for(let i=0;i< v_val[0].postion.length;i+=2){
 				// 	d[i]=(v_val[i] as Vertex_OnScreen).postion[i]-v_val[0].postion[i]
 				// }
 				//var slope=d// see belowvar slope_integer=
-				var d = slope.v; if (d[1] <= 0) { continue; }
+				var d = gradient.v; if (d[1] <= 0) { continue; }
 				var y_int = v_val[0].get_y(); // int
 				const x_at_y = (v_val[0].position[0] + d[0] * (y_int - v_val[0].position[1]) / d[1]); // frac -> int
 				{
@@ -817,29 +822,31 @@ export class Polygon_in_cameraSpace {
 				}
 				var x_at_y_int = Math.floor(x_at_y); // float -> int
 
-				Bresenham.accumulator = slope.wedgeProduct(new Vec2([[x_at_y_int, y_int], v_val[0].position])); //(y_int- v_val[0][1] )*d[0]+(x_at_y_int- v_val[0][0] )*d[1]  // this should be the same for all edges not instance of Edge_Horizon
+				Bresenham.accumulator = gradient.wedgeProduct(new Vec2([[x_at_y_int, y_int], v_val[0].position])); //(y_int- v_val[0][1] )*d[0]+(x_at_y_int- v_val[0][0] )*d[1]  // this should be the same for all edges not instance of Edge_Horizon
+				Bresenham.slope = d
 				break
 			}
 			if (v_val[0] instanceof Vertex_OnScreen && edge instanceof Edge_w_slope && v_val[1] instanceof Onthe_border) {
-				var slope = edge.gradient; // see belowvar slope_integer=
+				var gradient = edge.gradient; // see belowvar slope_integer=
 
 				// duplicated code. Function call? The other code block is more debugged
-				var d = slope.v;
+				var d = gradient.v;
 				var y_int = v_val[0].get_y(); // int
 
 				var x_at_y_int = Math.floor( v_val[0].position[0]); // Math.floor(v_val[0][0] + d[0] * (y_int - v_val[0][1]) / d[1]); // frac -> int
-				Bresenham.accumulator = slope.wedgeProduct(new Vec2([[x_at_y_int, y_int], v_val[0].position])); // get fraction would be SHL 16 in JRISC
+				Bresenham.accumulator = gradient.wedgeProduct(new Vec2([[x_at_y_int, y_int], v_val[0].position])); // get fraction would be SHL 16 in JRISC
 				break
 			}
 			if (v_val[1] instanceof Vertex_OnScreen && edge instanceof Edge_w_slope && v_val[0] instanceof Onthe_border) {
-				var slope = edge.gradient; // see belowvar slope_integer=
+				const gradient = edge.gradient; // see belowvar slope_integer=
 
 				// duplicated code. Function call?
-				var d = slope.v;
-				var y_int = v_val[0].get_y(); // int
-				var x_at_y_int = !(v_val[0].border & 1) ? v_val[0].pixel_ordinate_int : this.screen[0] * ((v_val[0].border & 2)-1); // todo: method!
+				const d = gradient.v;
+				const y_int = v_val[0].get_y(); // int
+				const x_at_y_int = (v_val[0].border & 1)==1 ? v_val[0].pixel_ordinate_int : this.screen[0] * ((v_val[0].border & 2)-1); // todo: method!
 
-				Bresenham.accumulator = slope.wedgeProduct(new Vec2([[x_at_y_int, y_int], v_val[1].position])); // this should be the same for all edges not instance of Edge_Horizon
+				Bresenham.accumulator = gradient.innerProduct(new Vec2([[x_at_y_int, y_int], v_val[1].position])); // this should be the same for all edges not instance of Edge_Horizon
+				Bresenham.slope = [-d[1], d[0]]  // I messed up the sign somewhere. Check with test case;
 				break
 			}
 
@@ -858,8 +865,8 @@ export class Polygon_in_cameraSpace {
 
 			}
 		}
-		if (typeof d === "undefined") throw new Error("No valid edge found")
-		Bresenham.gradients = d
+		
+		
 	const overshot=false
 		return  { x_at_y_int , overshot}
 	}
@@ -960,7 +967,7 @@ export class Polygon_in_cameraSpace {
 			border=((t&1)^((t>>1)&1)) 
 			border|=t & 2
 
-			 console.log("slope => border: ",Math.sign(slope[0]), Math.sign(slope[1])," => "+t+" => "+border)
+			// console.log("slope => border: ",Math.sign(slope[0]), Math.sign(slope[1])," => "+t+" => "+border)
 
 			 let d=0
 		}
