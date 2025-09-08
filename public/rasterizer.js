@@ -73,9 +73,21 @@ class Onthe_border extends Point {
         super();
         this.half_screen = half_screen;
     }
+    get border() {
+        return this._border;
+    }
+    set border(value) {
+        if (value < 0)
+            throw new Error("<0");
+        if (value > 3)
+            throw new Error(">3");
+        if (!Number.isInteger(value))
+            throw new Error("!Number.isInteger");
+        this._border = value;
+    }
     get_one_digit_coords() {
-        let t = [1 - 1 * (this.border & 2), 0];
-        if ((this.border & 1) == 1)
+        let t = [(this.border & 2) - 1, 0];
+        if ((this.border & 1) == 0)
             return t;
         return [0, t[0]];
     }
@@ -583,6 +595,7 @@ export class Polygon_in_cameraSpace {
                             break; // left and right side already aim at the lowest vertex. No need to set up new Bresenham coefficients
                         const ind = new Cyclic_Indexer();
                         ind.length = l, ind.direction = k;
+                        console.log("y", y);
                         var { x_at_y_int, overshot } = this.streamIn_newVertex(active_vertices[k], active_vertices[1 - k][2], Bresenham[k], ind, vertex, count_to_one);
                         if (overshot) {
                             console.log("overshot");
@@ -610,15 +623,18 @@ export class Polygon_in_cameraSpace {
                             if (d[1] < 0) {
                                 throw new Error("go down!.");
                             } // I messed up the sign
-                            const way_to_go_to_vhorizontal_border = this.half_screen[0] - x_at_y_int * Math.sign(d[0]);
-                            if (way_to_go_to_vhorizontal_border < 0) {
+                            const way_to_go_to_horizontal_border = this.half_screen[0] - x_at_y_int * Math.sign(d[0]);
+                            if (way_to_go_to_horizontal_border < 0) {
                                 throw new Error("I figured this is positive"); // I messed up the sign
                             }
-                            slope_accu_c[k] = [d[1] * way_to_go_to_vhorizontal_border > d[0] ? Math.floor(d[0] / d[1]) : way_to_go_to_vhorizontal_border, x_at_y_int]; // debug with small values
+                            slope_accu_c[k] = [d[1] * way_to_go_to_horizontal_border > d[0] ? Math.floor(d[0] / d[1]) : way_to_go_to_horizontal_border, x_at_y_int]; // debug with small values
                             if (isNaN(slope_accu_c[k][0])) {
                                 throw new Error("slope is NaN");
                             }
                             console.log("slope_accu_c", k, slope_accu_c[k], "d", d, "x_at_y_int", x_at_y_int, "y", y);
+                            if (x_at_y_int == 160) {
+                                let lll = 0;
+                            }
                         }
                         es[k] = new EdgeShader(x_at_y_int, y, slope_accu_c[k][0], Bresenham[k], payload, this.infinite_plane_FoV);
                         // Alternatives
@@ -771,7 +787,7 @@ export class Polygon_in_cameraSpace {
                         }
                         if (v_val[0] instanceof Vertex_OnScreen) {
                             x_at_y_int = v_val[0].position[0]; // Todo remove cliiped edge to bresenham calc
-                            console.log("x_at_y_int overwrite", x_at_y_int);
+                            console.log("x_at_y_int overwrite", x_at_y_int, "k", k);
                         }
                         if (Bresenham.slope[1] < 0) {
                             throw new Error("go down!." + k);
@@ -783,6 +799,25 @@ export class Polygon_in_cameraSpace {
                 }
                 if (done)
                     break;
+            }
+            // todo: unite with corner. 
+            if (v_val[1] instanceof Onthe_border && edge == null && v_val[0] instanceof Onthe_border) {
+                const c = [v_val[0].get_one_digit_coords(), v_val[1].get_one_digit_coords()];
+                //const b= v_val.slice(0,2).map(v=>v.get_one_digit_coords() )  // TypeGuard does not understand
+                let d = [1, 1];
+                for (let i = 0; i < 2; i++) {
+                    if (c[0][i] == c[1][i] && c[1][i] != 0)
+                        d[i] = 0;
+                }
+                if (d[0] == d[1]) {
+                    throw Error("Diagonal lines need Edge with Slope");
+                }
+                Bresenham.slope = d;
+                x_at_y_int = (v_val[1].border & 1) == 0 ? this.half_screen[0] * c[1][0] : v_val[1].pixel_ordinate_int; // This is a dupe
+                console.log("x_at_y_int=", (v_val[1].border & 1) == 1, "?", this.half_screen[0] * c[1][0], ":", v_val[1].pixel_ordinate_int);
+                Bresenham.accumulator = 0;
+                console.log("y", v_val[1].get_y(), ">", v_val[0].get_y());
+                break;
             }
             // Inherit edge from screen -- or in the future: from the portal or the (smallest covering) leaf
             if (v_val[1] instanceof Corner && edge == null && v_val[0] instanceof Corner) {
