@@ -369,8 +369,9 @@ export class Polygon_in_cameraSpace {
 
 			if (neighbours[0].outside) {
 				if (neighbours[1].outside) {
-					let pattern4 = 0
-					if (0 != (pattern4 = this.isEdge_visible([vertices[i], vertices[k]]))) {
+					let pattern4 = this.isEdge_visible([vertices[i], vertices[k]])
+					console.log("pattern4",pattern4)
+					if (0 !=pattern4  ) {
 						let cuts: Item[] = this.edge_crossing_two_borders(vertices, pattern4)
 						on_screen.push(...cuts)
 					}
@@ -580,12 +581,18 @@ export class Polygon_in_cameraSpace {
 
 				let o = new Onthe_border(this.half_screen)
 				o.border = border_count
-				o.pixel_ordinate_int = coords[~border_count & 1]
+				o.pixel_ordinate_int = coords[1^ border_count & 1]
 				on_screen.push(o)
-				let e = new Edge_Horizon()
+				const e = new Edge_Horizon()
 				e.gradient = new Vec2([slope.slice(0, 2)])
 				e.bias = slope[2]
 				if (j == 0) on_screen.push(e)
+				
+				// Cutting off an edge of the screen introduces two vertices ( and one edge )
+				o.border = (border_count+1 )&3
+				o.pixel_ordinate_int = coords[ border_count & 1]
+				on_screen.push(o)
+
 
 			}
 		}
@@ -593,7 +600,7 @@ export class Polygon_in_cameraSpace {
 	}
 
 	private isEdge_visible(vertices: Array<Vertex_in_cameraSpace>): number {
-		// rough and fast
+		// rough and fast  like with the vertices I check if stuff is inside a 45 half angle FoV. Of course in JRISC this is free to change with 2^n
 		const z = vertices[0].inSpace[2]
 		for (let orientation = 0; orientation < 2; orientation++) {
 			const xy = vertices.map(v => v.inSpace[orientation])
@@ -606,7 +613,7 @@ export class Polygon_in_cameraSpace {
 		const v0 = new Vec3([vertices[0].inSpace])
 		const edge = new Vec3([vertices[0].inSpace, vertices[1].inSpace])   // todo: consolidate with edges with one vertex on screen
 		const cross = v0.crossProduct(edge) // Like a water surface
-		const corner_screen = [0, 0]
+		const corner_screen = [0, 0, 1]
 		const bias = corner_screen[2] * cross.v[2]
 
 		//let head = [false, false]  // any corner under water any over water?
@@ -614,7 +621,7 @@ export class Polygon_in_cameraSpace {
 		for (corner_screen[1] = -1; corner_screen[1] <= +1; corner_screen[1] += 2) {
 			for (corner_screen[0] = -1; corner_screen[0] <= +1; corner_screen[0] += 2) {
 				inside = bias + corner_screen[0] * cross.v[0] + corner_screen[1] * cross.v[1]
-				pattern4 <= 1; if (inside > 0) pattern4 |= 1
+				pattern4 <<= 1; if (inside > 0) pattern4 |= 1
 			}
 		}
 		this.corner11 |= 1 << (Math.sign(inside) + 1) // accumulate compact data to check if polygon covers the full screen or is invisible
