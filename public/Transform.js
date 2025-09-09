@@ -20,6 +20,14 @@ export class Mesh {
     constructor() {
         this.polygon = [new Vec3([[1, 0, 0]]), new Vec3([[-1, 0, 0]]), new Vec3([[0, -2, 0]])];
     }
+    scale(factor) {
+        for (let i = 0; i < this.polygon.length; i++) { // In-place screams C-style for 
+            const v = this.polygon[i];
+            for (let k = 0; k < this.polygon.length; k++) {
+                v.v[k] *= factor;
+            }
+        }
+    }
     transform(c) {
         this.transformed = this.polygon.map((v) => {
             const test = v.subtract(c.position);

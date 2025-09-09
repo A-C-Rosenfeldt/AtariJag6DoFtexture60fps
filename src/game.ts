@@ -122,7 +122,7 @@ t.removeAttribute("disabled")
 var t = document.getElementById("enlarge");
 t.addEventListener("click",
   (event) => {
-    scaleMesh(1.1)
+    mesh.scale(1.1)
     boilerplate();    
   }
 )
@@ -131,7 +131,7 @@ t.removeAttribute("disabled")
 var t = document.getElementById("shrink");
 t.addEventListener("click",
   (event) => {
-    scaleMesh(1/1.1)
+    mesh.scale(1/1.1)
     boilerplate();    
   }
 )
@@ -204,7 +204,7 @@ document.addEventListener(
       case "-":
         factor = 1 / factor
       case "+":
-        scaleMesh(factor);
+        mesh.scale(factor);
         break;                
       default: return
     }
@@ -238,14 +238,7 @@ if (false)
 
 
 
-function scaleMesh(factor: number) {
-  for (let i = 0; i < mesh.polygon.length; i++) { // In-place screams C-style for 
-    const v = mesh.polygon[i];
-    for (let k = 0; k < mesh.polygon.length; k++) {
-      v.v[k] *= factor;
-    }
-  }
-}
+
 
 function boilerplate() {
   idle_animation_stopped = true;

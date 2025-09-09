@@ -116,7 +116,7 @@ class Onthe_border extends Point {
         return this._pixel_ordinate_int;
     }
     set pixel_ordinate_int(value) {
-        if (isNaN(value) || value < -160 || value > 160 || value == 1) {
+        if (isNaN(value) || value < -160 || value > 160) {
             throw "out of range for all axes. btw, border is " + this.border + " value is " + value;
         }
         this._pixel_ordinate_int = value;
@@ -320,6 +320,9 @@ export class Polygon_in_cameraSpace {
             }
         });
         console.log("onsceen.length ! ", on_screen.length);
+        // if (on_screen.length==0){
+        // 	let lll=0
+        // }
         if (on_screen.length > 6) {
             console.log("vertices types ! ", vertices.map(item => item instanceof Onthe_border ? item.border + " " + item.pixel_ordinate_int : item.constructor.name));
             console.log("onsceen types ! ", on_screen.map(item => item instanceof Onthe_border ? item.border + " " + item.pixel_ordinate_int : item.constructor.name));
@@ -377,6 +380,8 @@ export class Polygon_in_cameraSpace {
             }
         });
         if (on_screen.length == 0) { // no vertex nor edge on screen
+            // still need to clear screen
+            this.m.drawCanvasGame([]);
             let null_egal = (this.corner11 >> 2 & 1) ^ (this.corner11 & 1); // check if corner11 pierces the polygon in 3d ?
             if (null_egal == 0)
                 return; // polygon completely outside of viewing frustum
@@ -462,7 +467,7 @@ export class Polygon_in_cameraSpace {
         if (vertex.length != 2) {
             throw new Error("This edge is spanned between exactly two 3d vertices");
         }
-        const slope = this.get_edge_slope_onScreen(vertex, this.infinite_plane_FoV); // tested by vertex -> border edge
+        const gradient = this.get_edge_slope_onScreen(vertex, this.infinite_plane_FoV); // tested by vertex -> border edge
         // with zero border crossing, no edge is visible. Or when both vertices are in front of the near plane. For speed
         if (vertex[0].inSpace[2] < this.near_plane && vertex[1].inSpace[2] < this.near_plane)
             return []; //false
@@ -470,8 +475,8 @@ export class Polygon_in_cameraSpace {
         const borders = [0, 0];
         let border_count = 0;
         for (let border = 0; border < 4; border++) { // go over all screen borders
-            if ((pattern4 >> border & 1) != (pattern4 >> (border + 1) & 1)) { // check if vertices lie on different sides of the 3d frustum plane. Pattern is repeated to let simulate rotation (over the corners of the clippking region in a portal for example)
-                borders[border_count++] = 3 - border; // we use it as a stack
+            if ((pattern4 >> border & 1) != (pattern4 >> (border + 3) & 1)) { // check if vertices lie on different sides of the 3d frustum plane. Pattern is repeated to let simulate rotation (over the corners of the clippking region in a portal for example)
+                borders[border_count++] = border; // we use it as a stack
             }
         }
         if (border_count != 2)
@@ -496,6 +501,7 @@ export class Polygon_in_cameraSpace {
         }
         */
         // checked values in debugger up to here 2025-09-09
+        console.log("borders:", borders);
         const on_screen = new Array(3);
         {
             for (let j = 0; j < 2; j++) {
@@ -503,18 +509,27 @@ export class Polygon_in_cameraSpace {
                 // code duplicated from v->edge
                 let coords = [0, 0];
                 let b = borders[j]; // todo: integrate in this loop. Revert by just reverting the pointer to end of list ( inside the underlying array)
-                coords[1 & b ^ 0] = -this.half_screen[b & 1] * (1 - (b & 2));
-                coords[1 & b ^ 1] = -(slope[2] + this.half_screen[b & 1] * ((b & 2) - 1) * slope[1 ^ b & 1]) / slope[b & 1]; // I do have to check for divide by zero. I already rounded to 16 bit. So MUL on corners is okay.
+                coords[1 & b] = this.half_screen[b & 1] * ((b & 2) - 1);
+                // todo: dupe -- this uses the exact same slope ( not gradient) from vertex to border. Includes the JRISC integer/float optimazation :-()
+                const to_border_signed = this.half_screen[b & 1] * ((b & 2) - 1); // from center (0,0) where bias. Same as other coordinate 
+                //const gradient=[gradient[1],-gradient[0]]
+                const gradient_builing_up = to_border_signed * gradient[b & 1];
+                const with_bias = gradient_builing_up + gradient[2]; // todo rename slop(2). Unify edge test with : get slope
+                let chosen_gradient = gradient[1 ^ (b & 1)]; // int 
+                //if (chosen_gradient!=0) throw new Error("averted a crash") //chosen_gradient=100 // probably some bug
+                const compensate_along_border = chosen_gradient == 0 ? 0 : with_bias / chosen_gradient; // starting from center
+                const pixel_ordinate = -compensate_along_border; // compensate means minus
+                coords[1 & b ^ 1] = pixel_ordinate; //- (slope[2] + this.half_screen[b & 1] * ((b & 2) - 1) * slope[1^b & 1]) / slope[b & 1];  // I do have to check for divide by zero. I already rounded to 16 bit. So MUL on corners is okay.
                 console.log("Border-Horizon-Border", b, coords);
                 let o = new Onthe_border(this.half_screen);
                 o.border = b;
-                o.pixel_ordinate_int = coords[1 ^ b & 1];
-                on_screen[2 - j * 2] = o;
+                o.pixel_ordinate_int = Math.floor(pixel_ordinate); //coords[1^ b & 1]
+                on_screen[j * 2] = o;
             }
             {
                 const e = new Edge_Horizon();
-                e.gradient = new Vec2([slope.slice(0, 2)]);
-                e.bias = slope[2];
+                e.gradient = new Vec2([gradient.slice(0, 2)]);
+                e.bias = gradient[2];
                 on_screen[1] = e;
             }
         }
@@ -524,7 +539,7 @@ export class Polygon_in_cameraSpace {
         // coarse and fast  like with the vertices I check if stuff is inside a 45 half angle FoV. Of course in JRISC this is free to change with 2^n
         const z = vertices[0].inSpace[2];
         for (let orientation = 0; orientation < 2; orientation++) {
-            const xy = vertices.map(v => v.inSpace[orientation]);
+            const xy = vertices.map(v => v.inSpace[orientation] * this.FoV_rezi[orientation]); // At least in the second run I need to use the actual FOV ( ahhh I want NDC back!) to avoid false posistives
             for (let side = 0; side < 2; side++) {
                 if (+xy[0] > z && +xy[1] > z)
                     return 0; //false
@@ -541,19 +556,21 @@ export class Polygon_in_cameraSpace {
         const bias = corner_screen[2] * cross.v[2];
         //let head = [false, false]  // any corner under water any over water?
         let pattern4 = 0, inside = 0, debug_pattern = "(";
-        for (corner_screen[1] = -1; corner_screen[1] <= +1; corner_screen[1] += 2) {
-            for (corner_screen[0] = -1; corner_screen[0] <= +1; corner_screen[0] += 2) {
-                inside = bias;
-                for (let axis = 0; axis < 2; axis++) {
-                    if (this.FoV[axis] > 1)
-                        throw new Error("These factors only let the uses Fov expand a little inside the 45° pyramide from the coarse check");
-                    inside += corner_screen[axis] * this.FoV[axis] * cross.v[axis];
-                }
-                pattern4 <<= 1;
-                if (inside > 0)
-                    pattern4 |= 1;
-                debug_pattern += inside > 0 ? "1" : "0";
+        const field = new Corner();
+        for (field.corner = 3; field.corner >= 0; field.corner--) { //corner_screen[1] = -1; corner_screen[1] <= +1; corner_screen[1] += 2) {
+            //for (corner_screen[0] = -1; corner_screen[0] <= +1; corner_screen[0] += 2) {
+            corner_screen.splice(0, 2, ...field.get_one_digit_coords());
+            inside = bias;
+            for (let axis = 0; axis < 2; axis++) {
+                if (this.FoV[axis] > 1)
+                    throw new Error("These factors only let the uses Fov expand a little inside the 45° pyramide from the coarse check");
+                inside += corner_screen[axis] * this.FoV[axis] * cross.v[axis];
             }
+            pattern4 <<= 1;
+            if (inside > 0)
+                pattern4 |= 1;
+            debug_pattern += inside.toFixed(2) + ","; //> 0 ? "1":"0"
+            //}
         }
         this.corner11 |= 1 << (Math.sign(inside) + 1); // I need any point in screen to decide if a polygon covers the full screen or is invisible. Can just as well use the last corner
         console.log("edge produces this pattern with the corners", pattern4.toString(2), debug_pattern + ")");
@@ -779,11 +796,24 @@ export class Polygon_in_cameraSpace {
                 if (!(for_subpixel instanceof Onthe_border))
                     throw new Error("Expected Onthe_border");
                 const y_int = for_subpixel.get_y(); // int to seed the Bresenham akkumulator
+                // duplicate with clipped_adege_to_Bresenham?
                 var x_at_y_int = for_subpixel.border & 1 ? for_subpixel.pixel_ordinate_int : this.half_screen[0] * (1 - (for_subpixel.border & 2));
                 if (x_at_y_int === undefined || x_at_y_int < -160 || x_at_y_int > 160) {
                     throw new Error("No edge found");
                 }
-                Bresenham.accumulator = edge.bias + edge.gradient.wedgeProduct(new Vec2([[x_at_y_int, y_int]])); //y_int*d[0]+x_at_y_int*d[1]
+                Bresenham.accumulator = edge.bias + edge.gradient.innerProduct(new Vec2([[x_at_y_int, y_int]])); //y_int*d[0]+x_at_y_int*d[1]
+                {
+                    const d = edge.gradient.v;
+                    Bresenham.slope = [-d[1], d[0]]; // I messed up the sign somewhere. Check with test case;
+                }
+                console.log("Bresenham.accumulator double", Bresenham.accumulator, Bresenham.slope);
+                // It seems like Bresenham cares more about this than we. Horizon is symmetric. We would need to know the side to compensate actively
+                // dumb
+                if (Bresenham.slope[1] < 0) {
+                    Bresenham.slope = [-Bresenham.slope[0], -Bresenham.slope[1]];
+                    Bresenham.accumulator = -Bresenham.accumulator; // I guess
+                    console.log("-Bresenham");
+                }
                 break;
             }
             // Point supports get_y . So I only need to consider mirror cases for pattern matchting and subpixel, but not for the for(y) .
@@ -834,6 +864,7 @@ export class Polygon_in_cameraSpace {
                         if (k == 0) {
                             Bresenham.slope = [-Bresenham.slope[0], -Bresenham.slope[1]];
                             Bresenham.accumulator = -Bresenham.accumulator; // I guess
+                            console.log("-Bresenham");
                         }
                         if (v_val[0] instanceof Vertex_OnScreen) {
                             x_at_y_int = v_val[0].position[0]; // Todo remove cliiped edge to bresenham calc
@@ -928,7 +959,7 @@ export class Polygon_in_cameraSpace {
             }
             Bresenham.accumulator = gradient.innerProduct(new Vec2([[x_at_y_int, y_int], v_val[1].position])); // this should be the same for all edges not instance of Edge_Horizon
             Bresenham.slope = [-d[1], d[0]]; // I messed up the sign somewhere. Check with test case;
-            //console.log("Bresenham.slope",Bresenham.slope)
+            console.log("Bresenham.accumulator single", Bresenham.accumulator, Bresenham.slope);
             done = true;
         }
         else {
