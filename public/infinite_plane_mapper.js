@@ -219,7 +219,12 @@ export class Mapper {
             const imageData = new ImageData(this.frame.pixel, 320, 200);
             ctx.putImageData(imageData, 0, 0);
             console.log("put Canvas2dGame");
-            //ctx.drawImage(ctx.canvas,0,0)
+            const canvas_z = document.getElementById("Canvas2dScaled");
+            const ctx_z = canvas_z.getContext("2d"); // context 2d is not easier than 3d
+            if (ctx_z) {
+                ctx_z.imageSmoothingEnabled = false;
+                ctx_z.drawImage(ctx.canvas, 0, 0, 640, 400);
+            }
             this.clear();
             ctx.fillStyle = "white";
             vertices.forEach(v => {

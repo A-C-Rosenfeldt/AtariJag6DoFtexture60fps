@@ -116,7 +116,7 @@ class Onthe_border extends Point {
         return this._pixel_ordinate_int;
     }
     set pixel_ordinate_int(value) {
-        if (isNaN(value) || value < -160 || value > 160) {
+        if (isNaN(value) || value < -160 || value > 160 || value == 1) {
             throw "out of range for all axes. btw, border is " + this.border + " value is " + value;
         }
         this._pixel_ordinate_int = value;
@@ -288,6 +288,7 @@ export class Polygon_in_cameraSpace {
         })
         */
         let v_w_n = new Cyclic_Collection(vertices); //new Array<Vertex_OnScreen>
+        console.log("Vertices.length", vertices.length);
         // 2 vertices -> edge
         vertices.forEach((v, i) => {
             //if (neighbours[0] instanceof Vertex_OnScreen ) {}
@@ -295,10 +296,12 @@ export class Polygon_in_cameraSpace {
             let neighbours = [v_w_n.get_startingVertex(i), v_w_n.get_startingVertex(i + 1)]; // Error cannot access on_screen_read before initialization.
             if (neighbours[0].outside) {
                 if (neighbours[1].outside) {
-                    let pattern4 = 0;
-                    if (0 != (pattern4 = this.isEdge_visible([vertices[i], vertices[k]]))) {
-                        let cuts = this.edge_crossing_two_borders(vertices, pattern4);
+                    let pattern4 = this.isEdge_visible([vertices[i], vertices[k]]); // tested 2025-09-09 for 0100
+                    console.log("pattern4", pattern4.toString(2));
+                    if (0 != pattern4) {
+                        let cuts = this.edge_crossing_two_borders([vertices[i], vertices[k]], pattern4);
                         on_screen.push(...cuts);
+                        console.log("onsceen.length ..", on_screen.length);
                     }
                 }
                 else {
@@ -316,6 +319,11 @@ export class Polygon_in_cameraSpace {
                 }
             }
         });
+        console.log("onsceen.length ! ", on_screen.length);
+        if (on_screen.length > 6) {
+            console.log("vertices types ! ", vertices.map(item => item instanceof Onthe_border ? item.border + " " + item.pixel_ordinate_int : item.constructor.name));
+            console.log("onsceen types ! ", on_screen.map(item => item instanceof Onthe_border ? item.border + " " + item.pixel_ordinate_int : item.constructor.name));
+        }
         let on_screen_read = new Cyclic_Collection(on_screen);
         const n = 4;
         let with_corners = new Array();
@@ -451,17 +459,23 @@ export class Polygon_in_cameraSpace {
     }
         */
     edge_crossing_two_borders(vertex, pattern4) {
-        const slope = this.get_edge_slope_onScreen(vertex, this.infinite_plane_FoV);
-        let border_count = 0;
+        if (vertex.length != 2) {
+            throw new Error("This edge is spanned between exactly two 3d vertices");
+        }
+        const slope = this.get_edge_slope_onScreen(vertex, this.infinite_plane_FoV); // tested by vertex -> border edge
         // with zero border crossing, no edge is visible. Or when both vertices are in front of the near plane. For speed
         if (vertex[0].inSpace[2] < this.near_plane && vertex[1].inSpace[2] < this.near_plane)
             return []; //false
         // some borders cannot be crossed and all corners are on the same side, but which? Sign does not make much sense here
+        const borders = [0, 0];
+        let border_count = 0;
         for (let border = 0; border < 4; border++) { // go over all screen borders
-            if ((pattern4 >> border & 1) != (pattern4 >> (border + 1) & 1)) { // check if vertices lie on different sides of the 3d frustum plane
-                border_count++;
+            if ((pattern4 >> border & 1) != (pattern4 >> (border + 1) & 1)) { // check if vertices lie on different sides of the 3d frustum plane. Pattern is repeated to let simulate rotation (over the corners of the clippking region in a portal for example)
+                borders[border_count++] = 3 - border; // we use it as a stack
             }
         }
+        if (border_count != 2)
+            return [];
         // check if crossing in front of us
         let qp = new Vec3([vertex[1].inSpace, vertex[0].inSpace]);
         //let nearest_point= (new Vec3([vertex[0].inSpace]).scalarProduct( qp.innerProduct(qp) ).subtract( qp.scalarProduct( qp.innerProduct( new Vec3([vertex[0].inSpace])   ) ))) ;  // this is in 3d so 32 bit. A lot of MUL.32.32 :-( . Similar to: face in front of me = z   or also: texture   . Log for performance.
@@ -481,29 +495,33 @@ export class Polygon_in_cameraSpace {
                 
         }
         */
-        const on_screen = new Array();
+        // checked values in debugger up to here 2025-09-09
+        const on_screen = new Array(3);
         {
             for (let j = 0; j < 2; j++) {
                 // Calculate pixel cuts for the rasterizer . we don't care for cuts .. I mean we do, we need them for the beam tree. But with a single polygon we only need y_pixel
                 // code duplicated from v->edge
                 let coords = [0, 0];
-                coords[border_count & 1] = this.screen[~border_count & 1] * ((border_count & 2) - 1);
-                coords[~border_count & 1] = (slope[2] + this.screen[~border_count & 1] * ((border_count & 2) - 1) * slope[border_count & 1]) / slope[~border_count & 1]; // I do have to check for divide by zero. I already rounded to 16 bit. So MUL on corners is okay.
+                let b = borders[j]; // todo: integrate in this loop. Revert by just reverting the pointer to end of list ( inside the underlying array)
+                coords[1 & b ^ 0] = -this.half_screen[b & 1] * (1 - (b & 2));
+                coords[1 & b ^ 1] = -(slope[2] + this.half_screen[b & 1] * ((b & 2) - 1) * slope[1 ^ b & 1]) / slope[b & 1]; // I do have to check for divide by zero. I already rounded to 16 bit. So MUL on corners is okay.
+                console.log("Border-Horizon-Border", b, coords);
                 let o = new Onthe_border(this.half_screen);
-                o.border = border_count;
-                o.pixel_ordinate_int = coords[~border_count & 1];
-                on_screen.push(o);
-                let e = new Edge_Horizon();
+                o.border = b;
+                o.pixel_ordinate_int = coords[1 ^ b & 1];
+                on_screen[2 - j * 2] = o;
+            }
+            {
+                const e = new Edge_Horizon();
                 e.gradient = new Vec2([slope.slice(0, 2)]);
                 e.bias = slope[2];
-                if (j == 0)
-                    on_screen.push(e);
+                on_screen[1] = e;
             }
         }
         return on_screen;
     }
     isEdge_visible(vertices) {
-        // rough and fast
+        // coarse and fast  like with the vertices I check if stuff is inside a 45 half angle FoV. Of course in JRISC this is free to change with 2^n
         const z = vertices[0].inSpace[2];
         for (let orientation = 0; orientation < 2; orientation++) {
             const xy = vertices.map(v => v.inSpace[orientation]);
@@ -514,23 +532,31 @@ export class Polygon_in_cameraSpace {
                     return 0; //false
             }
         }
-        // precise and unoptimized
+        console.log("edge is crossing a plane of the 45° frustum (effect of avoid multiplication), or some vertex is inside, even (effect of coarse)");
+        // fine and slow
         const v0 = new Vec3([vertices[0].inSpace]);
         const edge = new Vec3([vertices[0].inSpace, vertices[1].inSpace]); // todo: consolidate with edges with one vertex on screen
         const cross = v0.crossProduct(edge); // Like a water surface
-        const corner_screen = [0, 0];
+        const corner_screen = [0, 0, 1];
         const bias = corner_screen[2] * cross.v[2];
         //let head = [false, false]  // any corner under water any over water?
-        let pattern4 = 0, inside = 0;
+        let pattern4 = 0, inside = 0, debug_pattern = "(";
         for (corner_screen[1] = -1; corner_screen[1] <= +1; corner_screen[1] += 2) {
             for (corner_screen[0] = -1; corner_screen[0] <= +1; corner_screen[0] += 2) {
-                inside = bias + corner_screen[0] * cross.v[0] + corner_screen[1] * cross.v[1];
-                pattern4 <= 1;
+                inside = bias;
+                for (let axis = 0; axis < 2; axis++) {
+                    if (this.FoV[axis] > 1)
+                        throw new Error("These factors only let the uses Fov expand a little inside the 45° pyramide from the coarse check");
+                    inside += corner_screen[axis] * this.FoV[axis] * cross.v[axis];
+                }
+                pattern4 <<= 1;
                 if (inside > 0)
                     pattern4 |= 1;
+                debug_pattern += inside > 0 ? "1" : "0";
             }
         }
-        this.corner11 |= 1 << (Math.sign(inside) + 1); // accumulate compact data to check if polygon covers the full screen or is invisible
+        this.corner11 |= 1 << (Math.sign(inside) + 1); // I need any point in screen to decide if a polygon covers the full screen or is invisible. Can just as well use the last corner
+        console.log("edge produces this pattern with the corners", pattern4.toString(2), debug_pattern + ")");
         if (pattern4 == 15 || pattern4 == 0)
             return 0;
         // check for postive z
@@ -711,7 +737,7 @@ export class Polygon_in_cameraSpace {
                 return { x_at_y_int: 0, overshot: true };
             }
             if (count_to_one && active_vertices[2] == other_verticex) {
-                console.log("vertices meet", active_vertices[2], active_vertices[1][2]);
+                //console.log("vertices meet",active_vertices[2] , active_vertices[1][2])
                 other_path_already_met = true;
             } // only stream in the last (shared) vertex once
             count_to_one = true;
@@ -757,12 +783,12 @@ export class Polygon_in_cameraSpace {
                 if (x_at_y_int === undefined || x_at_y_int < -160 || x_at_y_int > 160) {
                     throw new Error("No edge found");
                 }
-                Bresenham.accumulator = edge.bias + gradient.wedgeProduct(new Vec2([[x_at_y_int, y_int]])); //y_int*d[0]+x_at_y_int*d[1]
+                Bresenham.accumulator = edge.bias + edge.gradient.wedgeProduct(new Vec2([[x_at_y_int, y_int]])); //y_int*d[0]+x_at_y_int*d[1]
                 break;
             }
             // Point supports get_y . So I only need to consider mirror cases for pattern matchting and subpixel, but not for the for(y) .
             if (v_val[0] instanceof Vertex_OnScreen && edge === null && v_val[1] instanceof Vertex_OnScreen) {
-                var gradient = new Vec2([(v_val[1]).position, v_val[0].position]);
+                const gradient = new Vec2([(v_val[1]).position, v_val[0].position]);
                 //console.log("slope", slope.v)
                 // for(let i=0;i< v_val[0].postion.length;i+=2){
                 // 	d[i]=(v_val[i] as Vertex_OnScreen).postion[i]-v_val[0].postion[i]

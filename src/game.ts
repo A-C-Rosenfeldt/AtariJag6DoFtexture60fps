@@ -13,12 +13,142 @@ mesh.transform(controller) //.polygon
 
 p.project(mesh.transformed.map(cs => new Vertex_in_cameraSpace(cs.v)))  // Interleave 3d and projected vertices for debugging and easy loops when back tracking. I guess that for debugging a reference at both places helps
 
+document.getElementById("forward").addEventListener("click",
+  (event) => {
+    idle_animation_stopped = true
+    controller.position.add(controller.rotation.nominator[2], 0.1)
+    mesh.transform(controller)
+    p.project(mesh.transformed.map(cs => new Vertex_in_cameraSpace(cs.v)))    
+  }
+)
+
+var t = document.getElementById("nick");
+t.addEventListener("click",
+  (event) => {
+    idle_animation_stopped = true
+    controller.rotation.Rotate_along_axis_Orthonormalize(0, controller.sine)
+    mesh.transform(controller)
+    p.project(mesh.transformed.map(cs => new Vertex_in_cameraSpace(cs.v)))    
+  }
+)
+t.removeAttribute("disabled")
+
+var t = document.getElementById("up");
+t.addEventListener("click",
+  (event) => {
+    controller.rotation.Rotate_along_axis_Orthonormalize(0, [controller.sine[0], -controller.sine[1]]);
+    boilerplate();    
+  }
+)
+t.removeAttribute("disabled")
+
+var t = document.getElementById("roll");
+t.addEventListener("click",
+  (event) => {
+      controller.rotation.Rotate_along_axis_Orthonormalize(2, [controller.sine[0], -controller.sine[1]]);
+    boilerplate();    
+  }
+)
+t.removeAttribute("disabled")
+
+var t = document.getElementById("roll_l");
+t.addEventListener("click",
+  (event) => {
+    controller.rotation.Rotate_along_axis_Orthonormalize(2, controller.sine);
+    boilerplate();    
+  }
+)
+t.removeAttribute("disabled")
+
+
+
+
+
+
+
+var t = document.getElementById("clock");
+t.addEventListener("click",
+  (event) => {
+    controller.rotation.Rotate_along_axis_Orthonormalize(1, controller.sine);
+    boilerplate();    
+  }
+)
+t.removeAttribute("disabled")
+
+
+var t = document.getElementById("back");
+t.addEventListener("click",
+  (event) => {
+    controller.position.add(controller.rotation.nominator[2], -0.1);
+    boilerplate();    
+  }
+)
+t.removeAttribute("disabled")
+
+var t = document.getElementById("left");
+t.addEventListener("click",
+  (event) => {
+    controller.position.add(controller.rotation.nominator[0], -0.1);
+    boilerplate();    
+  }
+)
+t.removeAttribute("disabled")
+
+var t = document.getElementById("right");
+t.addEventListener("click",
+  (event) => {
+    controller.position.add(controller.rotation.nominator[0], 0.1);
+    boilerplate();    
+  }
+)
+t.removeAttribute("disabled")
+
+
+
+
+t.removeAttribute("disabled")
+
+var t = document.getElementById("counter");
+t.addEventListener("click",
+  (event) => {
+    controller.rotation.Rotate_along_axis_Orthonormalize(1, [controller.sine[0], -controller.sine[1]]);
+    boilerplate();    
+  }
+)
+t.removeAttribute("disabled")
+
+
+
+var t = document.getElementById("enlarge");
+t.addEventListener("click",
+  (event) => {
+    scaleMesh(1.1)
+    boilerplate();    
+  }
+)
+t.removeAttribute("disabled")
+
+var t = document.getElementById("shrink");
+t.addEventListener("click",
+  (event) => {
+    scaleMesh(1/1.1)
+    boilerplate();    
+  }
+)
+t.removeAttribute("disabled")
+
+
+document.addEventListener("click",
+  (event) => {
+    idle_animation_stopped = true
+  }
+)
 
 document.addEventListener(
   "keydown",  //  repeats liek keypressed
   (event) => {
     const keyName = event.key;
-
+    idle_animation_stopped = true  // animation should be rotatio probably?
     // if (keyName === "Control") {
     //   // do not alert when only Control key is pressed.
     //   return;
@@ -49,6 +179,7 @@ document.addEventListener(
       return;
     }
 
+    var factor=1.1
     switch (keyName) {
 
       case "w":
@@ -69,6 +200,12 @@ document.addEventListener(
       case ".":
         controller.rotation.Rotate_along_axis_Orthonormalize(2, [controller.sine[0], -controller.sine[1]]);
         break;
+
+      case "-":
+        factor = 1 / factor
+      case "+":
+        scaleMesh(factor);
+        break;                
       default: return
     }
 
@@ -86,6 +223,35 @@ document.addEventListener(
   false,
 );
 
+var idle_animation_stopped = false
+if (false)
+{const idle_animation = window.setInterval(() => {
+  if (idle_animation_stopped) { window.clearInterval(idle_animation) }
+  else {
+     controller.position.add(controller.rotation.nominator[2], 0.1);
+
+         mesh.transform(controller)
+    p.project(mesh.transformed.map(cs => new Vertex_in_cameraSpace(cs.v)))
+
+   }
+}, 200)}
+
+
+
+function scaleMesh(factor: number) {
+  for (let i = 0; i < mesh.polygon.length; i++) { // In-place screams C-style for 
+    const v = mesh.polygon[i];
+    for (let k = 0; k < mesh.polygon.length; k++) {
+      v.v[k] *= factor;
+    }
+  }
+}
+
+function boilerplate() {
+  idle_animation_stopped = true;
+  mesh.transform(controller);
+  p.project(mesh.transformed.map(cs => new Vertex_in_cameraSpace(cs.v)));
+}
 // document.addEventListener(
 //   "keyup",
 //   (event) => {
