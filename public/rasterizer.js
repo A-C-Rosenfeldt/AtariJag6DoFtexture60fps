@@ -289,6 +289,7 @@ export class Polygon_in_cameraSpace {
         */
         let v_w_n = new Cyclic_Collection(vertices); //new Array<Vertex_OnScreen>
         console.log("Vertices.length", vertices.length);
+        let check_for_repais = false;
         // 2 vertices -> edge
         vertices.forEach((v, i) => {
             //if (neighbours[0] instanceof Vertex_OnScreen ) {}
@@ -301,6 +302,7 @@ export class Polygon_in_cameraSpace {
                     if (0 != pattern4) {
                         let cuts = this.edge_crossing_two_borders([vertices[i], vertices[k]], pattern4);
                         on_screen.push(...cuts);
+                        check_for_repais = true;
                         console.log("onsceen.length ..", on_screen.length);
                     }
                 }
@@ -319,6 +321,11 @@ export class Polygon_in_cameraSpace {
                 }
             }
         });
+        // // repair order for some reason
+        // if (check_for_repais){
+        // 	on_screen.forEach((v, i) {
+        // 	} )
+        // }
         console.log("onsceen.length ! ", on_screen.length);
         // if (on_screen.length==0){
         // 	let lll=0
@@ -373,11 +380,13 @@ export class Polygon_in_cameraSpace {
                 range[1] += n;
             //console.log("may add corner", range[0], range[1])
             for (let k = range[0]; k < range[1]; k++) { // corner is named after the border before it ( math sense of rotation )
-                console.log("going to add corner");
+                console.log("going to add corner", k, n);
                 let t = new Corner();
                 t.corner = k % n;
                 with_corners.push(t); // debug.  This happens already when I check borders
             }
+            if (range[1] != range[0])
+                console.log("Done adding", range[1]);
         });
         if (on_screen.length == 0) { // no vertex nor edge on screen
             // still need to clear screen
@@ -479,6 +488,12 @@ export class Polygon_in_cameraSpace {
                 borders[border_count++] = border; // we use it as a stack
             }
         }
+        // todo check behind which frustum plane the vertices lie
+        // the order needs to match
+        // back face culling saves aus while cutting corners
+        if (borders[0] == 0 && borders[1] == 3) {
+            borders.reverse();
+        }
         if (border_count != 2)
             return [];
         // check if crossing in front of us
@@ -524,7 +539,7 @@ export class Polygon_in_cameraSpace {
                 let o = new Onthe_border(this.half_screen);
                 o.border = b;
                 o.pixel_ordinate_int = Math.floor(pixel_ordinate); //coords[1^ b & 1]
-                on_screen[j * 2] = o;
+                on_screen[j * 2] = o; // The corners are checked in a fixed order, but not the order of the vertices? 03 30 is switched?
             }
             {
                 const e = new Edge_Horizon();
@@ -602,20 +617,21 @@ export class Polygon_in_cameraSpace {
             return 'get_y' in object;
         }
         console.log("vertex.length", vertex.length);
+        const ypsilons = [];
         vertex.forEach((v, i) => {
             // const checkme = v instanceof Onthe_border//;console.log("checkme",checkme)
             // if (checkme) {
-            // 	//console.log("border", v.border, v.pixel_ordinate_int, v.get_y())
             // 	const d = v.get_y()
             // }
             if (instanceOfPoint(v)) {
+                ypsilons.push(v.get_y());
                 if (v.get_y() < min_max[0][1])
                     min_max[0] = [i, v.get_y()];
                 if (v.get_y() > min_max[1][1])
                     min_max[1] = [i, v.get_y()];
             }
         });
-        //console.log("min_max", [].concat.apply([], min_max), vertex_control)  // change ES to newer then 2019? todo
+        console.log("ypsilons", ypsilons);
         const i = min_max[0][0];
         const active_vertices = [[-1, -1, i], [-1, -1, i]]; // happens in loop first iteration, (i + l - 1) % l], [i, (i + 1) % l]]
         const Bresenham = new Array(2).fill(undefined).map(() => new Gradient()); // I need to allocate memory because edges reuse this. Otherwise I would need threads for both sides of the polygon or yield 
@@ -797,7 +813,7 @@ export class Polygon_in_cameraSpace {
                     throw new Error("Expected Onthe_border");
                 const y_int = for_subpixel.get_y(); // int to seed the Bresenham akkumulator
                 // duplicate with clipped_adege_to_Bresenham?
-                var x_at_y_int = for_subpixel.border & 1 ? for_subpixel.pixel_ordinate_int : this.half_screen[0] * (1 - (for_subpixel.border & 2));
+                var x_at_y_int = for_subpixel.border & 1 ? for_subpixel.pixel_ordinate_int : this.half_screen[0] * ((for_subpixel.border & 2) - 1);
                 if (x_at_y_int === undefined || x_at_y_int < -160 || x_at_y_int > 160) {
                     throw new Error("No edge found");
                 }
@@ -806,7 +822,7 @@ export class Polygon_in_cameraSpace {
                     const d = edge.gradient.v;
                     Bresenham.slope = [-d[1], d[0]]; // I messed up the sign somewhere. Check with test case;
                 }
-                console.log("Bresenham.accumulator double", Bresenham.accumulator, Bresenham.slope);
+                console.log("Bresenham.accumulator double", Bresenham.accumulator, Bresenham.slope, "@", x_at_y_int, y_int);
                 // It seems like Bresenham cares more about this than we. Horizon is symmetric. We would need to know the side to compensate actively
                 // dumb
                 if (Bresenham.slope[1] < 0) {
@@ -959,7 +975,7 @@ export class Polygon_in_cameraSpace {
             }
             Bresenham.accumulator = gradient.innerProduct(new Vec2([[x_at_y_int, y_int], v_val[1].position])); // this should be the same for all edges not instance of Edge_Horizon
             Bresenham.slope = [-d[1], d[0]]; // I messed up the sign somewhere. Check with test case;
-            console.log("Bresenham.accumulator single", Bresenham.accumulator, Bresenham.slope);
+            console.log("Bresenham.accumulator single", Bresenham.accumulator, Bresenham.slope, "@", x_at_y_int, y_int);
             done = true;
         }
         else {
