@@ -297,10 +297,11 @@ export class Polygon_in_cameraSpace {
             let neighbours = [v_w_n.get_startingVertex(i), v_w_n.get_startingVertex(i + 1)]; // Error cannot access on_screen_read before initialization.
             if (neighbours[0].outside) {
                 if (neighbours[1].outside) {
-                    let pattern4 = this.isEdge_visible([vertices[i], vertices[k]]); // tested 2025-09-09 for 0100
+                    let veto_face_vertex = [[0, 0], [0, 0]];
+                    let pattern4 = this.isEdge_visible([vertices[i], vertices[k]], veto_face_vertex); // tested 2025-09-09 for 0100
                     console.log("pattern4", pattern4.toString(2));
                     if (0 != pattern4) {
-                        let cuts = this.edge_crossing_two_borders([vertices[i], vertices[k]], pattern4);
+                        let cuts = this.edge_crossing_two_borders([vertices[i], vertices[k]], pattern4, veto_face_vertex);
                         on_screen.push(...cuts);
                         check_for_repais = true;
                         console.log("onsceen.length ..", on_screen.length);
@@ -472,7 +473,7 @@ export class Polygon_in_cameraSpace {
         throw new Error('Method not implemented.');
     }
         */
-    edge_crossing_two_borders(vertex, pattern4) {
+    edge_crossing_two_borders(vertex, pattern4, veto_face_vertex) {
         if (vertex.length != 2) {
             throw new Error("This edge is spanned between exactly two 3d vertices");
         }
@@ -493,6 +494,20 @@ export class Polygon_in_cameraSpace {
         // back face culling saves aus while cutting corners
         if (borders[0] == 0 && borders[1] == 3) {
             borders.reverse();
+        }
+        // The cycle trick fails for horizon going to the opposite border
+        //,veto_face_vertex:number[orientation][vertex]
+        for (let vertex = 0, try_count = 0; vertex < 2; vertex++) {
+            let direction = borders[vertex] & 1;
+            console.log("vertex", vertex, "veto", veto_face_vertex[direction][vertex], "border", borders[vertex], (2 >> ((borders[vertex] >> 1) & 1)));
+            if ((veto_face_vertex[direction][vertex] & (2 >> ((borders[vertex] >> 1) & 1))) == 0) {
+                console.log("vertex is not beyond this frustum plane and hence cannot pierce through this border", vertex, veto_face_vertex[direction][vertex], borders[vertex]);
+                if (try_count++ > 0)
+                    return [];
+                borders.reverse();
+                vertex = -1; // these hacks work great in assembler, but look illegal here
+                continue;
+            }
         }
         if (border_count != 2)
             return [];
@@ -550,19 +565,24 @@ export class Polygon_in_cameraSpace {
         }
         return on_screen;
     }
-    isEdge_visible(vertices) {
+    isEdge_visible(vertices, veto_face_vertex) {
         // coarse and fast  like with the vertices I check if stuff is inside a 45 half angle FoV. Of course in JRISC this is free to change with 2^n
-        const z = vertices[0].inSpace[2];
-        for (let orientation = 0; orientation < 2; orientation++) {
-            const xy = vertices.map(v => v.inSpace[orientation] * this.FoV_rezi[orientation]); // At least in the second run I need to use the actual FOV ( ahhh I want NDC back!) to avoid false posistives
-            for (let side = 0; side < 2; side++) {
-                if (+xy[0] > z && +xy[1] > z)
-                    return 0; //false
-                if (-xy[0] > z && -xy[1] > z)
-                    return 0; //false
-            }
+        const z = vertices.map(v => v.inSpace[2]);
+        for (let direction = 0; direction < 2; direction++) {
+            const xy = vertices.map(v => {
+                const xy = v.inSpace[direction] * this.FoV_rezi[direction], z = v.inSpace[2];
+                const cases = (+xy > z ? 1 : 0) | (-xy > z ? 2 : 0);
+                return cases;
+            }); // At least in the second run I need to use the actual FOV ( ahhh I want NDC back!) to avoid false posistives
+            // culling
+            if ((xy[0] & xy[1]) != 0)
+                return 0;
+            // if (+xy[0] > z[0] && +xy[1] > z[1]) return 0 //false
+            // if (-xy[0] > z[0] && -xy[1] > z[1]) return 0 //false
+            veto_face_vertex[direction] = xy;
+            // I need this to make a decision about the direction along the horizon
         }
-        console.log("edge is crossing a plane of the 45° frustum (effect of avoid multiplication), or some vertex is inside, even (effect of coarse)");
+        console.log("edge is crossing a plane of the 45° fr", veto_face_vertex);
         // fine and slow
         const v0 = new Vec3([vertices[0].inSpace]);
         const edge = new Vec3([vertices[0].inSpace, vertices[1].inSpace]); // todo: consolidate with edges with one vertex on screen
