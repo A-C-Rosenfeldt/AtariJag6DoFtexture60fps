@@ -32,7 +32,7 @@ export class Mesh {
       }
     }
   }
-  private polygon = [new Vec3([[1, 0, 0]]), new Vec3([[-1, 0, 0]]), new Vec3([[0, -2, 0]])];
+  private polygon = [new Vec3([[1, 0, 0]]), new Vec3([[-1, 0, 0]]), new Vec3([[-1, -2, 0]])];
 
   scale(factor: number) {
     for (let i = 0; i < this.polygon.length; i++) { // In-place screams C-style for 

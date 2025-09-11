@@ -247,6 +247,7 @@ export class Polygon_in_cameraSpace {
 
 	epsilon = 0.001  // epsilon depends on the number of bits goint into IMUL. We need to factor-- in JRISC . So that floor() will work.
 	readonly m: Mapper;
+	dbuggy: any;
 
 	constructor(m: Mapper) {
 		this.m = m
@@ -486,7 +487,7 @@ export class Polygon_in_cameraSpace {
 		{
 			let t = vertices.slice(0, 3).map(v => (v.inSpace))  // take 3 vertices and avoid overdetermination for polygons
 			texturemap.transform_into_texture_space__constructor(new Vec3([t[0], t[1]]), new Vec3([t[2], t[1]]))  // My first model will have the s and t vectors on edges 0-1-2  .  for z-comparison and texture maps		
-			payload = texturemap.uvzw_from_viewvector(t[1])
+			payload = texturemap.uvzw_from_viewvector(t[1],this.dbuggy)
 		}
 
 		//console.log("payload",payload.nominator) ; // Error: payload is not really constructed

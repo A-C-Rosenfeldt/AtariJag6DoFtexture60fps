@@ -67,11 +67,11 @@ export class Camera_in_stSpace{
 		return pl
 	}
 
-	uvzw_from_viewvector(C:number[]):Matrix{
+	uvzw_from_viewvector(C:number[],dbuggy):Matrix{
 
 		// s, t  = texture cooridinates ( t like texture ). The third is "along Normal" or should I write "Altitude" ?
 
-		const stn_from_viewvector=this.infinte_checkerBoard_m(C)
+		const stn_from_viewvector=this.infinte_checkerBoard_m(C,dbuggy)
 
 		// the rest should result in new PixelShader( at_bottomRight_of_Center, gradient )  // InfiniteCheckerBoard is PixelShader
 		// view vector has fixed z component => at_bottomRight_of_Center
@@ -136,9 +136,11 @@ export class Camera_in_stSpace{
 	}
 
 	// like mode-z on SNES (tm)
- 	private infinte_checkerBoard_m(C:number[]):Matrix{
+ 	private infinte_checkerBoard_m(C:number[],dbugy:HTMLElement):Matrix{
 		const cv=new CameraViewvector
 		cv.cameraPosition=new Vec([this.transform_into_texture_space(C),this.UVmapping_Offest.concat(0)]) // pos point of camera relative to UV origin on st plane (so that we can use a texture atlas)
+		dbugy.textContent="hover"+cv.cameraPosition.v.map(c=>c.toFixed(2)+",").reduce<string>((t,p)=>t+p,"")
+
 		cv.viewVector=this.transform_into_texture_space_m() // view vector  ( many vectors for one camera ? )
 
 		//let tau=c[2]  /v[2]     // todo: use law of ascocitaten to change order of matrix mul and div

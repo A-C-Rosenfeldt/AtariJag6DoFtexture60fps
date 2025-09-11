@@ -7,6 +7,7 @@ let controller = new Camera()
 let mesh = new Mesh()
 let mapper = new Mapper() // Loads assets (names are just one hop away). So Better invert control! Load it here in the start-up script and inject into the business logic (infinite plane). OOP would make the plane logic hide this because no one else here deals with bitmaps when this runs in production. But here we need to see the bitmap to debug the rasterizer.
 let p = new Polygon_in_cameraSpace(mapper)
+p.dbuggy=document.getElementById("cameraHover")
 mesh.transform(controller) //.polygon
 
 // Todo: Test assert that transform is not 000

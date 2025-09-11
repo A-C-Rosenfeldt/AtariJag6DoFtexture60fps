@@ -407,7 +407,7 @@ export class Polygon_in_cameraSpace {
         {
             let t = vertices.slice(0, 3).map(v => (v.inSpace)); // take 3 vertices and avoid overdetermination for polygons
             texturemap.transform_into_texture_space__constructor(new Vec3([t[0], t[1]]), new Vec3([t[2], t[1]])); // My first model will have the s and t vectors on edges 0-1-2  .  for z-comparison and texture maps		
-            payload = texturemap.uvzw_from_viewvector(t[1]);
+            payload = texturemap.uvzw_from_viewvector(t[1], this.dbuggy);
         }
         //console.log("payload",payload.nominator) ; // Error: payload is not really constructed
         this.rasterize_onscreen(with_corners, payload, vertex_control); // JRISC seems to love signed multiply. So, to use the full 16bit, (0,0) is center of screen at least after all occlusion and gradients are solved. The blitter on the other hand wants 12-bit unsigned values
