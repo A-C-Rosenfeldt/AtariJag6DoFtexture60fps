@@ -331,7 +331,7 @@ export class Polygon_in_cameraSpace {
         // if (on_screen.length==0){
         // 	let lll=0
         // }
-        if (on_screen.length > 6) {
+        if (on_screen.length > 3) {
             console.log("vertices types ! ", vertices.map(item => item instanceof Onthe_border ? item.border + " " + item.pixel_ordinate_int : item.constructor.name));
             console.log("onsceen types ! ", on_screen.map(item => item instanceof Onthe_border ? item.border + " " + item.pixel_ordinate_int : item.constructor.name));
         }
@@ -995,7 +995,7 @@ export class Polygon_in_cameraSpace {
             }
             Bresenham.accumulator = gradient.innerProduct(new Vec2([[x_at_y_int, y_int], v_val[1].position])); // this should be the same for all edges not instance of Edge_Horizon
             Bresenham.slope = [-d[1], d[0]]; // I messed up the sign somewhere. Check with test case;
-            console.log("Bresenham.accumulator single", Bresenham.accumulator, Bresenham.slope, "@", x_at_y_int, y_int);
+            //console.log("Bresenham.accumulator single",Bresenham.accumulator,Bresenham.slope,"@",x_at_y_int, y_int)
             done = true;
         }
         else {
@@ -1079,34 +1079,45 @@ export class Polygon_in_cameraSpace {
         //if (  slope[0] > slope[1]) { // Nonsense  slope tells us that the edge comes from above.  This is branching only for NDC
         // correct order . At least every other vertex need to be on inside for this function
         let border = -1;
-        {
-            const t = Math.max(0, Math.sign(slope[0])) | Math.max(0, (Math.sign(slope[1]))) << 1; // corner
-            // border before. I just went through the truth table in my head
-            border = ((t & 1) ^ ((t >> 1) & 1));
-            border |= t & 2;
-            // console.log("slope => border: ",Math.sign(slope[0]), Math.sign(slope[1])," => "+t+" => "+border)
-            let d = 0;
+        if (slope.map(s => Math.abs(s)).reduce((t, p) => Math.min(t, p), 1) > 0) { // ah, edge cases . JRISC has abs(), but not really min. 0 is exception. So test 0 JZ ; test 0; JZ . JRISC allows to interleave this with move of all kind ( load store ) because they don't affect flaga like 6502 would. xor chekcer subq adc checker subq adc checker BNZ does not look faster
+            {
+                const t = Math.max(0, Math.sign(slope[0])) | Math.max(0, (Math.sign(slope[1]))) << 1; // corner
+                // border before. I just went through the truth table in my head
+                border = ((t & 1) ^ ((t >> 1) & 1));
+                border |= t & 2;
+                // console.log("slope => border: ",Math.sign(slope[0]), Math.sign(slope[1])," => "+t+" => "+border)
+                let d = 0;
+            }
+            // The signs of the slope have a meaning.
+            let corner = this.half_screen.map((s, i) => s * Math.sign(slope[i])); // slope from 3d vector is permutated // I need the corner coordinates to calculate the intersection with the border
+            let verts = new Vec2([corner, vs[0].onScreen.position]); // going from vertex to corner. Vertex is sure, corner just a candidate. I hate how minus makes me reverse the entries in this list. Todo?
+            let slope_v = new Vec2([gradient]); // slope is already wedged. Just apply the inner product
+            const g = (verts.innerProduct(slope_v) > 0); // Vector going outside. Checking with the corner in the same sense of rotation.
+            //console.log("decide if to border++ slope", slope, "camera to corner", verts.v, "g", verts.innerProduct(slope_v))
+            //  Sign for ++ should always be the same. No, the vector selects a corner, not an edge. 
+            // Imagine a vertex close to a border. The vector points towards this border. But now it looks slight left or right;
+            // hence it checks out differnt corners.
+            // todo: g == value on border .. Somehow the signs seem to flip? .
+            if (g) { // lower border says <0   upper borders says>0
+                border++;
+                border &= 3;
+                console.log("adjusted border", border);
+            }
+            const to_border_signed = verts.v[border & 1];
+            const gradient_builing_up = to_border_signed * gradient[border & 1];
+            let chosen_gradient = gradient[1 ^ (border & 1)]; // int 
+            //if (chosen_gradient!=0) throw new Error("averted a crash") //chosen_gradient=100 // probably some bug
+            const compensate_along_border = chosen_gradient == 0 ? 0 : gradient_builing_up / chosen_gradient; // can be infinite
+            var pixel_ordinate = vs[0].onScreen.position[1 ^ (border & 1)] - compensate_along_border; // compensate means minus
         }
-        // The signs of the slope have a meaning.
-        let corner = this.half_screen.map((s, i) => s * Math.sign(slope[i])); // slope from 3d vector is permutated // I need the corner coordinates to calculate the intersection with the border
-        let verts = new Vec2([corner, vs[0].onScreen.position]); // going from vertex to corner. Vertex is sure, corner just a candidate. I hate how minus makes me reverse the entries in this list. Todo?
-        let slope_v = new Vec2([gradient]); // slope is already wedged. Just apply the inner product
-        const g = (verts.innerProduct(slope_v) > 0); // Vector going outside. Checking with the corner in the same sense of rotation.
-        //  Sign for ++ should always be the same. No, the vector selects a corner, not an edge. 
-        // Imagine a vertex close to a border. The vector points towards this border. But now it looks slight left or right;
-        // hence it checks out differnt corners.
-        // todo: g == value on border .. Somehow the signs seem to flip? .
-        if (g) { // lower border says <0   upper borders says>0
-            border++;
-            border &= 3;
-            console.log("adjusted border", border);
+        else {
+            border = (slope[0] == 0) ? 1 : 0;
+            if (slope[border] > 0)
+                border |= 2;
+            // | Math.max(0, (Math.sign(slope[1]))) << 1  // corner
+            var pixel_ordinate = vs[0].onScreen.position[1 ^ (border & 1)];
+            console.log("straight", border, pixel_ordinate);
         }
-        const to_border_signed = verts.v[border & 1];
-        const gradient_builing_up = to_border_signed * gradient[border & 1];
-        let chosen_gradient = gradient[1 ^ (border & 1)]; // int 
-        //if (chosen_gradient!=0) throw new Error("averted a crash") //chosen_gradient=100 // probably some bug
-        const compensate_along_border = chosen_gradient == 0 ? 0 : gradient_builing_up / chosen_gradient; // can be infinite
-        const pixel_ordinate = vs[0].onScreen.position[1 ^ (border & 1)] - compensate_along_border; // compensate means minus
         //for (var corner = -1; corner <= +1; corner += 2) {
         //	if ((corner - vs[0].onScreen[0]) * slope[1] > (-1 - vs[0].onScreen[1]) * slope[0]) {  // ERror Verex 1 is on screen, but vertex 2 is not. outside=true should mean a diferent type!
         // 		vs[1].onScreen[0] = corner //, vs[1].onScreen.border=corner // Todo: I need corners with rotation sense to fill the polygon
