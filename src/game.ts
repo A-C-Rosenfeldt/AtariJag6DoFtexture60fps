@@ -206,6 +206,9 @@ document.addEventListener(
       case "+":
         mesh.scale(factor);
         break;                
+        case "t":
+          mesh.rotate()
+          break;
       default: return
     }
 

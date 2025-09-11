@@ -21,12 +21,23 @@ export class Camera {
 // In the future I may need to rename this to transfomer ?
 // Mesh and camere kinda use the same math. I even decided on a specific implementation : Matrix over quaternions
 export class Mesh {
+  rotate() {
+    for (let i = 0; i < this.polygon.length; i++) { // In-place screams C-style for 
+      const v = this.polygon[i];
+      const copy=v.v.slice()
+      const sin=[0.1, Math.sqrt(1-0.01)]
+      let s=1
+      for (let k = 1; k < 3;k++){ // x axis })v.v.length; k++) {
+        v.v[k] =v.v[k]*sin[1]+sin[0]*copy[3-k]*(s);s=-s
+      }
+    }
+  }
   private polygon = [new Vec3([[1, 0, 0]]), new Vec3([[-1, 0, 0]]), new Vec3([[0, -2, 0]])];
 
   scale(factor: number) {
     for (let i = 0; i < this.polygon.length; i++) { // In-place screams C-style for 
       const v = this.polygon[i];
-      for (let k = 0; k < this.polygon.length; k++) {
+      for (let k = 0; k < v.v.length; k++) {
         v.v[k] *= factor;
       }
     }

@@ -142,6 +142,9 @@ document.addEventListener("keydown", //  repeats liek keypressed
         case "+":
             mesh.scale(factor);
             break;
+        case "t":
+            mesh.rotate();
+            break;
         default: return;
     }
     mesh.transform(controller);
