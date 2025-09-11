@@ -403,11 +403,11 @@ export class Polygon_in_cameraSpace {
         let texturemap = new Camera_in_stSpace(); // Camera is in (0,0) in its own space .
         //  I should probably pull the next line into the constructor
         //let s:Vec3=new Vec3([vertices[0].inSpace])
-        let payload;
+        let payload; //Matrix
         {
             let t = vertices.slice(0, 3).map(v => (v.inSpace)); // take 3 vertices and avoid overdetermination for polygons
             texturemap.transform_into_texture_space__constructor(new Vec3([t[0], t[1]]), new Vec3([t[2], t[1]])); // My first model will have the s and t vectors on edges 0-1-2  .  for z-comparison and texture maps		
-            payload = texturemap.uvzw_from_viewvector(t[1], this.dbuggy);
+            payload = texturemap.uvzw_from_viewvector(t[0], this.dbuggy);
         }
         //console.log("payload",payload.nominator) ; // Error: payload is not really constructed
         this.rasterize_onscreen(with_corners, payload, vertex_control); // JRISC seems to love signed multiply. So, to use the full 16bit, (0,0) is center of screen at least after all occlusion and gradients are solved. The blitter on the other hand wants 12-bit unsigned values
@@ -668,7 +668,7 @@ export class Polygon_in_cameraSpace {
         // The pixel shader does not care about the real 3d nature of the vectors
         // It just knows that it has to divide everything by z (= last element)
         // Matrix is trans-unit. There is no reason for it to be square
-        const ps = new PixelShader(payload, this.half_screen); // InfiniteCheckerBoard is PixelShader
+        const ps = new PixelShader(this.half_screen); // InfiniteCheckerBoard is PixelShader
         const es = Array(2);
         // this is probably pretty standard code. Just I want to explicitely show how what is essential for the inner loop and what is not
         // JRISC is slow on branches, but unrolling is easy (for my compiler probably), while compacting code is hard. See other files in this project.

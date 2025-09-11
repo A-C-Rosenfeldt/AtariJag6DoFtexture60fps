@@ -483,11 +483,11 @@ export class Polygon_in_cameraSpace {
 		let texturemap = new Camera_in_stSpace()  // Camera is in (0,0) in its own space .
 		//  I should probably pull the next line into the constructor
 		//let s:Vec3=new Vec3([vertices[0].inSpace])
-		let payload: Matrix
+		let payload: {uvzw_from_viewvector:Matrix , uvz_cameraHover:Vec} //Matrix
 		{
 			let t = vertices.slice(0, 3).map(v => (v.inSpace))  // take 3 vertices and avoid overdetermination for polygons
 			texturemap.transform_into_texture_space__constructor(new Vec3([t[0], t[1]]), new Vec3([t[2], t[1]]))  // My first model will have the s and t vectors on edges 0-1-2  .  for z-comparison and texture maps		
-			payload = texturemap.uvzw_from_viewvector(t[1],this.dbuggy)
+			payload = texturemap.uvzw_from_viewvector(t[0],this.dbuggy)
 		}
 
 		//console.log("payload",payload.nominator) ; // Error: payload is not really constructed
@@ -734,7 +734,7 @@ export class Polygon_in_cameraSpace {
 
 	// The beam tree will make everything convex and trigger a lot of MUL 16*16 in the process. Code uses Exception patter: First check if all vertices are convex -> break . Then check for self-cuts => split, goto first . ZigZag concave vertices. Find nearest for last. Zig-zag schould not self cut? 
 	// For the MVP, we do best effort for polygons with nore than 3 edges: Ignore up slopes. Do backface culling per span. 
-	private rasterize_onscreen(vertex: Array<Item>, payload: Matrix, vertex_control: Vertex_in_cameraSpace[]) {  // may be a second pass like in the original JRISC. Allows us to wait for the backbuffer to become available.
+	private rasterize_onscreen(vertex: Array<Item>, payload: {uvzw_from_viewvector:Matrix , uvz_cameraHover:Vec}, vertex_control: Vertex_in_cameraSpace[]) {  // may be a second pass like in the original JRISC. Allows us to wait for the backbuffer to become available.
 		const l = vertex.length
 		let min_max = [[0, this.half_screen[1]], [0, -this.half_screen[1]]]  //weird to proces second component first. Rotate?
 
@@ -777,7 +777,7 @@ export class Polygon_in_cameraSpace {
 		// It just knows that it has to divide everything by z (= last element)
 		// Matrix is trans-unit. There is no reason for it to be square
 
-		const ps = new PixelShader(payload, this.half_screen)  // InfiniteCheckerBoard is PixelShader
+		const ps = new PixelShader( this.half_screen)  // InfiniteCheckerBoard is PixelShader
 		const es = Array<EdgeShader>(2)
 		// this is probably pretty standard code. Just I want to explicitely show how what is essential for the inner loop and what is not
 		// JRISC is slow on branches, but unrolling is easy (for my compiler probably), while compacting code is hard. See other files in this project.

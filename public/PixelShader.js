@@ -22,7 +22,10 @@ export class EdgeShader {
             this.Bresenham.accumulator = Bresenham_k_gradient.accumulator + this.Bresenham.increment[0]; // We set up the decision value for the next line (y+1)
         }
         //console.log("edge",slope_floored,this.Bresenham.increment,this.Bresenham.accumulator)
-        this.uvz = payload.nominator.map(v3 => {
+        if (x_at_y_int == 0 && y == 0) {
+            console.log("view vector nose", payload.uvzw_from_viewvector.nominator.map(v3 => v3.v[2]), "offset at nose in uv (test t)", payload.uvz_cameraHover.v);
+        }
+        this.uvz = payload.uvzw_from_viewvector.nominator.map(v3 => {
             const a = new a_i(); //,v=v3.v //; a.accumulator =0; // accumulator is set by vertex using MUL
             const v = [v3.v[0] * infinite_plane_FoV[0], v3.v[1] * infinite_plane_FoV[1]]; // slope along the edge in screen space    Todo: Move factor in infiniteCheckerBoard (at the end)
             a.accumulator = v[0] * x_at_y_int + v[1] * y + v3.v[2]; // So all addressing will be relative now? // Why is Bresenham different? 
@@ -30,6 +33,7 @@ export class EdgeShader {
             a.increment = [floored, floored + v[0]];
             return a;
         });
+        this.camera_hover_over_st = payload.uvz_cameraHover;
     }
     // += is more efficient in JRISC than C= A*B 
     propagate_along() {
@@ -41,21 +45,25 @@ export class EdgeShader {
     }
     // The vector math results in a symmetric array of  a+bx / cx+d  elements (xcx+d shared). But everyone transforms z into a / cx+d   + const . cx+d describes the horizon. Const = altitude?
     // And then the u and v term is expressed as a/a+b/a*x * z  -  a+bx * const/a   -- so yeah, s and t are linear in z . But the calculation is not shorter. We get an official offset
-    perspective() {
+    perspective(test = false) {
         let w = this.uvz[3].accumulator; // yeah, I really should not use indices to indicate the special w  . 
         if (w == 0)
             return;
-        let z = 64 / w; // 64 is Wolfenstein3d((c)id software) Todo: pull from canvas   ToDo : It is not even z because z is reciprok + const (important)  <=> linear / w .
+        let z = 1 / w; // 64 is Wolfenstein3d((c)id software) Todo: pull from canvas   ToDo : It is not even z because z is reciprok + const (important)  <=> linear / w .
         for (let st = 0; st < 2; st++) {
-            this.uvz[st].projected = this.uvz[st].accumulator * z;
+            this.uvz[st].projected = (this.uvz[st].accumulator * z - this.camera_hover_over_st.v[st]) * 64;
+            if (test) {
+                console.log("this.uvz[st].projected", this.uvz[st].projected);
+                let lll = 0;
+            }
         }
         this.uvz[2].projected = z;
     }
 }
 export class PixelShader {
-    constructor(uvz_from_viewvector, half_screen) {
+    constructor(half_screen) {
         this.half_screen = half_screen;
-        this.uvz_from_viewvecto = uvz_from_viewvector;
+        //this.uvz_from_viewvecto=uvz_from_viewvector
         // Todo : harmonize
         //let payload_w = []//Payload.nominator.map( v3=> [v3.v[2],v3.v[0],v3.v[1] ]) 
         // bias
@@ -127,7 +135,7 @@ export class PixelShader {
         }
         else {
             var esp = es.map(e => {
-                e.perspective(); //x + (width-1))  // Perspective is calculated within  aka closed interval
+                e.perspective(this.y == 0 && e.x_at_y_int == 0); //x + (width-1))  // Perspective is calculated within  aka closed interval
                 return e.uvz.map(u => u.projected);
             });
             for (let uvz = 0; uvz < 2; uvz++) {

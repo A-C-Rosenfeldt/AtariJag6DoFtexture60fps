@@ -18,7 +18,7 @@ export class Camera {
 // Mesh and camere kinda use the same math. I even decided on a specific implementation : Matrix over quaternions
 export class Mesh {
     constructor() {
-        this.polygon = [new Vec3([[1, 0, 0]]), new Vec3([[-1, 0, 0]]), new Vec3([[-1, -2, 0]])];
+        this.polygon = [new Vec3([[0, 0, 0]]), new Vec3([[1, 0, 0]]), new Vec3([[1, 2, 0]])];
     }
     rotate() {
         for (let i = 0; i < this.polygon.length; i++) { // In-place screams C-style for 

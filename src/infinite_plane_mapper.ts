@@ -67,7 +67,7 @@ export class Camera_in_stSpace{
 		return pl
 	}
 
-	uvzw_from_viewvector(C:number[],dbuggy):Matrix{
+	uvzw_from_viewvector(C:number[],dbuggy):{uvzw_from_viewvector:Matrix , uvz_cameraHover:Vec}{
 
 		// s, t  = texture cooridinates ( t like texture ). The third is "along Normal" or should I write "Altitude" ?
 
@@ -103,7 +103,12 @@ export class Camera_in_stSpace{
 			// with viewVector should fix scaling
 			// with cameraPostion should fix offset  ( both indirectly through cv.nominator)
 		//console.log("uvzw_mapped",uvzw_mapped.nominator,stn_from_viewvector.nominator)  // For a billboard, uv should interpolate. z=0  w=const. And math says that polygon facing camera gives us -1 ( view vector facing down)
-		const uvzw_from_viewvector=Matrix.mul__Matrices_of_Rows( [uvzw_mapped.nominator, stn_from_viewvector.nominator]  ) 
+		const uvzw_from_viewvector=Matrix.mul__Matrices_of_Rows( [uvzw_mapped.nominator, stn_from_viewvector.viewVector.nominator]  ) 
+		//{
+					const m=new Matrix(2)
+				m.nominator=this.UVmapping_fromST.map(p=>new Vec3([p]))
+				const uvz_cameraHover=m.mul_left_vec(  stn_from_viewvector.cameraPosition  )  // test with identity
+			//}
 		//cv_p.viewVector=Matrix.mul( [mesh.nominator, cv.viewVector.nominator] )
 
 		// We may need to measure if it is faster to have two different 1/z or to compensate the s,t nominators
@@ -119,7 +124,7 @@ export class Camera_in_stSpace{
 		// So there cannot be an offset
 		// So multiplication with this.z really is just to scale?
 		// infinte_checkerBoard_m mixes cv.viewVector.nominator[2] into these components
-		return uvzw_from_viewvector
+		return {uvzw_from_viewvector,uvz_cameraHover}
 	}
 
 	infinte_checkerBoard(C:number[],V:number[]):number[]{
@@ -136,7 +141,7 @@ export class Camera_in_stSpace{
 	}
 
 	// like mode-z on SNES (tm)
- 	private infinte_checkerBoard_m(C:number[],dbugy:HTMLElement):Matrix{
+ 	private infinte_checkerBoard_m(C:number[],dbugy:HTMLElement):CameraViewvector{//Matrix{
 		const cv=new CameraViewvector
 		cv.cameraPosition=new Vec([this.transform_into_texture_space(C),this.UVmapping_Offest.concat(0)]) // pos point of camera relative to UV origin on st plane (so that we can use a texture atlas)
 		dbugy.textContent="hover"+cv.cameraPosition.v.map(c=>c.toFixed(2)+",").reduce<string>((t,p)=>t+p,"")
@@ -158,14 +163,18 @@ export class Camera_in_stSpace{
 
 			// 2 is the compontent which will be multiplied with the forward (z) component of the view vector which is 1. So it is just the bias, the const nom in the polynom
 			// this is the uvz value for the nose view vector in the center of the screen. This is really a vector ( column in a matrix made of rows -- I just checked: build of rows is called row major . It is just confusing because in my Code and in Java, there then is no column, just fields / compontens of the row because rows and columns are vectors / arrays. They don't have their own name for the index.)
-			cv.viewVector.nominator[st].v[2]+=cv.cameraPosition.v[st]   // [][2] (bias) is not to be confuced with [2] (denominator)
+
+			// This is nonesense. On the nose the view vector is a full 3d vector. The normal component goes into the denominator
+			// the camera normal (5 in my test example) goes into the nominator, yeah. But the camere st does not go over the denominator, but is added (0,0,5) in my example
+			//cv.viewVector.nominator[st].v[2]+=cv.cameraPosition.v[st]   // [][2] (bias) is not to be confuced with [2] (denominator)
+			
 			//}
 		}
-		return cv.viewVector   // xyz   stz  convention. [2] actually is not a nominator, but denominator (when calcualting the cut)
+		return cv //.viewVector   // xyz   stz  convention. [2] actually is not a nominator, but denominator (when calcualting the cut)
 	}
 	
 	transform_into_texture_space(v:number[],UV_offset?:number[]):number[]{
-		const v3=UV_offset!=null ? new Vec3([v,UV_offset]): new Vec3([v])
+		const v3=UV_offset!=null ? new Vec3([v,UV_offset]): new Vec3([v]) // todo: multiply with denominator?
 		const coords=[0,0,0]
 		coords[2]=this.normal.innerProduct( v3  )  // Error: this.normal is not defined
 		for(let st=0;st<2;st++){  // this is actually a Matrix multiplication todo Matrix is not square.
@@ -291,8 +300,8 @@ export class Mapper{
 
 			vertices.forEach((v,i) => {
 				if (v.onScreen !== null) {
-					v.onScreen.position.map((p, i) => p + half_screen[i])
-					ctx.fillRect(v[0] - 1, v[1] - 1, 3, 3);
+					const s=v.onScreen.position.map((p, i) => p + half_screen[i])
+					ctx.fillRect(s[0] - 1, s[1] - 1, 3, 3);
 				}
 				if (v.inSpace !== null) {
 					const t=(v.inSpace.slice(0,2))
@@ -300,17 +309,13 @@ export class Mapper{
 					const r=Math.sqrt(  t.map(s=>s*s).reduce((p,r)=>p+r,0)      )					
 					const z = v.inSpace[2];
 					const rz=Math.atan2( r,z  ) // Math.PI
+					const sat=(rz: number) => 2 / (1 + Math.exp(-rz)) - 1
 					const saturate=sat(rz) / sat(Math.PI)
 					const style=150
-					const p=t.map(u=>style*(1+u/r*saturate))
+					const p=r>0.001? t.map(u=>style*(1+u/r*saturate)) : t.map(u=>style*(1+u))
 					
 					const fish_v = document.getElementById("ABC"[i]) 
 					fish_v.setAttribute("style","left:"+p[0].toFixed(0)+"px;top:"+p[1].toFixed(0)+"px"+(z<0?"":"; color: #51f3ffff;"))
-				}
-
-
-				function sat(rz: number) {
-					return 2 / (1 + Math.exp(-rz)) - 1;
 				}
 			})
 		}
