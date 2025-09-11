@@ -1,6 +1,31 @@
 .container {
   display: grid;
-  grid-template-columns: repeat(3,100px) repeat(3,100px)
-  /* gap 20 px  repeat(3,100px) */
+  grid-template-columns: repeat(3, 100px) repeat(3, 100px)
+    /* gap 20 px  repeat(3,100px) */
     /* grid-template-columns: repeat(2,repeat(3,100px) gap 20 px ) */
+
+
 }
+
+.lable {
+  text-align: center;
+  vertical-align: middle;
+}
+
+.l_container {
+  position:absolute;
+  /* background-color: blue; */
+  display: flex;
+  justify-content: center;
+  align-items: center;
+    width: 22px;
+  height: 22px; 
+  color: #fd8904;
+}
+
+/* .l_content {
+   
+
+
+
+} */

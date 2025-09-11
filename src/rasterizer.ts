@@ -328,7 +328,7 @@ export class Polygon_in_cameraSpace {
 			this.outside[1] &&= outside
 		})
 
-		const vertex_control = vertices.filter(v => v.onScreen !== null).map(v => v.onScreen.position.map((p, i) => p + this.half_screen[i]))
+		const vertex_control = vertices;//.filter(v => v.onScreen !== null).map(v => v.onScreen.position.map((p, i) => p + this.half_screen[i]))
 
 		pattern32 = pattern32 << vertices.length | pattern32// pattern allows look ahead
 		// Cull invisble Edges. Faces pull their z,s,t from 3d anyway. I cannot really clip edges here because it lets data explode which will be needed by the rasterizer (not for face culling)
@@ -465,7 +465,7 @@ export class Polygon_in_cameraSpace {
 
 		if (on_screen.length == 0) {  // no vertex nor edge on screen
 			// still need to clear screen
-			this.m.drawCanvasGame([])
+			this.m.drawCanvasGame(vertex_control,this.half_screen)
 			let null_egal = (this.corner11 >> 2 & 1) ^ (this.corner11 & 1)  // check if corner11 pierces the polygon in 3d ?
 			if (null_egal == 0) return // polygon completely outside of viewing frustum
 			// viewing frustum piercing through polygon
@@ -733,7 +733,7 @@ export class Polygon_in_cameraSpace {
 
 	// The beam tree will make everything convex and trigger a lot of MUL 16*16 in the process. Code uses Exception patter: First check if all vertices are convex -> break . Then check for self-cuts => split, goto first . ZigZag concave vertices. Find nearest for last. Zig-zag schould not self cut? 
 	// For the MVP, we do best effort for polygons with nore than 3 edges: Ignore up slopes. Do backface culling per span. 
-	private rasterize_onscreen(vertex: Array<Item>, payload: Matrix, vertex_control: number[][]) {  // may be a second pass like in the original JRISC. Allows us to wait for the backbuffer to become available.
+	private rasterize_onscreen(vertex: Array<Item>, payload: Matrix, vertex_control: Vertex_in_cameraSpace[]) {  // may be a second pass like in the original JRISC. Allows us to wait for the backbuffer to become available.
 		const l = vertex.length
 		let min_max = [[0, this.half_screen[1]], [0, -this.half_screen[1]]]  //weird to proces second component first. Rotate?
 
@@ -889,7 +889,7 @@ export class Polygon_in_cameraSpace {
 			}
 		} //while (active_vertices[0][1] != active_vertices[1][1]) // full circle, bottom vertex found on the fly		
 
-		m.drawCanvasGame(vertex_control)
+		m.drawCanvasGame(vertex_control,this.half_screen)
 	}
 
 	private streamIn_newVertex(active_vertices: number[],other_verticex:number, Bresenham: Gradient, ind: Cyclic_Indexer, vertex: Item[], count_to_one: boolean): { x_at_y_int: number, overshot: boolean } {

@@ -4,16 +4,32 @@
 <link rel="stylesheet" href="index.css">
 </head>
 <body>
-	<h2>Software rasterizer with comments in code about compiling to JRIS  (WIP)</h2>
-		<canvas id="Canvas2dScaled" width="640" height="400" style="border:1px solid #000000;image-rendering: pixelated;
-    image-rendering: crisp-edges;" class=""></canvas> 
-		<p>
-	Click into this viewport to stop idle animation. Use keyboard to fly around this simple model. Rotate camera using arrow keys,.  WASD for movement.
-	Try out the view frustum clipping routines.
+	<h2>Software rasterizer with comments in code about compiling to JRIS (WIP)</h2>
 
-	Zoom in with your desktop browser. I think I need to implment scale somewhere too deep in code.
-</p>	
-<p>For touchpad.</p>
+	<p>
+		Click into this viewport to stop idle animation. Use keyboard to fly around this simple model. Rotate camera using
+		arrow keys,. WASD for movement.
+		Try out the view frustum clipping routines.
+	
+		Zoom in with your desktop browser. I think I need to implment scale somewhere too deep in code.
+	</p>
+	<table>
+		<tr>
+			<td>
+	<canvas id="Canvas2dScaled" width="640" height="400" style="border:1px solid #000000;image-rendering: pixelated;
+	    image-rendering: crisp-edges;" class=""></canvas>	
+		</td>
+		<td >
+			<div style="width: 322px;height: 322px;background-color: #222;position: relative;">
+			<div class="l_container" style="top:40px;left:40px;" id="A"><span class="l_content" >A</span></div>
+			<div class="l_container" style="top:40px;left:40px;" id="B"><span class="l_content" >B</span></div>
+			<div class="l_container" style="top:40px;left:40px;" id="C"><span class="l_content" >C</span></div>
+
+		</div>
+		</td>
+</tr>
+</table>
+	<p>For touchpad.</p>
 <div class="container">
   <button id="enlarge">enlarge +</button>
   <div> <button id="forward">forward W</button> </div>

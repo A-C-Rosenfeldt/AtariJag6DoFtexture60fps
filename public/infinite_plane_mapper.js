@@ -209,7 +209,7 @@ export class Mapper {
             //	ctx.putImageData(this.imageData, 0, 0);console.log("put Canvas2d") // works
         }
     }
-    drawCanvasGame(vertices) {
+    drawCanvasGame(vertices, half_screen) {
         const canvas = document.getElementById("Canvas2dGame");
         const ctx = canvas.getContext("2d");
         if (ctx) {
@@ -227,8 +227,26 @@ export class Mapper {
             }
             this.clear();
             ctx.fillStyle = "white";
-            vertices.forEach(v => {
-                ctx.fillRect(v[0] - 1, v[1] - 1, 3, 3);
+            vertices.forEach((v, i) => {
+                if (v.onScreen !== null) {
+                    v.onScreen.position.map((p, i) => p + half_screen[i]);
+                    ctx.fillRect(v[0] - 1, v[1] - 1, 3, 3);
+                }
+                if (v.inSpace !== null) {
+                    const t = (v.inSpace.slice(0, 2));
+                    const xy = Math.atan2(t[0], t[1]); // max allows 1..n args . atan2 is limited to 2 and somehow JS cares here
+                    const r = Math.sqrt(t.map(s => s * s).reduce((p, r) => p + r, 0));
+                    const z = v.inSpace[2];
+                    const rz = Math.atan2(r, z); // Math.PI
+                    const saturate = sat(rz) / sat(Math.PI);
+                    const style = 150;
+                    const p = t.map(u => style * (1 + u / r * saturate));
+                    const fish_v = document.getElementById("ABC"[i]);
+                    fish_v.setAttribute("style", "left:" + p[0].toFixed(0) + "px;top:" + p[1].toFixed(0) + "px" + (z < 0 ? "" : "; color: #51f3ffff;"));
+                }
+                function sat(rz) {
+                    return 2 / (1 + Math.exp(-rz)) - 1;
+                }
             });
         }
     }

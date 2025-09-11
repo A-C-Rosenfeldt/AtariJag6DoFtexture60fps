@@ -261,7 +261,7 @@ export class Polygon_in_cameraSpace {
             (_a = this.outside)[0] || (_a[0] = outside);
             (_b = this.outside)[1] && (_b[1] = outside);
         });
-        const vertex_control = vertices.filter(v => v.onScreen !== null).map(v => v.onScreen.position.map((p, i) => p + this.half_screen[i]));
+        const vertex_control = vertices; //.filter(v => v.onScreen !== null).map(v => v.onScreen.position.map((p, i) => p + this.half_screen[i]))
         pattern32 = pattern32 << vertices.length | pattern32; // pattern allows look ahead
         // Cull invisble Edges. Faces pull their z,s,t from 3d anyway. I cannot really clip edges here because it lets data explode which will be needed by the rasterizer (not for face culling)
         // I am unhappy about the need to basically repeat this step on the 2dBSP (for guard_band and portals).
@@ -391,7 +391,7 @@ export class Polygon_in_cameraSpace {
         });
         if (on_screen.length == 0) { // no vertex nor edge on screen
             // still need to clear screen
-            this.m.drawCanvasGame([]);
+            this.m.drawCanvasGame(vertex_control, this.half_screen);
             let null_egal = (this.corner11 >> 2 & 1) ^ (this.corner11 & 1); // check if corner11 pierces the polygon in 3d ?
             if (null_egal == 0)
                 return; // polygon completely outside of viewing frustum
@@ -777,7 +777,7 @@ export class Polygon_in_cameraSpace {
                 //	ps.span(-155, 310, m, es)
             }
         } //while (active_vertices[0][1] != active_vertices[1][1]) // full circle, bottom vertex found on the fly		
-        m.drawCanvasGame(vertex_control);
+        m.drawCanvasGame(vertex_control, this.half_screen);
     }
     streamIn_newVertex(active_vertices, other_verticex, Bresenham, ind, vertex, count_to_one) {
         let v_val = null, edge = null; // for debugging
