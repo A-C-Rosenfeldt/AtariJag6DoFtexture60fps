@@ -3,6 +3,7 @@
       "target": "ES2015",
       "module": "ES6",
       "sourceMap": true,
-      "outDir": "../public"
+      "outDir": "../public",
+      "noUncheckedIndexedAccess": true
     }
 }

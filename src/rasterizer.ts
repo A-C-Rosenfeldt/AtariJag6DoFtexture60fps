@@ -883,11 +883,15 @@ export class Polygon_in_cameraSpace {
 			width = slope_accu_c[1][1] - slope_accu_c[0][1]
 
 			//console.log("left", slope_accu_c[0][1], "right", slope_accu_c[1][1], "y", ps.y) // Test failed: Width is zero all the time
-			if (width > 0 && width < this.screen[0]) {
+			if (width > 0 && width <= this.screen[0]) {
 				ps.span(slope_accu_c[0][1], width, m, es)
-			} else {
+			} else { if (width !=0 ) {
+
+				console.log("access denied ",y, slope_accu_c[0][1] ,slope_accu_c[1][1])
+				let llll=0
 				//	ps.span(-155, 310, m, es)
 			}
+		}
 		} //while (active_vertices[0][1] != active_vertices[1][1]) // full circle, bottom vertex found on the fly		
 
 		m.drawCanvasGame(vertex_control,this.half_screen)
