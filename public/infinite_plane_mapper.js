@@ -84,11 +84,16 @@ export class Camera_in_stSpace {
         // with cameraPostion should fix offset  ( both indirectly through cv.nominator)
         //console.log("uvzw_mapped",uvzw_mapped.nominator,stn_from_viewvector.nominator)  // For a billboard, uv should interpolate. z=0  w=const. And math says that polygon facing camera gives us -1 ( view vector facing down)
         const uvzw_from_viewvector = Matrix.mul__Matrices_of_Rows([uvzw_mapped.nominator, stn_from_viewvector.viewVector.nominator]);
-        //{
-        const m = new Matrix(2);
-        m.nominator = this.UVmapping_fromST.map(p => new Vec3([p]));
-        const uvz_cameraHover = m.mul_left_vec(stn_from_viewvector.cameraPosition); // test with identity
-        //}
+        let uvz_cameraHover;
+        if (this.hoist_cameraHover) {
+            // Later, UV offset into a large map can be added to add.32 it after division
+            uvz_cameraHover = new Vec([[3]]);
+        }
+        else {
+            const m = new Matrix(2);
+            m.nominator = this.UVmapping_fromST.map(p => new Vec3([p]));
+            uvz_cameraHover = m.mul_left_vec(stn_from_viewvector.cameraPosition); // test with identity
+        }
         //cv_p.viewVector=Matrix.mul( [mesh.nominator, cv.viewVector.nominator] )
         // We may need to measure if it is faster to have two different 1/z or to compensate the s,t nominators
         // Only scaling is possible ( and quite fast ). There can be offsets in s t to shift a texture around, but denominator needs to be real 1/z without offset
@@ -132,9 +137,11 @@ export class Camera_in_stSpace {
             //for(let out=0;out<3;out++){ // todo : out is never used
             // 2 is the compontent which will be multiplied with the forward (z) component of the view vector which is 1. So it is just the bias, the const nom in the polynom
             // this is the uvz value for the nose view vector in the center of the screen. This is really a vector ( column in a matrix made of rows -- I just checked: build of rows is called row major . It is just confusing because in my Code and in Java, there then is no column, just fields / compontens of the row because rows and columns are vectors / arrays. They don't have their own name for the index.)
-            // This is nonesense. On the nose the view vector is a full 3d vector. The normal component goes into the denominator
+            // This keeps the values in the nominator small. On the nose the view vector is a full 3d vector. The normal component goes into the denominator
             // the camera normal (5 in my test example) goes into the nominator, yeah. But the camere st does not go over the denominator, but is added (0,0,5) in my example
-            //cv.viewVector.nominator[st].v[2]+=cv.cameraPosition.v[st]   // [][2] (bias) is not to be confuced with [2] (denominator)
+            if (this.hoist_cameraHover) {
+                cv.viewVector.nominator[st].v[2] += cv.cameraPosition.v[st] * cv.viewVector.nominator[2][2]; // [][2] (bias) in camera and [2(denominator)][bias] in view vector
+            }
             //}
         }
         return cv; //.viewVector   // xyz   stz  convention. [2] actually is not a nominator, but denominator (when calcualting the cut)

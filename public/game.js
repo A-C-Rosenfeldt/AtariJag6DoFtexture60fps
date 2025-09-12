@@ -42,7 +42,13 @@ t.addEventListener("click", (event) => {
     boilerplate();
 });
 t.removeAttribute("disabled");
-var t = document.getElementById("clock");
+var t = document.getElementById("triangle");
+t.addEventListener("click", (event) => {
+    mesh.rotate();
+    boilerplate();
+});
+t.removeAttribute("disabled");
+var t = document.getElementById("counter");
 t.addEventListener("click", (event) => {
     controller.rotation.Rotate_along_axis_Orthonormalize(1, controller.sine);
     boilerplate();
@@ -67,7 +73,7 @@ t.addEventListener("click", (event) => {
 });
 t.removeAttribute("disabled");
 t.removeAttribute("disabled");
-var t = document.getElementById("counter");
+var t = document.getElementById("clock");
 t.addEventListener("click", (event) => {
     controller.rotation.Rotate_along_axis_Orthonormalize(1, [controller.sine[0], -controller.sine[1]]);
     boilerplate();
@@ -106,10 +112,10 @@ document.addEventListener("keydown", //  repeats liek keypressed
                 controller.rotation.Rotate_along_axis_Orthonormalize(1, [controller.sine[0], -controller.sine[1]]);
                 break;
             case "Up":
-                controller.rotation.Rotate_along_axis_Orthonormalize(0, controller.sine);
+                controller.rotation.Rotate_along_axis_Orthonormalize(0, [controller.sine[0], -controller.sine[1]]);
                 break;
             case "Down":
-                controller.rotation.Rotate_along_axis_Orthonormalize(0, [controller.sine[0], -controller.sine[1]]);
+                controller.rotation.Rotate_along_axis_Orthonormalize(0, controller.sine);
                 break;
             default: return;
         }
