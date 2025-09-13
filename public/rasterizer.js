@@ -189,21 +189,13 @@ export class Polygon_in_cameraSpace {
         this.screen_FoV = this.FoV_rezi.map((f, i) => f * this.half_screen[i]); // Forward for vertices  ..Needs to be this.screen <  < 2*this.screen for the machine language optimized clipping
         this.infinite_plane_FoV = this.FoV.map((f, i) => f / this.half_screen[i]); // backwards for "ray tracing"
         this.epsilon = 0.001; // epsilon depends on the number of bits goint into IMUL. We need to factor-- in JRISC . So that floor() will work.
-        this.m = m;
-        // for rasterization of clipped edges ( potentially very long) we want max precision (similar to vertices on opposed corners). So we expand the fraction
-        //let whyDoWeCareBelo16=this.screen.map(s=> Math.ceil(Math.log2(s))  )   // the function is a native instruction in JRISC. Okay , two instructions. need to adjust the bias
-    }
-    // So to fight rounding errors, every culling will happen twice. Can I reuse code? Virtual functions for do_vertex do_edge do_face
-    // Once in 3d to a power of two viewing frustum
-    // reverse: cull unreferenced (count it) vertices and edges
-    // then in 2d to a bounding rectangle.16 and later a BSP
-    // In the second pass, vertices can move outside, edges can lose a vertex or become invisible. For faces depend on this. The face without-edges screen-filler stays.
-    // corners of the rectangle!
-    project(vertices) {
-        Corner.screen = this.half_screen; //.screen
-        this.outside = [false, false];
-        let pattern32 = 0;
-        vertices.forEach(v => {
+        // So to fight rounding errors, every culling will happen twice. Can I reuse code? Virtual functions for do_vertex do_edge do_face
+        // Once in 3d to a power of two viewing frustum
+        // reverse: cull unreferenced (count it) vertices and edges
+        // then in 2d to a bounding rectangle.16 and later a BSP
+        // In the second pass, vertices can move outside, edges can lose a vertex or become invisible. For faces depend on this. The face without-edges screen-filler stays.
+        // corners of the rectangle!
+        this.classify_vertex_JRISCstyle = (v) => {
             var _a, _b;
             let z = v.inSpace[v.inSpace.length - 1], outside = false; // sometimes string would be easier: -1 . Field have name and id ?
             let l = v.inSpace.length - 1; // weird that special component z is last. Probably in assembler I will interate backwards
@@ -255,86 +247,83 @@ export class Polygon_in_cameraSpace {
             if (outside) {
                 v.onScreen = null; // On Jagurar I was thinking about using struct . Or perhaps this loop should map() ?
             }
-            pattern32 <= 1;
-            pattern32 |= outside ? 1 : 0;
+            // pattern32 <= 1
+            // pattern32 |= outside ? 1 : 0
             v.outside = outside;
             (_a = this.outside)[0] || (_a[0] = outside);
             (_b = this.outside)[1] && (_b[1] = outside);
-        });
+        };
+        this.m = m;
+        // for rasterization of clipped edges ( potentially very long) we want max precision (similar to vertices on opposed corners). So we expand the fraction
+        //let whyDoWeCareBelo16=this.screen.map(s=> Math.ceil(Math.log2(s))  )   // the function is a native instruction in JRISC. Okay , two instructions. need to adjust the bias
+    }
+    project(vertices) {
+        Corner.screen = this.half_screen; //.screen
+        this.outside = [false, false]; //; let pattern32 = 0
+        vertices.forEach(this.classify_vertex_JRISCstyle);
         const vertex_control = vertices; //.filter(v => v.onScreen !== null).map(v => v.onScreen.position.map((p, i) => p + this.half_screen[i]))
-        pattern32 = pattern32 << vertices.length | pattern32; // pattern allows look ahead
+        //pattern32 = pattern32 << vertices.length | pattern32// pattern allows look ahead
         // Cull invisble Edges. Faces pull their z,s,t from 3d anyway. I cannot really clip edges here because it lets data explode which will be needed by the rasterizer (not for face culling)
         // I am unhappy about the need to basically repeat this step on the 2dBSP (for guard_band and portals).
         // MVP: Get code running on 256x256 with one polygon. Guard == NDC 
         // Optimized clipping on rectangle because one factor is zero. The other still need
-        let on_screen = new Array(), cut = [], l = vertices.length;
-        this.corner11 = 0; // ref bitfield in JRISC ( or C# ) cannot do in JS
-        /* too expensive
-        // check if vertices are still outside if we use the (rounded) edge slopes
-        // This has to be done after NDC -> px ( rounding!!) . We do this to iterate over the corners. Of course a serial splitter does not care. We don't need the exact cut, only need to know if sense of rotation changes.
-        // no synergz with polygons with vertex.count > 3 . we don't look at the faces here
-        vertices.forEach((v, i) => {
-            let k = (i + 1) % vertices.length
-            let w=pattern32 >> i
-            if (( w&7) == 2) {  // edge going outside, back inside
-
-                // It wuould really be faster to delay this
-                // find cut with screen border
-                //
-
-                let pixels=this.findCut(vertices[i], vertices[k]); // find cut because rounding may have put it inside the screen again. This is a problem with all clipping algorithms
-                if ( pixels.reduce((p,c,j)=>p|| (c<0 || c>this.screen[j]),false ) ) pattern32=~((~pattern32) | 1<< i)  // set vertex to inside
-            }
-        })
-        */
-        let v_w_n = new Cyclic_Collection(vertices); //new Array<Vertex_OnScreen>
-        console.log("Vertices.length", vertices.length);
-        let check_for_repais = false;
-        // 2 vertices -> edge
-        vertices.forEach((v, i) => {
-            //if (neighbours[0] instanceof Vertex_OnScreen ) {}
-            let k = (i + 1) % vertices.length;
-            let neighbours = [v_w_n.get_startingVertex(i), v_w_n.get_startingVertex(i + 1)]; // Error cannot access on_screen_read before initialization.
-            if (neighbours[0].outside) {
-                if (neighbours[1].outside) {
-                    let veto_face_vertex = [[0, 0], [0, 0]];
-                    let pattern4 = this.isEdge_visible([vertices[i], vertices[k]], veto_face_vertex); // tested 2025-09-09 for 0100
-                    console.log("pattern4", pattern4.toString(2));
-                    if (0 != pattern4) {
-                        let cuts = this.edge_crossing_two_borders([vertices[i], vertices[k]], pattern4, veto_face_vertex);
-                        on_screen.push(...cuts);
-                        check_for_repais = true;
-                        console.log("onsceen.length ..", on_screen.length);
-                    }
-                }
-                else {
-                    let cut_r = this.edge_fromVertex_toBorder([vertices[k], vertices[i]], l);
-                    on_screen.push(...cut_r.reverse());
-                }
-            }
-            else {
-                on_screen.push(v.onScreen);
-                if (neighbours[1].outside) {
-                    // todo move into following method
-                    let cut_r = this.edge_fromVertex_toBorder([vertices[i], vertices[k]], l);
-                    on_screen.push(...cut_r);
-                    //let border=new Onthe_border()
-                }
-            }
-        });
-        // // repair order for some reason
-        // if (check_for_repais){
-        // 	on_screen.forEach((v, i) {
-        // 	} )
-        // }
-        console.log("onsceen.length ! ", on_screen.length);
-        // if (on_screen.length==0){
-        // 	let lll=0
-        // }
-        if (on_screen.length > 3) {
-            console.log("vertices types ! ", vertices.map(item => item instanceof Onthe_border ? item.border + " " + item.pixel_ordinate_int : item.constructor.name));
-            console.log("onsceen types ! ", on_screen.map(item => item instanceof Onthe_border ? item.border + " " + item.pixel_ordinate_int : item.constructor.name));
+        let on_screen = this.vertex_to_edge(vertices);
+        if (on_screen.length == 0) { // no vertex nor edge on screen
+            // still need to clear screen
+            this.m.drawCanvasGame(vertex_control, this.half_screen);
+            let null_egal = (this.corner11 >> 2 & 1) ^ (this.corner11 & 1); // check if corner11 pierces the polygon in 3d ?
+            if (null_egal == 0)
+                return; // polygon completely outside of viewing frustum
+            // viewing frustum piercing through polygon
         }
+        let with_corners = this.includeCorners(on_screen);
+        // screen as floats
+        // if (this.mode == modes.NDC) { }       // NDC -> pixel   . Rounding errors! Do this before beam tree. So beam tree is 2d and has no beams
+        // else { }  // Guard band  . Faster rejection at portals ( no MUL needed with its many register fetches). Still no 3d because we operate on 16 bit rounded screen coordinates after projection and rotation!!
+        let texturemap = new Camera_in_stSpace(); // Camera is in (0,0) in its own space .
+        //  I should probably pull the next line into the constructor
+        //let s:Vec3=new Vec3([vertices[0].inSpace])
+        let payload; //Matrix
+        {
+            let t = vertices.slice(0, 3).map(v => (v.inSpace)); // take 3 vertices and avoid overdetermination for polygons
+            texturemap.transform_into_texture_space__constructor(new Vec3([t[0], t[1]]), new Vec3([t[2], t[1]])); // My first model will have the s and t vectors on edges 0-1-2  .  for z-comparison and texture maps		
+            payload = texturemap.uvzw_from_viewvector(t[0], this.dbuggy);
+        }
+        //console.log("payload",payload.nominator) ; // Error: payload is not really constructed
+        this.rasterize_onscreen(with_corners, payload, vertex_control); // JRISC seems to love signed multiply. So, to use the full 16bit, (0,0) is center of screen at least after all occlusion and gradients are solved. The blitter on the other hand wants 12-bit unsigned values
+        return true;
+        /*
+        // Todo: The following code is wrong about corners
+        // Any corner whose beam passes through the face, adds a new on_screen vertex (to the array )
+        // This happens with both an empty or a full on_screen list up to this point
+        // So I indeed need to know through which border an edge leaves the screen
+        // so that we can insert the screen corners after it into the list.
+        // so this code sits inside the rasterizer because the rasterizer inserst? For debugging I should do it before!
+        // It makes no sense so send [-1,-1]... placeholder corners
+
+        if (on_screen.length > 0) { // at least one vertex or even edge is visible on screen. NDC scales. GuardBand/2dBSP
+            // get z (depth) and texture  . Of course with occlusion culling this may be referenced before
+    
+            // you may rotate by 90° here for walls like in Doom. Also set blitter flag then
+            let pixel_coords = on_screen.map(ndc => [(ndc[0] + 1) * (screen[0] - epsilon), (ndc[1] + 1) * (screen[1] - epsilon)]) // It may be a good idea to skew the pixels before this because even with floats, I uill use 2-complement in JRSIC and use half open interval?. Does the code grow?
+            this.rasterize_onscreen(pixel_coords,payload); return true
+        }
+
+        // trace a single ray for check. But, can I use one of the patterns instead? pattern32=-1 because all vertices are outside. Pattern4 undefined because it is per vertex
+        // tracing is so costly because I need to go over all vertices, actually edges, again.
+        // Backface culling does not help.
+        // 001 vector is simple to trace though
+        // At least in 3d -- it looks -- I need official s,t edges (vertics) ( vertex 0 and 1)
+        // v0 + s*S + t * T = z * 001  // we only care about the sign
+        // normal = s x t
+        // ( vo | normal ) /  ( z | normal )      // similar equation to  UVZ mapping for txtures and occlusion
+
+
+        this.rasterize_onscreen([[-1,-1],[+1,-1],[+1,+1],[-1,+1]],payload)  // full screen
+        return
+        */
+    }
+    includeCorners(on_screen) {
         let on_screen_read = new Cyclic_Collection(on_screen);
         const n = 4;
         let with_corners = new Array();
@@ -389,59 +378,78 @@ export class Polygon_in_cameraSpace {
             if (range[1] != range[0])
                 console.log("Done adding", range[1]);
         });
-        if (on_screen.length == 0) { // no vertex nor edge on screen
-            // still need to clear screen
-            this.m.drawCanvasGame(vertex_control, this.half_screen);
-            let null_egal = (this.corner11 >> 2 & 1) ^ (this.corner11 & 1); // check if corner11 pierces the polygon in 3d ?
-            if (null_egal == 0)
-                return; // polygon completely outside of viewing frustum
-            // viewing frustum piercing through polygon
-        }
-        // screen as floats
-        if (this.mode == modes.NDC) { } // NDC -> pixel   . Rounding errors! Do this before beam tree. So beam tree is 2d and has no beams
-        else { } // Guard band  . Faster rejection at portals ( no MUL needed with its many register fetches). Still no 3d because we operate on 16 bit rounded screen coordinates after projection and rotation!!
-        let texturemap = new Camera_in_stSpace(); // Camera is in (0,0) in its own space .
-        //  I should probably pull the next line into the constructor
-        //let s:Vec3=new Vec3([vertices[0].inSpace])
-        let payload; //Matrix
-        {
-            let t = vertices.slice(0, 3).map(v => (v.inSpace)); // take 3 vertices and avoid overdetermination for polygons
-            texturemap.transform_into_texture_space__constructor(new Vec3([t[0], t[1]]), new Vec3([t[2], t[1]])); // My first model will have the s and t vectors on edges 0-1-2  .  for z-comparison and texture maps		
-            payload = texturemap.uvzw_from_viewvector(t[0], this.dbuggy);
-        }
-        //console.log("payload",payload.nominator) ; // Error: payload is not really constructed
-        this.rasterize_onscreen(with_corners, payload, vertex_control); // JRISC seems to love signed multiply. So, to use the full 16bit, (0,0) is center of screen at least after all occlusion and gradients are solved. The blitter on the other hand wants 12-bit unsigned values
-        return true;
-        /*
-        // Todo: The following code is wrong about corners
-        // Any corner whose beam passes through the face, adds a new on_screen vertex (to the array )
-        // This happens with both an empty or a full on_screen list up to this point
-        // So I indeed need to know through which border an edge leaves the screen
-        // so that we can insert the screen corners after it into the list.
-        // so this code sits inside the rasterizer because the rasterizer inserst? For debugging I should do it before!
-        // It makes no sense so send [-1,-1]... placeholder corners
-
-        if (on_screen.length > 0) { // at least one vertex or even edge is visible on screen. NDC scales. GuardBand/2dBSP
-            // get z (depth) and texture  . Of course with occlusion culling this may be referenced before
+        return with_corners;
+    }
+    vertex_to_edge(vertices) {
+        let on_screen = new Array(), cut = [], l = vertices.length;
+        this.corner11 = 0; // ref bitfield in JRISC ( or C# ) cannot do in JS
+        /* too expensive
+        // check if vertices are still outside if we use the (rounded) edge slopes
+        // This has to be done after NDC -> px ( rounding!!) . We do this to iterate over the corners. Of course a serial splitter does not care. We don't need the exact cut, only need to know if sense of rotation changes.
+        // no synergz with polygons with vertex.count > 3 . we don't look at the faces here
+        vertices.forEach((v, i) => {
+            let k = (i + 1) % vertices.length
+            let w=pattern32 >> i
+            if (( w&7) == 2) {  // edge going outside, back inside
     
-            // you may rotate by 90° here for walls like in Doom. Also set blitter flag then
-            let pixel_coords = on_screen.map(ndc => [(ndc[0] + 1) * (screen[0] - epsilon), (ndc[1] + 1) * (screen[1] - epsilon)]) // It may be a good idea to skew the pixels before this because even with floats, I uill use 2-complement in JRSIC and use half open interval?. Does the code grow?
-            this.rasterize_onscreen(pixel_coords,payload); return true
-        }
-
-        // trace a single ray for check. But, can I use one of the patterns instead? pattern32=-1 because all vertices are outside. Pattern4 undefined because it is per vertex
-        // tracing is so costly because I need to go over all vertices, actually edges, again.
-        // Backface culling does not help.
-        // 001 vector is simple to trace though
-        // At least in 3d -- it looks -- I need official s,t edges (vertics) ( vertex 0 and 1)
-        // v0 + s*S + t * T = z * 001  // we only care about the sign
-        // normal = s x t
-        // ( vo | normal ) /  ( z | normal )      // similar equation to  UVZ mapping for txtures and occlusion
-
-
-        this.rasterize_onscreen([[-1,-1],[+1,-1],[+1,+1],[-1,+1]],payload)  // full screen
-        return
+                // It wuould really be faster to delay this
+                // find cut with screen border
+                //
+    
+                let pixels=this.findCut(vertices[i], vertices[k]); // find cut because rounding may have put it inside the screen again. This is a problem with all clipping algorithms
+                if ( pixels.reduce((p,c,j)=>p|| (c<0 || c>this.screen[j]),false ) ) pattern32=~((~pattern32) | 1<< i)  // set vertex to inside
+            }
+        })
         */
+        let v_w_n = new Cyclic_Collection(vertices); //new Array<Vertex_OnScreen>
+        console.log("Vertices.length", vertices.length);
+        let check_for_repais = false;
+        // 2 vertices -> edge
+        vertices.forEach((v, i) => {
+            //if (neighbours[0] instanceof Vertex_OnScreen ) {}
+            let k = (i + 1) % vertices.length;
+            let neighbours = [v_w_n.get_startingVertex(i), v_w_n.get_startingVertex(i + 1)]; // Error cannot access on_screen_read before initialization.
+            if (neighbours[0].outside) {
+                if (neighbours[1].outside) {
+                    let veto_face_vertex = [[0, 0], [0, 0]];
+                    let pattern4 = this.isEdge_visible([vertices[i], vertices[k]], veto_face_vertex); // tested 2025-09-09 for 0100
+                    console.log("pattern4", pattern4.toString(2));
+                    if (0 != pattern4) {
+                        let cuts = this.edge_crossing_two_borders([vertices[i], vertices[k]], pattern4, veto_face_vertex);
+                        on_screen.push(...cuts);
+                        check_for_repais = true;
+                        console.log("onsceen.length ..", on_screen.length);
+                    }
+                }
+                else {
+                    let cut_r = this.edge_fromVertex_toBorder([vertices[k], vertices[i]], l);
+                    on_screen.push(...cut_r.reverse());
+                }
+            }
+            else {
+                on_screen.push(v.onScreen);
+                if (neighbours[1].outside) {
+                    // todo move into following method
+                    let cut_r = this.edge_fromVertex_toBorder([vertices[i], vertices[k]], l);
+                    on_screen.push(...cut_r);
+                    //let border=new Onthe_border()
+                }
+            }
+        });
+        // // repair order for some reason
+        // if (check_for_repais){
+        // 	on_screen.forEach((v, i) {
+        // 	} )
+        // }
+        console.log("onsceen.length ! ", on_screen.length);
+        // if (on_screen.length==0){
+        // 	let lll=0
+        // }
+        if (on_screen.length > 3) {
+            console.log("vertices types ! ", vertices.map(item => item instanceof Onthe_border ? item.border + " " + item.pixel_ordinate_int : item.constructor.name));
+            console.log("onsceen types ! ", on_screen.map(item => item instanceof Onthe_border ? item.border + " " + item.pixel_ordinate_int : item.constructor.name));
+        }
+        return on_screen;
     }
     // This may be useful for beam tree and non-convex polygons
     // I don't think that it is light enough to double check clipping after rounding errors

@@ -263,206 +263,81 @@ export class Polygon_in_cameraSpace {
 	// In the second pass, vertices can move outside, edges can lose a vertex or become invisible. For faces depend on this. The face without-edges screen-filler stays.
 	// corners of the rectangle!
 
+	classify_vertex_JRISCstyle = (v: Vertex_in_cameraSpace) => {
+		let z = v.inSpace[v.inSpace.length - 1], outside = false  // sometimes string would be easier: -1 . Field have name and id ?
 
-	project(vertices: Array<Vertex_in_cameraSpace>): boolean {
-		Corner.screen = this.half_screen //.screen
-		this.outside = [false, false]; let pattern32 = 0
-		vertices.forEach(v => {
-			let z = v.inSpace[v.inSpace.length - 1], outside = false  // sometimes string would be easier: -1 . Field have name and id ?
+		let l = v.inSpace.length - 1   // weird that special component z is last. Probably in assembler I will interate backwards
+		for (let i = 0; i < l; i++) {
+			if (Math.abs(v.inSpace[i]) > z) {
+				outside = true; break
+			}  // abs works because there is a (0,0) DMZ between the four center pixels. DMZ around the pixels are used as a kindof mini guard band. symmetric NDC. For Jaguar with its 2-port register file it may makes sense to skew and check for the sign bit (AND r0,r0 sets N-flag). Jaguar has abs()
+		}
+		if (v[2] < this.near_plane) {
+			outside = true;
+		} else v.onScreen = new Vertex_OnScreen()
 
-			let l = v.inSpace.length - 1   // weird that special component z is last. Probably in assembler I will interate backwards
-			for (let i = 0; i < l; i++) {
-				if (Math.abs(v.inSpace[i]) > z) {
-					outside = true; break
-				}  // abs works because there is a (0,0) DMZ between the four center pixels. DMZ around the pixels are used as a kindof mini guard band. symmetric NDC. For Jaguar with its 2-port register file it may makes sense to skew and check for the sign bit (AND r0,r0 sets N-flag). Jaguar has abs()
+		// stupid low level performance optimization: Apply 32 bit MUL only on some vertices .  NDC would apply 16 bit MUL on all visible vertices. NDC is so violating anything which brought me to engines: Bounding boxes and portals. Still, NDC has far less branches and code and wins if occlusion culling is not possible. Rounding is always a problem on the border -- not worse for NDC
+		// On a computer without fast MUL, this would be the code. JRISC has single cycle MUL 16*16=>32 ( as fast as ADD !? )
+		if (outside == false) {	 // this.mode==modes.guard_band &&   I only support this mode because it is compatible to portals and perhaps later also to the beamtree.
+
+			// check critical pixels first   ( I know that this looks complicates. This is resarch to see how much I can trade code for DIVs. I guess for JRISC just doing DIV is faster)
+			// NDCs are faster for the vertices here, but more difficult to clip the edge. Now I feel like vertices between FoV/2 and FoV are many, edges are a few. So even super complicated MUL32 just for the last bit precsion after clipping is better than this.
+			const z2 = Math.floor(z / 2)  // JRISC SAR
+			for (let i = 0; i < l; i++) {  // square pixels. Otherwise I need this.FoV[] ( not the real one w)
+				// notice how thie method loses on bit on the 3d side. But 32 bit are enough there. 16 bit on 2d are plency also though for SD -- hmm					
+				if (Math.abs(v.inSpace[i]) > z2) {
+					v.onScreen.position[i] = v.inSpace[i] * this.screen_FoV[i] / z;  // screen_Fov just smaller than half_screen
+					if (Math.abs(v.onScreen.position[i]) > this.half_screen[i]) {
+						outside = true; break
+					}
+				} // Similar to early out in BSP union
+
+				//if (Math.abs(v[i] * this.screen_FoV[i]) > z*this.screen_FoV[2]) { outside = true }  // Notice how z will be shifted, but two register because 3d is 32 bit
+				// Since FoV is so small, the result will not be 64 bit. I can use two (signed ) 32 bit register with large overlap
+				// 2-port Register file is annoying. Recipie: Start from the end: IMAC . Then have the last preparation instruction 2 cycles before
 			}
-			if (v[2] < this.near_plane) {
-				outside = true;
-			} else v.onScreen = new Vertex_OnScreen()
-
-			// stupid low level performance optimization: Apply 32 bit MUL only on some vertices .  NDC would apply 16 bit MUL on all visible vertices. NDC is so violating anything which brought me to engines: Bounding boxes and portals. Still, NDC has far less branches and code and wins if occlusion culling is not possible. Rounding is always a problem on the border -- not worse for NDC
-			// On a computer without fast MUL, this would be the code. JRISC has single cycle MUL 16*16=>32 ( as fast as ADD !? )
-			if (outside == false) {	 // this.mode==modes.guard_band &&   I only support this mode because it is compatible to portals and perhaps later also to the beamtree.
-
-				// check critical pixels first   ( I know that this looks complicates. This is resarch to see how much I can trade code for DIVs. I guess for JRISC just doing DIV is faster)
-				// NDCs are faster for the vertices here, but more difficult to clip the edge. Now I feel like vertices between FoV/2 and FoV are many, edges are a few. So even super complicated MUL32 just for the last bit precsion after clipping is better than this.
-				const z2 = Math.floor(z / 2)  // JRISC SAR
-				for (let i = 0; i < l; i++) {  // square pixels. Otherwise I need this.FoV[] ( not the real one w)
-					// notice how thie method loses on bit on the 3d side. But 32 bit are enough there. 16 bit on 2d are plency also though for SD -- hmm					
-					if (Math.abs(v.inSpace[i]) > z2) {
-						v.onScreen.position[i] = v.inSpace[i] * this.screen_FoV[i] / z;  // screen_Fov just smaller than half_screen
-						if (Math.abs(v.onScreen.position[i]) > this.half_screen[i]) {
-							outside = true; break
-						}
-					} // Similar to early out in BSP union
+			if (outside == false)
+				for (let i = 0; i < l; i++) {
+					if (Math.abs(v.inSpace[i]) <= z2) {
+						v.onScreen.position[i] = v.inSpace[i] * this.screen_FoV[i] / z
+					}  // This makes no sense behind a portal
 
 					//if (Math.abs(v[i] * this.screen_FoV[i]) > z*this.screen_FoV[2]) { outside = true }  // Notice how z will be shifted, but two register because 3d is 32 bit
 					// Since FoV is so small, the result will not be 64 bit. I can use two (signed ) 32 bit register with large overlap
 					// 2-port Register file is annoying. Recipie: Start from the end: IMAC . Then have the last preparation instruction 2 cycles before
 				}
-				if (outside == false)
-					for (let i = 0; i < l; i++) {
-						if (Math.abs(v.inSpace[i]) <= z2) {
-							v.onScreen.position[i] = v.inSpace[i] * this.screen_FoV[i] / z
-						}  // This makes no sense behind a portal
-
-						//if (Math.abs(v[i] * this.screen_FoV[i]) > z*this.screen_FoV[2]) { outside = true }  // Notice how z will be shifted, but two register because 3d is 32 bit
-						// Since FoV is so small, the result will not be 64 bit. I can use two (signed ) 32 bit register with large overlap
-						// 2-port Register file is annoying. Recipie: Start from the end: IMAC . Then have the last preparation instruction 2 cycles before
-					}
-				/*
-				if (outside==false && Math.abs(v.onScreen.position[0])*2 > z&& Math.abs(v.onScreen.position[0])*2 > z){
-					//code to do 32 bit MUL: scan bits , extend sign, mul high word on both directons, if still uncelar: low word
-				}
-				*/
+			/*
+			if (outside==false && Math.abs(v.onScreen.position[0])*2 > z&& Math.abs(v.onScreen.position[0])*2 > z){
+				//code to do 32 bit MUL: scan bits , extend sign, mul high word on both directons, if still uncelar: low word
 			}
+			*/
+		}
 
-			if (outside) {
-				v.onScreen = null  // On Jagurar I was thinking about using struct . Or perhaps this loop should map() ?
-			}
+		if (outside) {
+			v.onScreen = null  // On Jagurar I was thinking about using struct . Or perhaps this loop should map() ?
+		}
 
-			pattern32 <= 1
-			pattern32 |= outside ? 1 : 0
+		// pattern32 <= 1
+		// pattern32 |= outside ? 1 : 0
 
-			v.outside = outside
-			this.outside[0] ||= outside
-			this.outside[1] &&= outside
-		})
+		v.outside = outside
+		this.outside[0] ||= outside
+		this.outside[1] &&= outside
+	}
+
+	project(vertices: Array<Vertex_in_cameraSpace>): boolean {
+		Corner.screen = this.half_screen //.screen
+		this.outside = [false, false] //; let pattern32 = 0
+		vertices.forEach(this.classify_vertex_JRISCstyle)
 
 		const vertex_control = vertices;//.filter(v => v.onScreen !== null).map(v => v.onScreen.position.map((p, i) => p + this.half_screen[i]))
 
-		pattern32 = pattern32 << vertices.length | pattern32// pattern allows look ahead
+		//pattern32 = pattern32 << vertices.length | pattern32// pattern allows look ahead
 		// Cull invisble Edges. Faces pull their z,s,t from 3d anyway. I cannot really clip edges here because it lets data explode which will be needed by the rasterizer (not for face culling)
 		// I am unhappy about the need to basically repeat this step on the 2dBSP (for guard_band and portals).
 		// MVP: Get code running on 256x256 with one polygon. Guard == NDC 
 		// Optimized clipping on rectangle because one factor is zero. The other still need
-		let on_screen = new Array<Item>(), cut = [], l = vertices.length
-		this.corner11 = 0 // ref bitfield in JRISC ( or C# ) cannot do in JS
-
-		/* too expensive
-		// check if vertices are still outside if we use the (rounded) edge slopes
-		// This has to be done after NDC -> px ( rounding!!) . We do this to iterate over the corners. Of course a serial splitter does not care. We don't need the exact cut, only need to know if sense of rotation changes.
-		// no synergz with polygons with vertex.count > 3 . we don't look at the faces here
-		vertices.forEach((v, i) => {
-			let k = (i + 1) % vertices.length
-			let w=pattern32 >> i
-			if (( w&7) == 2) {  // edge going outside, back inside
-
-				// It wuould really be faster to delay this
-				// find cut with screen border
-				//
-
-				let pixels=this.findCut(vertices[i], vertices[k]); // find cut because rounding may have put it inside the screen again. This is a problem with all clipping algorithms
-				if ( pixels.reduce((p,c,j)=>p|| (c<0 || c>this.screen[j]),false ) ) pattern32=~((~pattern32) | 1<< i)  // set vertex to inside 
-			}
-		})
-		*/
-
-		let v_w_n = new Cyclic_Collection<Vertex_in_cameraSpace>(vertices) //new Array<Vertex_OnScreen>
-
-		console.log("Vertices.length",vertices.length)
-		let check_for_repais=false
-		// 2 vertices -> edge
-		vertices.forEach((v, i) => {// edge stage. In a polygon an edge follows every vertex while circulating. In mesh it does not.
-			//if (neighbours[0] instanceof Vertex_OnScreen ) {}
-			let k = (i + 1) % vertices.length
-			let neighbours = [v_w_n.get_startingVertex(i), v_w_n.get_startingVertex(i + 1)] // Error cannot access on_screen_read before initialization.
-
-
-			if (neighbours[0].outside) {
-				if (neighbours[1].outside) {
-					let veto_face_vertex:number[][]=[[0,0],[0,0]]
-					let pattern4 = this.isEdge_visible([vertices[i], vertices[k]],veto_face_vertex)  // tested 2025-09-09 for 0100
-					console.log("pattern4",pattern4.toString(2) )
-					if (0 !=pattern4  ) {
-						let cuts: Item[] = this.edge_crossing_two_borders([vertices[i], vertices[k]], pattern4,veto_face_vertex)
-						on_screen.push(...cuts) ; check_for_repais=true
-						console.log("onsceen.length ..",on_screen.length)
-					}
-				} else {
-					let cut_r = this.edge_fromVertex_toBorder([vertices[k], vertices[i]], l);
-					on_screen.push(...cut_r.reverse())
-				}
-			} else {
-				on_screen.push(v.onScreen)
-				if (neighbours[1].outside) {
-					// todo move into following method
-					let cut_r = this.edge_fromVertex_toBorder([vertices[i], vertices[k]], l);
-					on_screen.push(...cut_r)
-					//let border=new Onthe_border()
-				}
-			}
-		})
-
-
-		// // repair order for some reason
-		// if (check_for_repais){
-		// 	on_screen.forEach((v, i) {
-
-		// 	} )
-		// }
-
-		console.log("onsceen.length ! ",on_screen.length)
-		// if (on_screen.length==0){
-		// 	let lll=0
-		// }
-		if (on_screen.length>3){
-			console.log("vertices types ! ",vertices.map(item=>item instanceof Onthe_border ? item.border+" "+item.pixel_ordinate_int : item.constructor.name))
-			console.log("onsceen types ! ",on_screen.map(item=>item instanceof Onthe_border ? item.border+" "+item.pixel_ordinate_int : item.constructor.name))
-		}
-
-		let on_screen_read = new Cyclic_Collection<Item>(on_screen)
-		const n = 4;
-
-		let with_corners = new Array<Item>();
-		// check: edges -> vertices ( happy path: add corners, Rounding Exception: remove edges)
-		// corners. The code above does not know if trianle or more. The code below still does not care. 
-		// funny that we need two passes to add and remove items
-		on_screen.forEach((v, i) => {
-			// 
-			let neighbours = [-1, +1].map(d => on_screen_read.get_startingVertex(i + d))
-
-			// two cases without edge between vertices. Add edge to ease drawing
-			// In this case follow the border in the rotation sense of a front facing polygon
-			if ((neighbours[0] instanceof Onthe_border && v instanceof vertex_behind_nearPlane && neighbours[1] instanceof Onthe_border)) {
-				let n = 4;
-				let i = neighbours[1].border - neighbours[0].border;
-				//let s=Math.sign(i); 
-				//i=Math.abs(i);
-				var j = ((i % n) + n) % n
-				if (j == 3) {
-					let t = new Corner(); t.corner = neighbours[1].border
-					with_corners.push(t) // debug.  This happens already when I check borders
-					return
-				} else {
-					var range = neighbours.map(n => (n as Onthe_border).border)  // typeGuard failed
-				}
-			}
-			else { // In this case, use the shortest path between the two vertices. This can endure the rounding errors from clipping. This should work for the BSP-tree.
-				// In the MVP I will send only clipped polygons to the BSP tree. Perhaps later I will add a 32bit code path and do pure portals?
-				// Anyway, BSP means portals because the leafs are convex polygons, and we add convex polygons whose clipped version becomes a new leaf.
-				// BSP always wanrs heuristcs. The simple linear polygon-add will use all info about two polygons to decide how to construct the BSP,
-				// though, the leaf is already integrated into the beam tree. I would need to consider tree vs convex polygon. 
-				// When rendering a mesh in a stripe, surely I should reuse shared edges
-				with_corners.push(v)
-				if ((v instanceof Onthe_border && neighbours[1] instanceof Onthe_border))  // previous loop discards the vertex marker. This is for symmetry: not a property. Asymmetric code looks ugly. Perhaps optimize the container: Type in a pattern, but use same getter and setter
-				{
-					var range = [v.border, neighbours[1].border]
-				}else return
-				//else with_corners.push(v)  // this loop only adds corners. No need to skip due to a pattern nearby
-				
-			}
-
-			if (range[1] < range[0]) range[1] += n
-
-			//console.log("may add corner", range[0], range[1])
-			for (let k = range[0]; k < range[1]; k++) { // corner is named after the border before it ( math sense of rotation )
-				console.log("going to add corner",k ,n)
-				let t = new Corner(); t.corner = k % n
-				with_corners.push(t) // debug.  This happens already when I check borders
-			}
-			if (range[1] != range[0]) console.log("Done adding",range[1])
-		})
+		let on_screen = this.vertex_to_edge(vertices);
 
 		if (on_screen.length == 0) {  // no vertex nor edge on screen
 			// still need to clear screen
@@ -472,12 +347,13 @@ export class Polygon_in_cameraSpace {
 			// viewing frustum piercing through polygon
 		}
 
+		let with_corners = this.includeCorners(on_screen);
 
 
 		// screen as floats
 
-		if (this.mode == modes.NDC) { }       // NDC -> pixel   . Rounding errors! Do this before beam tree. So beam tree is 2d and has no beams
-		else { }  // Guard band  . Faster rejection at portals ( no MUL needed with its many register fetches). Still no 3d because we operate on 16 bit rounded screen coordinates after projection and rotation!!
+		// if (this.mode == modes.NDC) { }       // NDC -> pixel   . Rounding errors! Do this before beam tree. So beam tree is 2d and has no beams
+		// else { }  // Guard band  . Faster rejection at portals ( no MUL needed with its many register fetches). Still no 3d because we operate on 16 bit rounded screen coordinates after projection and rotation!!
 
 
 		let texturemap = new Camera_in_stSpace()  // Camera is in (0,0) in its own space .
@@ -525,6 +401,155 @@ export class Polygon_in_cameraSpace {
 		this.rasterize_onscreen([[-1,-1],[+1,-1],[+1,+1],[-1,+1]],payload)  // full screen
 		return
 		*/
+	}
+
+	private includeCorners(on_screen: Item[]) {
+		let on_screen_read = new Cyclic_Collection<Item>(on_screen);
+		const n = 4;
+
+		let with_corners = new Array<Item>();
+		// check: edges -> vertices ( happy path: add corners, Rounding Exception: remove edges)
+		// corners. The code above does not know if trianle or more. The code below still does not care. 
+		// funny that we need two passes to add and remove items
+		on_screen.forEach((v, i) => {
+			// 
+			let neighbours = [-1, +1].map(d => on_screen_read.get_startingVertex(i + d));
+
+			// two cases without edge between vertices. Add edge to ease drawing
+			// In this case follow the border in the rotation sense of a front facing polygon
+			if ((neighbours[0] instanceof Onthe_border && v instanceof vertex_behind_nearPlane && neighbours[1] instanceof Onthe_border)) {
+				let n = 4;
+				let i = neighbours[1].border - neighbours[0].border;
+				//let s=Math.sign(i); 
+				//i=Math.abs(i);
+				var j = ((i % n) + n) % n;
+				if (j == 3) {
+					let t = new Corner(); t.corner = neighbours[1].border;
+					with_corners.push(t); // debug.  This happens already when I check borders
+					return;
+				} else {
+					var range = neighbours.map(n => (n as Onthe_border).border); // typeGuard failed
+				}
+			}
+			else { // In this case, use the shortest path between the two vertices. This can endure the rounding errors from clipping. This should work for the BSP-tree.
+				// In the MVP I will send only clipped polygons to the BSP tree. Perhaps later I will add a 32bit code path and do pure portals?
+				// Anyway, BSP means portals because the leafs are convex polygons, and we add convex polygons whose clipped version becomes a new leaf.
+				// BSP always wanrs heuristcs. The simple linear polygon-add will use all info about two polygons to decide how to construct the BSP,
+				// though, the leaf is already integrated into the beam tree. I would need to consider tree vs convex polygon. 
+				// When rendering a mesh in a stripe, surely I should reuse shared edges
+				with_corners.push(v);
+				if ((v instanceof Onthe_border && neighbours[1] instanceof Onthe_border)) // previous loop discards the vertex marker. This is for symmetry: not a property. Asymmetric code looks ugly. Perhaps optimize the container: Type in a pattern, but use same getter and setter
+				{
+					var range = [v.border, neighbours[1].border];
+				} else return;
+				//else with_corners.push(v)  // this loop only adds corners. No need to skip due to a pattern nearby
+			}
+
+			if (range[1] < range[0]) range[1] += n;
+
+			//console.log("may add corner", range[0], range[1])
+			for (let k = range[0]; k < range[1]; k++) { // corner is named after the border before it ( math sense of rotation )
+				console.log("going to add corner", k, n);
+				let t = new Corner(); t.corner = k % n;
+				with_corners.push(t); // debug.  This happens already when I check borders
+			}
+			if (range[1] != range[0]) console.log("Done adding", range[1]);
+		});
+		return with_corners;
+	}
+
+	private vertex_to_edge(vertices: Vertex_in_cameraSpace[]) {
+		let on_screen = new Array<Item>(), cut = [], l = vertices.length;
+		this.corner11 = 0; // ref bitfield in JRISC ( or C# ) cannot do in JS
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+		/* too expensive
+		// check if vertices are still outside if we use the (rounded) edge slopes
+		// This has to be done after NDC -> px ( rounding!!) . We do this to iterate over the corners. Of course a serial splitter does not care. We don't need the exact cut, only need to know if sense of rotation changes.
+		// no synergz with polygons with vertex.count > 3 . we don't look at the faces here
+		vertices.forEach((v, i) => {
+			let k = (i + 1) % vertices.length
+			let w=pattern32 >> i
+			if (( w&7) == 2) {  // edge going outside, back inside
+	
+				// It wuould really be faster to delay this
+				// find cut with screen border
+				//
+	
+				let pixels=this.findCut(vertices[i], vertices[k]); // find cut because rounding may have put it inside the screen again. This is a problem with all clipping algorithms
+				if ( pixels.reduce((p,c,j)=>p|| (c<0 || c>this.screen[j]),false ) ) pattern32=~((~pattern32) | 1<< i)  // set vertex to inside
+			}
+		})
+		*/
+		let v_w_n = new Cyclic_Collection<Vertex_in_cameraSpace>(vertices); //new Array<Vertex_OnScreen>
+
+		console.log("Vertices.length", vertices.length);
+		let check_for_repais = false;
+		// 2 vertices -> edge
+		vertices.forEach((v, i) => {
+			//if (neighbours[0] instanceof Vertex_OnScreen ) {}
+			let k = (i + 1) % vertices.length;
+			let neighbours = [v_w_n.get_startingVertex(i), v_w_n.get_startingVertex(i + 1)]; // Error cannot access on_screen_read before initialization.
+
+
+			if (neighbours[0].outside) {
+				if (neighbours[1].outside) {
+					let veto_face_vertex: number[][] = [[0, 0], [0, 0]];
+					let pattern4 = this.isEdge_visible([vertices[i], vertices[k]], veto_face_vertex); // tested 2025-09-09 for 0100
+					console.log("pattern4", pattern4.toString(2));
+					if (0 != pattern4) {
+						let cuts: Item[] = this.edge_crossing_two_borders([vertices[i], vertices[k]], pattern4, veto_face_vertex);
+						on_screen.push(...cuts); check_for_repais = true;
+						console.log("onsceen.length ..", on_screen.length);
+					}
+				} else {
+					let cut_r = this.edge_fromVertex_toBorder([vertices[k], vertices[i]], l);
+					on_screen.push(...cut_r.reverse());
+				}
+			} else {
+				on_screen.push(v.onScreen);
+				if (neighbours[1].outside) {
+					// todo move into following method
+					let cut_r = this.edge_fromVertex_toBorder([vertices[i], vertices[k]], l);
+					on_screen.push(...cut_r);
+					//let border=new Onthe_border()
+				}
+			}
+		});
+
+
+		// // repair order for some reason
+		// if (check_for_repais){
+		// 	on_screen.forEach((v, i) {
+		// 	} )
+		// }
+		console.log("onsceen.length ! ", on_screen.length);
+		// if (on_screen.length==0){
+		// 	let lll=0
+		// }
+		if (on_screen.length > 3) {
+			console.log("vertices types ! ", vertices.map(item => item instanceof Onthe_border ? item.border + " " + item.pixel_ordinate_int : item.constructor.name));
+			console.log("onsceen types ! ", on_screen.map(item => item instanceof Onthe_border ? item.border + " " + item.pixel_ordinate_int : item.constructor.name));
+		}
+		return on_screen;
 	}
 
 	// This may be useful for beam tree and non-convex polygons
