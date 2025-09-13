@@ -866,18 +866,20 @@ export class Polygon_in_cameraSpace {
             }
             // Point supports get_y . So I only need to consider mirror cases for pattern matchting and subpixel, but not for the for(y) .
             if (v_val[0] instanceof Vertex_OnScreen && edge === null && v_val[1] instanceof Vertex_OnScreen) {
-                const gradient = new Vec2([(v_val[1]).position, v_val[0].position]);
+                const slope = new Vec2([(v_val[1]).position, v_val[0].position]);
                 //console.log("slope", slope.v)
                 // for(let i=0;i< v_val[0].postion.length;i+=2){
                 // 	d[i]=(v_val[i] as Vertex_OnScreen).postion[i]-v_val[0].postion[i]
                 // }
                 //var slope=d// see belowvar slope_integer=
-                var d = gradient.v;
+                var d = slope.v;
                 if (d[1] <= 0) {
                     continue;
                 }
                 var y_int = v_val[0].get_y(); // int
-                const x_at_y = (v_val[0].position[0] + d[0] * (y_int - v_val[0].position[1]) / d[1]); // frac -> int
+                const x_at_y = v_val[0].position[0] + (d[1] == 0 ? 0 : d[0] * (y_int - v_val[0].position[1]) / d[1]); // frac -> int
+                //const zero= (x_at_y-(v_val[0].position[0])*d[0] + d[1] * (y_int - v_val[0].position[1])
+                console.log("Check subpixel correction for vertex on screen");
                 {
                     const range = v_val.map(v => v.position[0]);
                     range.sort((a, b) => a - b);
@@ -890,7 +892,7 @@ export class Polygon_in_cameraSpace {
                 if (x_at_y_int === undefined || x_at_y_int < -160 || x_at_y_int > 160) {
                     throw new Error("No edge found");
                 }
-                Bresenham.accumulator = gradient.wedgeProduct(new Vec2([[x_at_y_int, y_int], v_val[0].position])); //(y_int- v_val[0][1] )*d[0]+(x_at_y_int- v_val[0][0] )*d[1]  // this should be the same for all edges not instance of Edge_Horizon
+                Bresenham.accumulator = slope.wedgeProduct(new Vec2([[x_at_y_int, y_int], v_val[0].position])); //(y_int- v_val[0][1] )*d[0]+(x_at_y_int- v_val[0][0] )*d[1]  // this should be the same for all edges not instance of Edge_Horizon
                 Bresenham.slope = d;
                 if (Bresenham.slope[1] < 0) {
                     throw new Error("go down!.");
@@ -900,11 +902,11 @@ export class Polygon_in_cameraSpace {
             }
             var done = false;
             if (edge instanceof Edge_w_slope) {
-                const both_ways = v_val.slice();
+                const both_ways = v_val.slice(), reverse = false;
                 for (let k = 0; k < 2; k++) {
-                    var { done, x_at_y_int } = this.clipped_edge_to_Bresenham(both_ways, edge, Bresenham);
+                    var { done, x_at_y_int } = this.clipped_edge_to_Bresenham(both_ways, edge, Bresenham, k == 1);
                     //console.log("x_at_y_int",x_at_y_int)
-                    if (x_at_y_int === undefined || x_at_y_int < -160 || x_at_y_int > 160) {
+                    if (x_at_y_int === undefined || x_at_y_int < -480 || x_at_y_int > 480) { // Todo: one bit instead of two? Also the 16 bit range may not match the the Edge=null case
                         throw new Error("No edge found");
                     }
                     //console.log("Bresenham.slope",Bresenham.slope,done,k)
@@ -915,7 +917,7 @@ export class Polygon_in_cameraSpace {
                             console.log("-Bresenham");
                         }
                         if (v_val[0] instanceof Vertex_OnScreen) {
-                            x_at_y_int = v_val[0].position[0]; // Todo remove cliiped edge to bresenham calc
+                            //	x_at_y_int= v_val[0].position[0]; // Todo remove cliiped edge to bresenham calc
                             console.log("x_at_y_int overwrite", x_at_y_int, "k", k);
                         }
                         if (Bresenham.slope[1] < 0) {
@@ -984,8 +986,8 @@ export class Polygon_in_cameraSpace {
         }
         const overshot = false;
         //console.log("x_at_y_int",x_at_y_int)
-        if (x_at_y_int === undefined || x_at_y_int < -160 || x_at_y_int > 160) {
-            throw new Error("No edge found");
+        if (x_at_y_int === undefined || x_at_y_int < -320 || x_at_y_int > 320) {
+            throw new Error("No edge found" + x_at_y_int.toPrecision(0));
         }
         if (Bresenham.slope[0] == undefined) {
             const lll = 0;
@@ -993,7 +995,7 @@ export class Polygon_in_cameraSpace {
         return { x_at_y_int, overshot };
     }
     // So again sorting is a big thing. Sorting by z, sorting around the polygon in world space, sorting inside outside of the screen
-    clipped_edge_to_Bresenham(v_val, edge, Bresenham) {
+    clipped_edge_to_Bresenham(v_val, edge, Bresenham, reverse) {
         let done = false;
         if (v_val[1] instanceof Vertex_OnScreen && v_val[0] instanceof Onthe_border) {
             const gradient = edge.gradient; // see belowvar slope_integer=
@@ -1005,7 +1007,21 @@ export class Polygon_in_cameraSpace {
             if (x_at_y_int === undefined || isNaN(x_at_y_int) || x_at_y_int < -160 || x_at_y_int > 160) {
                 throw new Error("No edge found");
             }
-            Bresenham.accumulator = gradient.innerProduct(new Vec2([[x_at_y_int, y_int], v_val[1].position])); // this should be the same for all edges not instance of Edge_Horizon
+            if (!reverse) {
+                Bresenham.accumulator = gradient.innerProduct(new Vec2([[x_at_y_int, y_int], v_val[1].position])); // Like the other Bresenham, we need this for the next scanline (current x_at_y_int is known)  // this should be the same for all edges not instance of Edge_Horizon
+            }
+            else {
+                Bresenham.accumulator = gradient.innerProduct(new Vec2([v_val[1].fraction()]));
+                x_at_y_int = Math.floor(v_val[1].position[0]);
+            }
+            if (d[0] != 0) {
+                const subpixel = Math.floor(-Bresenham.accumulator / d[0]);
+                console.log("subpixel", subpixel, reverse);
+                x_at_y_int += subpixel;
+                Bresenham.accumulator += subpixel * d[0];
+            }
+            // todo: Either allow x_at_y_int to exten by 320 in both directions,
+            // todo: or have a separte y_at_y_int for the first line.// todo: adjust x_at_y_int to 
             Bresenham.slope = [-d[1], d[0]]; // I messed up the sign somewhere. Check with test case;
             //console.log("Bresenham.accumulator single",Bresenham.accumulator,Bresenham.slope,"@",x_at_y_int, y_int)
             done = true;
@@ -1156,7 +1172,7 @@ export class Polygon_in_cameraSpace {
         // const axis = border & 1  // border++ implies that we need to look at the lsb
         // {
         // 	const nxs = (~border & 1)  // fail for border=2
-        onborder.pixel_ordinate_int = Math.floor(pixel_ordinate); //vs[0].onScreen.position[axis] - (corner[nxs] - vs[0].onScreen.position[nxs]) * slope[nxs] / slope[axis]   // wedge product // The index galore would be a bunch of move in JRISC in the if above.
+        onborder.pixel_ordinate_int = Math.floor(pixel_ordinate + (1 ^ border & 1)); //vs[0].onScreen.position[axis] - (corner[nxs] - vs[0].onScreen.position[nxs]) * slope[nxs] / slope[axis]   // wedge product // The index galore would be a bunch of move in JRISC in the if above.
         //	}
         onborder.z_gt_nearplane = true; // todo    . vs[1].onScreen.position[1] > this.near_plane
         on_screen.push(onborder); // todo check if border edge is defined enough. Then check out why rasterizer cannot get a gradient ( fromt the border / corner info)
