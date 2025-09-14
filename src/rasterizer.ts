@@ -912,7 +912,7 @@ export class Polygon_in_cameraSpace {
 				ps.span(slope_accu_c[0][1], width, m, es)
 			} else { if (width !=0 ) {
 
-				console.log("access denied ",y, slope_accu_c[0][1] ,slope_accu_c[1][1])
+				// BAck face culling done per line. Todo: do upfront console.log("access denied ",y, slope_accu_c[0][1] ,slope_accu_c[1][1])
 				let llll=0
 				//	ps.span(-155, 310, m, es)
 			}
@@ -1071,13 +1071,27 @@ export class Polygon_in_cameraSpace {
 
 				}
 				if (done) {
-					if (d[0] != 0) {
-						Bresenham.accumulator += y_int * d[1] 
+					Bresenham.accumulator += y_int * d[1]
+					if (isNaN(Bresenham.accumulator)) {
+						throw new Error("akku needs to be a number")
+					}
+					if (Math.abs(Bresenham.accumulator) < (this.screen[0]+1) * Math.abs( d[0]) ) {  // Todo: Why d[0] < 0 ?
 						x_at_y_int = Math.floor(-Bresenham.accumulator / d[0]); // This should be the same code for all edges
+						if (isNaN(x_at_y_int)) {
+							throw new Error("HowCanThisBe?")
+						}
 						Bresenham.accumulator += x_at_y_int * d[0]
-						console.log("Vertex rounded",check_here)
+						if (isNaN(Bresenham.accumulator)) {
+							throw new Error("akku needs to be a number")
+						}
+
+						console.log("Vertex rounded", check_here)
 						console.log("edge start",[x_at_y_int,y_int])
 						let lll=0
+					}else{
+						x_at_y_int=0 
+						// Todo: This happens due to the lets start the next edge after the vertex. But if the vertex is exactly on the grid, this is wrong . Ceil is the correct code
+						// will not be visible because it happens only with zero height edges
 					}
 
 					// After a vertex ( even of type "on the border" the slope has already moved 0..1 line). So the first x is on screen.

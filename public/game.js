@@ -123,10 +123,10 @@ document.addEventListener("keydown", //  repeats liek keypressed
             case "Right":
                 controller.rotation.Rotate_along_axis_Orthonormalize(1, [controller.sine[0], -controller.sine[1]]);
                 break;
-            case "Up":
+            case "Down":
                 controller.rotation.Rotate_along_axis_Orthonormalize(0, [controller.sine[0], -controller.sine[1]]);
                 break;
-            case "Down":
+            case "Up":
                 controller.rotation.Rotate_along_axis_Orthonormalize(0, controller.sine);
                 break;
             default: return;
