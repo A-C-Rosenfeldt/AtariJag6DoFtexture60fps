@@ -72,6 +72,18 @@ t.addEventListener("click", (event) => {
     boilerplate();
 });
 t.removeAttribute("disabled");
+var t = document.getElementById("rise");
+t.addEventListener("click", (event) => {
+    controller.position.add(controller.rotation.nominator[1], -0.1);
+    boilerplate();
+});
+t.removeAttribute("disabled");
+var t = document.getElementById("fall");
+t.addEventListener("click", (event) => {
+    controller.position.add(controller.rotation.nominator[1], 0.1);
+    boilerplate();
+});
+t.removeAttribute("disabled");
 t.removeAttribute("disabled");
 var t = document.getElementById("clock");
 t.addEventListener("click", (event) => {
@@ -137,6 +149,12 @@ document.addEventListener("keydown", //  repeats liek keypressed
             break;
         case "a":
             controller.position.add(controller.rotation.nominator[0], -0.1);
+            break;
+        case "f":
+            controller.position.add(controller.rotation.nominator[1], 0.1);
+            break;
+        case "r":
+            controller.position.add(controller.rotation.nominator[1], -0.1);
             break;
         case ",":
             controller.rotation.Rotate_along_axis_Orthonormalize(2, controller.sine);

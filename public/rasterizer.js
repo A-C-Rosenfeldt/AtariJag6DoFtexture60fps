@@ -900,36 +900,45 @@ export class Polygon_in_cameraSpace {
                 //console.log("Bresenham.slope",Bresenham.slope)  Todo: 32bit integer
                 break;
             }
-            var done = false;
             if (edge instanceof Edge_w_slope) {
-                const both_ways = v_val.slice(), reverse = false;
-                for (let k = 0; k < 2; k++) {
-                    var { done, x_at_y_int } = this.clipped_edge_to_Bresenham(both_ways, edge, Bresenham, k == 1);
-                    //console.log("x_at_y_int",x_at_y_int)
-                    if (x_at_y_int === undefined || x_at_y_int < -480 || x_at_y_int > 480) { // Todo: one bit instead of two? Also the 16 bit range may not match the the Edge=null case
+                const gradient = edge.gradient; // see belowvar slope_integer=
+                const d = gradient.v; // this is like in edge between two borders
+                let done = false;
+                const y_int = v_val[0].get_y();
+                if (v_val[0] instanceof Vertex_OnScreen && v_val[1] instanceof Onthe_border) {
+                    Bresenham.slope = [-d[1], d[0]]; // gradient -> slope : -minus in front  . This is my convention. The other code should follow		
+                    if (Bresenham.slope[1] < 0) {
+                        throw new Error("go down");
+                    }
+                    var check_here = v_val[0].position;
+                    Bresenham.accumulator = -gradient.innerProduct(new Vec2([v_val[0].position]));
+                    done = true;
+                }
+                if (v_val[1] instanceof Vertex_OnScreen && v_val[0] instanceof Onthe_border) {
+                    Bresenham.slope = [+d[1], -d[0]]; // gradient -> slope : -minus in front  . This is my convention. The other code should follow		
+                    if (Bresenham.slope[1] < 0) {
+                        throw new Error("go down");
+                    }
+                    done = true;
+                    var check_here = v_val[1].position;
+                    Bresenham.accumulator = -gradient.innerProduct(new Vec2([v_val[1].position]));
+                    //var x_at_y_int = (v_val[0].border & 1) == 1 ? v_val[0].pixel_ordinate_int : this.half_screen[0] * ((v_val[0].border & 2) - 1); // todo: method!
+                }
+                if (done) {
+                    if (d[0] != 0) {
+                        Bresenham.accumulator += y_int * d[1];
+                        x_at_y_int = Math.floor(-Bresenham.accumulator / d[0]); // This should be the same code for all edges
+                        Bresenham.accumulator += x_at_y_int * d[0];
+                        console.log("Vertex rounded", check_here);
+                        console.log("edge start", [x_at_y_int, y_int]);
+                        let lll = 0;
+                    }
+                    // After a vertex ( even of type "on the border" the slope has already moved 0..1 line). So the first x is on screen.
+                    if (x_at_y_int === undefined || isNaN(x_at_y_int) || x_at_y_int < -480 || x_at_y_int > 480) {
                         throw new Error("No edge found");
                     }
-                    //console.log("Bresenham.slope",Bresenham.slope,done,k)
-                    if (done) {
-                        if (k == 0) {
-                            Bresenham.slope = [-Bresenham.slope[0], -Bresenham.slope[1]];
-                            Bresenham.accumulator = -Bresenham.accumulator; // I guess
-                            console.log("-Bresenham");
-                        }
-                        if (v_val[0] instanceof Vertex_OnScreen) {
-                            //	x_at_y_int= v_val[0].position[0]; // Todo remove cliiped edge to bresenham calc
-                            console.log("x_at_y_int overwrite", x_at_y_int, "k", k);
-                        }
-                        if (Bresenham.slope[1] < 0) {
-                            throw new Error("go down!." + k);
-                        } // I messed up the sign
-                        //console.log("Bresenham.slope",Bresenham.slope)
-                        break;
-                    }
-                    both_ways.reverse();
-                }
-                if (done)
                     break;
+                }
             }
             // todo: unite with corner.
             if (edge == null) {
@@ -995,41 +1004,8 @@ export class Polygon_in_cameraSpace {
         return { x_at_y_int, overshot };
     }
     // So again sorting is a big thing. Sorting by z, sorting around the polygon in world space, sorting inside outside of the screen
-    clipped_edge_to_Bresenham(v_val, edge, Bresenham, reverse) {
-        let done = false;
-        if (v_val[1] instanceof Vertex_OnScreen && v_val[0] instanceof Onthe_border) {
-            const gradient = edge.gradient; // see belowvar slope_integer=
-            // duplicated code. Function call?
-            const d = gradient.v;
-            const y_int = v_val[0].get_y(); // int
-            var x_at_y_int = (v_val[0].border & 1) == 1 ? v_val[0].pixel_ordinate_int : this.half_screen[0] * ((v_val[0].border & 2) - 1); // todo: method!
-            //console.log("x_at_y_int",x_at_y_int);
-            if (x_at_y_int === undefined || isNaN(x_at_y_int) || x_at_y_int < -160 || x_at_y_int > 160) {
-                throw new Error("No edge found");
-            }
-            if (!reverse) {
-                Bresenham.accumulator = gradient.innerProduct(new Vec2([[x_at_y_int, y_int], v_val[1].position])); // Like the other Bresenham, we need this for the next scanline (current x_at_y_int is known)  // this should be the same for all edges not instance of Edge_Horizon
-            }
-            else {
-                Bresenham.accumulator = gradient.innerProduct(new Vec2([v_val[1].fraction()]));
-                x_at_y_int = Math.floor(v_val[1].position[0]);
-            }
-            if (d[0] != 0) {
-                const subpixel = Math.floor(-Bresenham.accumulator / d[0]);
-                console.log("subpixel", subpixel, reverse);
-                x_at_y_int += subpixel;
-                Bresenham.accumulator += subpixel * d[0];
-            }
-            // todo: Either allow x_at_y_int to exten by 320 in both directions,
-            // todo: or have a separte y_at_y_int for the first line.// todo: adjust x_at_y_int to 
-            Bresenham.slope = [-d[1], d[0]]; // I messed up the sign somewhere. Check with test case;
-            //console.log("Bresenham.accumulator single",Bresenham.accumulator,Bresenham.slope,"@",x_at_y_int, y_int)
-            done = true;
-        }
-        else {
-            var x_at_y_int = 0;
-        }
-        return { done, x_at_y_int };
+    clipped_edge_to_Bresenham(os, ob, edge, Bresenham) {
+        // in the center of the screen  aka Bias. I think, 16 bit MUL allows this. Otherwise: specific code for from edge vs to edge along y
     }
     // JRISC has a reminder, but it is quirky and needs helper code. Probably I'd rather do: 
     /*
