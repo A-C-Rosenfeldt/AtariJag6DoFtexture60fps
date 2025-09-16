@@ -66,7 +66,18 @@ class Edge_on_Screen implements Item {
 // }
 
 class Edge_w_slope extends Edge_on_Screen {
-	gradient: Vec2
+	private _gradient: Vec2;
+	public get gradient(): Vec2 {
+		return this._gradient;
+	}
+	public set gradient(value: Vec2) {
+		// Slope is from vertex to border.  Vertex to vertex around the clock. Horizon is trying to mimic around the clock. But really, slope is never top down. Ah later I convert around-the-clock to top down.
+		// So anyways: slope can be upwards until we know which side ( left vs right) we are on
+		// if (value.v[0]<0){
+		// 	throw new Error("Gradient along x needs to be positive, to make up for the negative Akku and the negative x.fraction <=floor.  ")
+		// }
+		this._gradient = value;
+	}
 }
 
 class Edge_Horizon extends Edge_w_slope {
@@ -213,8 +224,26 @@ class Cyclic_Indexer {
 
 
 export class Gradient {
-	accumulator: number
-	slope = new Array<number>(2)
+	private _accumulator: number;
+	public get accumulator(): number {
+		return this._accumulator;
+	}
+	public set accumulator(value: number) {
+		if (value>0){
+			throw new Error("Start value for accumulator needs to be negative for watertight common edges. I could not find any use (as a test for EdgeHorizon pherphas) for these signs" )
+		}
+		this._accumulator = value;
+	}
+	private _slope = new Array<number>(2);
+	public get slope() {
+		return this._slope;
+	}
+	public set slope(value) {
+		if (value[1]<0){
+			throw new Error("Slope is not allowed to point upwards. I could not find any use (as a test for EdgeHorizon pherphas) for these signs" )
+		}
+		this._slope = value;
+	}
 	//	alongEdge = new Array<number>(2) // I use a new type for this callen accumulator_increment -- todo: Harmonize names!
 }
 
@@ -768,7 +797,7 @@ export class Polygon_in_cameraSpace {
 			return 'get_y' in object;
 		}
 
-		console.log("vertex.length",vertex.length);const ypsilons:number[]=[]
+		//console.log("vertex.length",vertex.length);const ypsilons:number[]=[]
 		vertex.forEach((v, i) => {
 			// const checkme = v instanceof Onthe_border//;console.log("checkme",checkme)
 			// if (checkme) {
@@ -776,13 +805,13 @@ export class Polygon_in_cameraSpace {
 			// 	const d = v.get_y()
 			// }
 			if (instanceOfPoint(v)) {
-				ypsilons.push(v.get_y() )
+				//ypsilons.push(v.get_y() )
 				if (v.get_y() < min_max[0][1]) min_max[0] = [i, v.get_y()]
 				if (v.get_y() > min_max[1][1]) min_max[1] = [i, v.get_y()]
 			}
 		});
 
-		console.log("ypsilons",ypsilons)
+		//console.log("ypsilons",ypsilons)
 
 		const i = min_max[0][0]
 		const active_vertices = [[-1, -1, i], [-1, -1, i]] // happens in loop first iteration, (i + l - 1) % l], [i, (i + 1) % l]]
@@ -832,6 +861,9 @@ export class Polygon_in_cameraSpace {
 						ind.length = l, ind.direction = k
 						//console.log("y",y)
 						var { x_at_y_int, overshot } = this.streamIn_newVertex(active_vertices[k],active_vertices[1-k][2], Bresenham[k], ind, vertex, count_to_one);
+						if (Bresenham[k].accumulator>0){
+							throw new Error("by convention not only need the horiztonal gradient keep its sign, but so does the start accumulator value "+k.toFixed(0)+"deltaX"+Bresenham[k].slope[0].toFixed(2) )
+						}
 						if (overshot) {
 							console.log("overshot")
 							break
@@ -868,10 +900,9 @@ export class Polygon_in_cameraSpace {
 							}
 						}
 
+						console.log("why edges wobble?",x_at_y_int, y, slope_accu_c[k][0], Bresenham[k].accumulator,Bresenham[k].slope[0],Bresenham[k].slope[1])
+
 						es[k] = new EdgeShader(x_at_y_int, y, slope_accu_c[k][0], Bresenham[k], payload, this.infinite_plane_FoV)
-
-
-
 
 
 						// Alternatives
@@ -983,22 +1014,27 @@ export class Polygon_in_cameraSpace {
 				if (x_at_y_int === undefined  || x_at_y_int<-160 || x_at_y_int>160) {
 					throw new Error("No edge found")
 				}				
-				Bresenham.accumulator = edge.bias + edge.gradient.innerProduct(new Vec2([[x_at_y_int, y_int]])); //y_int*d[0]+x_at_y_int*d[1]
+
+				// I followed bugs from Bresnham upstream. I need to conform to signs . Looks like I should add a method to the Bresenham class, but the following line refuses to go in
+
+				let accumulator = edge.bias + edge.gradient.innerProduct(new Vec2([[x_at_y_int, y_int]])); //y_int*d[0]+x_at_y_int*d[1]
+
+				let gradient: Vec = edge.gradient;
+				if (gradient.v[0] < 0) {
+					gradient = gradient.scalarProduct(-1) // for akku
+					accumulator = -accumulator
+				}
 
 				{
-					const d = edge.gradient.v
-					Bresenham.slope = [-d[1], d[0]]; // I messed up the sign somewhere. Check with test case;
+					const d = gradient.v
+					Bresenham.slope = [-d[1], d[0]]; // Convention
 				}
-				console.log("Bresenham.accumulator double", Bresenham.accumulator, Bresenham.slope,"@",x_at_y_int, y_int)
+				console.log("Bresenham.accumulator double (", Bresenham.accumulator, Bresenham.slope, "@", x_at_y_int, y_int)
 
 				// It seems like Bresenham cares more about this than we. Horizon is symmetric. We would need to know the side to compensate actively
-				// dumb
-				if (Bresenham.slope[1]<0){
-					Bresenham.slope = [-Bresenham.slope[0], -Bresenham.slope[1]]
-					Bresenham.accumulator = -Bresenham.accumulator;  // I guess
-					console.log("-Bresenham")
-				}
-
+				x_at_y_int += this.subpixelCorrectionBorder(accumulator,  gradient  , x_at_y_int, Bresenham, check_here, y_int);  // Looks like I am undecided if for borders I should use a candidate for x. Good for debugging, weird for the speical case of (almsost) horizontal lines
+				console.log("Bresenham.accumulator double )", Bresenham.accumulator, Bresenham.slope, "@", x_at_y_int, y_int)
+				//Bresenham.accumulator = accumulator   // Somehow I feel like pixel_ordinate_int should be calculated here . For release build: Use code path from vertex to border to 
 				break
 			}
 
@@ -1017,7 +1053,7 @@ export class Polygon_in_cameraSpace {
 
 				//const zero= (x_at_y-(v_val[0].position[0])*d[0] + d[1] * (y_int - v_val[0].position[1])
 
-				console.log("Check subpixel correction for vertex on screen" )
+				//console.log("Check subpixel correction for vertex on screen" )
 				{
 					const range = (v_val as Vertex_OnScreen[]).map(v => v.position[0])
 					range.sort((a, b) => a - b)
@@ -1032,7 +1068,7 @@ export class Polygon_in_cameraSpace {
 					throw new Error("No edge found")
 				}
 
-				Bresenham.accumulator = slope.wedgeProduct(new Vec2([[x_at_y_int, y_int], v_val[0].position])); //(y_int- v_val[0][1] )*d[0]+(x_at_y_int- v_val[0][0] )*d[1]  // this should be the same for all edges not instance of Edge_Horizon
+				Bresenham.accumulator = -slope.wedgeProduct(new Vec2([[x_at_y_int, y_int], v_val[0].position])); //(y_int- v_val[0][1] )*d[0]+(x_at_y_int- v_val[0][0] )*d[1]  // this should be the same for all edges not instance of Edge_Horizon
 				Bresenham.slope = d
 				
 				if (Bresenham.slope[1] < 0) {
@@ -1043,56 +1079,57 @@ export class Polygon_in_cameraSpace {
 			}
 
 			if (edge instanceof Edge_w_slope) {
-				const gradient = edge.gradient; // see belowvar slope_integer=
-				const d = gradient.v // this is like in edge between two borders
+				let gradient:Vec = edge.gradient; // see belowvar slope_integer=
+
+				// while filling the display list, the signs of the slope were used to identify a corner
+				// But now we only want a stable rasterizer
+				// for this the gradient along x needs to be of a fixed sign. There is no deeper truth (I checked all cobminations). Just check this sign and flip the vector
+				if (gradient.v[0]<0) gradient=gradient.scalarProduct(-1) // for akku
+
+				let d = gradient.v // this is like in edge between two borders
 						
 				let done = false
 				const y_int = v_val[0].get_y()
 
+				let accumulator=0 // I don't know any meaningful default null value
+
 				if (v_val[0] instanceof Vertex_OnScreen && v_val[1] instanceof Onthe_border) {
 					Bresenham.slope = [-d[1], d[0]]; // gradient -> slope : -minus in front  . This is my convention. The other code should follow		
+					// EdgeShader just reverses this (sign): floored = this.slope*_[1]  - _[0] 
+
 					if (Bresenham.slope[1]<0){
 						throw new Error("go down")
 					}
 					var check_here=v_val[0].position
-					Bresenham.accumulator=-gradient.innerProduct(new Vec2([v_val[0].position]))
+					accumulator=-gradient.innerProduct(new Vec2([v_val[0].position]))  // bias should make the function zero at the one known vertex => minus
 					done = true
 				}
-				if (v_val[1] instanceof Vertex_OnScreen && v_val[0] instanceof Onthe_border) {
-					Bresenham.slope = [+d[1], -d[0]]; // gradient -> slope : -minus in front  . This is my convention. The other code should follow		
+				if (v_val[1] instanceof Vertex_OnScreen && v_val[0] instanceof Onthe_border) {					
+					//d=d.map(c=>-c) // reverse order. Need to change directio. This due to the asymmetric way I clip edges on the borders. For consistency I need to do it already on d, but not on gradient aka inStream(?)
+					
+					Bresenham.slope = [-d[1], d[0]]
 					if (Bresenham.slope[1]<0){
 						throw new Error("go down")
 					}
 
-					done = true
 					var check_here=v_val[1].position
-					Bresenham.accumulator=-gradient.innerProduct(new Vec2([v_val[1].position]))
+					accumulator=-gradient.innerProduct(new Vec2([v_val[1].position]))  // gradient is negatvie here. Later compensate by tracing
+					done = true
+
 					//var x_at_y_int = (v_val[0].border & 1) == 1 ? v_val[0].pixel_ordinate_int : this.half_screen[0] * ((v_val[0].border & 2) - 1); // todo: method!
 
 				}
 				if (done) {
-					Bresenham.accumulator += y_int * d[1]
-					if (isNaN(Bresenham.accumulator)) {
+					console.log("accu b",accumulator)
+					accumulator+=y_int * gradient.v[1]  // eat up some bias
+					console.log("accu y",accumulator)
+					if (isNaN(accumulator)) {
 						throw new Error("akku needs to be a number")
 					}
-					if (Math.abs(Bresenham.accumulator) < (this.screen[0]+1) * Math.abs( d[0]) ) {  // Todo: Why d[0] < 0 ?
-						x_at_y_int = Math.floor(-Bresenham.accumulator / d[0]); // This should be the same code for all edges
-						if (isNaN(x_at_y_int)) {
-							throw new Error("HowCanThisBe?")
-						}
-						Bresenham.accumulator += x_at_y_int * d[0]
-						if (isNaN(Bresenham.accumulator)) {
-							throw new Error("akku needs to be a number")
-						}
-
-						console.log("Vertex rounded", check_here)
-						console.log("edge start",[x_at_y_int,y_int])
-						let lll=0
-					}else{
-						x_at_y_int=0 
-						// Todo: This happens due to the lets start the next edge after the vertex. But if the vertex is exactly on the grid, this is wrong . Ceil is the correct code
-						// will not be visible because it happens only with zero height edges
-					}
+					if (gradient.v[0] < 0) {
+						throw new Error("GRadient along x needs to b positive to match conventions and make slope pointing along y = downwards ")  // Todo: check why the convention ,  pull back values = sign change , leads to negative values here!
+					}					
+					x_at_y_int = this.subpixelCorrectionBorder(accumulator, gradient, x_at_y_int, Bresenham, check_here, y_int);
 
 					// After a vertex ( even of type "on the border" the slope has already moved 0..1 line). So the first x is on screen.
 					if (x_at_y_int === undefined || isNaN(x_at_y_int) || x_at_y_int < -480 || x_at_y_int > 480) {
@@ -1166,6 +1203,30 @@ export class Polygon_in_cameraSpace {
 		return { x_at_y_int, overshot }
 	}
 
+	private subpixelCorrectionBorder(accumulator: number, gradient: Vec, x_at_y_int: number, Bresenham: Gradient, check_here: number[], y_int: number) {
+		if (Math.abs(accumulator) < (this.screen[0] + 1) * Math.abs(gradient.v[0])) { // Todo: Why d[0] < 0 ?
+			x_at_y_int = Math.floor(-accumulator / gradient.v[0]); // - is for compensation. Floor is for the left top pixel convention // This should be the same code for all edges
+			if (isNaN(x_at_y_int)) {
+				throw new Error("HowCanThisBe?");
+			}
+			Bresenham.accumulator = accumulator + x_at_y_int * gradient.v[0];
+			console.log("accu x", accumulator, "from x", x_at_y_int);
+
+			if (isNaN(Bresenham.accumulator) || Bresenham.accumulator > 0) { // we floor(x) && Gradient >0  => accu <= 0
+				throw new Error("akku needs to be a number");
+			}
+
+			console.log("Vertex rounded", check_here);
+			console.log("edge start", [x_at_y_int, y_int]);
+			let lll = 0;
+		} else {
+			x_at_y_int = 0;
+			// Todo: This happens due to the lets start the next edge after the vertex. But if the vertex is exactly on the grid, this is wrong . Ceil is the correct code
+			// will not be visible because it happens only with zero height edges
+		}
+		return x_at_y_int;
+	}
+
 	// So again sorting is a big thing. Sorting by z, sorting around the polygon in world space, sorting inside outside of the screen
 	private clipped_edge_to_Bresenham(os:Vertex_OnScreen ,ob:Onthe_border, edge: Edge_w_slope, Bresenham: Gradient) {
 
@@ -1192,16 +1253,16 @@ export class Polygon_in_cameraSpace {
 	*/
 
 
-	private edge_fromVertex_toBorder(vs: Vertex_in_cameraSpace[], l: number): Item[] {
+	private edge_fromVertex_toBorder(vs: Vertex_in_cameraSpace[], l: number, reverse=false): Item[] {
 
 		const on_screen = new Array<Item>()
 
 		const gradient = this.get_edge_slope_onScreen(vs, this.infinite_plane_FoV).slice(0, 2); // 3d cros  product with meaningful sign. Swap x,y to get a vector pointint to the outside vertex. float the fractions
 		let edge = new Edge_w_slope()
-		edge.gradient = new Vec2([gradient])
+		edge.gradient = new Vec2([  reverse ? gradient.map( c=> -c ) : gradient ])
 		on_screen.push(edge)
 
-		const slope = [-gradient[1], gradient[0]]  // check in test: when hitting the upper border, slope[1] should be negative.
+		const slope =false ? [gradient[1], -gradient[0]] : [-gradient[1], gradient[0]]  // should be the same for left and right side / (counter) clock  because it is always going off screen. . // check in test: when hitting the upper border, slope[1] should be negative.
 
 		// switch (this.mode) {
 		// 	case modes.NDC:
@@ -1303,6 +1364,7 @@ export class Polygon_in_cameraSpace {
 			//if (chosen_gradient!=0) throw new Error("averted a crash") //chosen_gradient=100 // probably some bug
 			const compensate_along_border = chosen_gradient==0 ? 0: gradient_builing_up / chosen_gradient  // can be infinite
 			var pixel_ordinate = vs[0].onScreen.position[1 ^ (border & 1)] - compensate_along_border  // compensate means minus
+			const lll=0
 		}
 		else{
 			border=(slope[0]==0) ? 1:0
@@ -1310,6 +1372,7 @@ export class Polygon_in_cameraSpace {
 			// | Math.max(0, (Math.sign(slope[1]))) << 1  // corner
 
 			var pixel_ordinate = vs[0].onScreen.position[1 ^ (border & 1)] ;console.log("straight",border,pixel_ordinate)
+			const lll=0
 		}
 		//for (var corner = -1; corner <= +1; corner += 2) {
 		//	if ((corner - vs[0].onScreen[0]) * slope[1] > (-1 - vs[0].onScreen[1]) * slope[0]) {  // ERror Verex 1 is on screen, but vertex 2 is not. outside=true should mean a diferent type!

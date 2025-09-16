@@ -34,10 +34,10 @@ export class EdgeShader {
 			this.Bresenham.accumulator = Bresenham_k_gradient.accumulator + this.Bresenham.increment[0] // We set up the decision value for the next line (y+1)
 		}
 
-		//console.log("edge",slope_floored,this.Bresenham.increment,this.Bresenham.accumulator)
-		 if (x_at_y_int==0 && y==0){
-			console.log("view vector nose",payload.uvzw_from_viewvector.nominator.map(v3 =>v3.v[2]),"offset at nose in uv (test t)",payload.uvz_cameraHover.v)
-		} 
+		// //console.log("edge",slope_floored,this.Bresenham.increment,this.Bresenham.accumulator)
+		//  if (x_at_y_int==0 && y==0){
+		// 	console.log("view vector nose",payload.uvzw_from_viewvector.nominator.map(v3 =>v3.v[2]),"offset at nose in uv (test t)",payload.uvz_cameraHover.v)
+		// } 
 
 		this.uvz = payload.uvzw_from_viewvector.nominator.map(v3 => {
 				const a = new a_i()//,v=v3.v //; a.accumulator =0; // accumulator is set by vertex using MUL
