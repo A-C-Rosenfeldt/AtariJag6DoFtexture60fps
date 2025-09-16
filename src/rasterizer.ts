@@ -229,7 +229,7 @@ export class Gradient {
 		return this._accumulator;
 	}
 	public set accumulator(value: number) {
-		if (value>0){
+		if (value>0.0001){
 			throw new Error("Start value for accumulator needs to be negative for watertight common edges. I could not find any use (as a test for EdgeHorizon pherphas) for these signs" )
 		}
 		this._accumulator = value;
@@ -686,27 +686,30 @@ export class Polygon_in_cameraSpace {
 				// Calculate pixel cuts for the rasterizer . we don't care for cuts .. I mean we do, we need them for the beam tree. But with a single polygon we only need y_pixel
 				// code duplicated from v->edge
 				let coords = [0, 0]
-				let b=borders[j]  // todo: integrate in this loop. Revert by just reverting the pointer to end of list ( inside the underlying array)
-				coords[1 &b ] = this.half_screen[b & 1] * ( (b & 2) -1 )
+				let b = borders[j]  // todo: integrate in this loop. Revert by just reverting the pointer to end of list ( inside the underlying array)
+				coords[1 & b] = this.half_screen[b & 1] * ((b & 2) - 1)
 
 				// todo: dupe -- this uses the exact same slope ( not gradient) from vertex to border. Includes the JRISC integer/float optimazation :-()
-		const to_border_signed = this.half_screen[b & 1] * ((b & 2) - 1)  // from center (0,0) where bias. Same as other coordinate 
-		//const gradient=[gradient[1],-gradient[0]]
-		const gradient_builing_up = to_border_signed * gradient[b & 1]
-		const with_bias=gradient_builing_up+gradient[2]  // todo rename slop(2). Unify edge test with : get slope
-		let chosen_gradient=gradient[1 ^ (b & 1)]  // int 
-		//if (chosen_gradient!=0) throw new Error("averted a crash") //chosen_gradient=100 // probably some bug
-		const compensate_along_border = chosen_gradient==0 ? 0: with_bias / chosen_gradient  // starting from center
-		const pixel_ordinate = - compensate_along_border  // compensate means minus
+				const to_border_signed = this.half_screen[b & 1] * ((b & 2) - 1)  // from center (0,0) where bias. Same as other coordinate 
+				//const gradient=[gradient[1],-gradient[0]]
+				const gradient_builing_up = to_border_signed * gradient[b & 1]
+				const with_bias = gradient_builing_up + gradient[2]  // todo rename slop(2). Unify edge test with : get slope
+				let chosen_gradient = gradient[1 ^ (b & 1)]  // int 
+				//if (chosen_gradient!=0) throw new Error("averted a crash") //chosen_gradient=100 // probably some bug
+				const compensate_along_border = chosen_gradient == 0 ? 0 : with_bias / chosen_gradient  // starting from center
+				const pixel_ordinate = - compensate_along_border  // compensate means minus
 
 
 
-				coords[1 & b ^1] =pixel_ordinate //- (slope[2] + this.half_screen[b & 1] * ((b & 2) - 1) * slope[1^b & 1]) / slope[b & 1];  // I do have to check for divide by zero. I already rounded to 16 bit. So MUL on corners is okay.
+				coords[1 & b ^ 1] = pixel_ordinate //- (slope[2] + this.half_screen[b & 1] * ((b & 2) - 1) * slope[1^b & 1]) / slope[b & 1];  // I do have to check for divide by zero. I already rounded to 16 bit. So MUL on corners is okay.
 				console.log("Border-Horizon-Border", b, coords)
 				let o = new Onthe_border(this.half_screen)
 				o.border = b
-				o.pixel_ordinate_int = Math.floor(pixel_ordinate) //coords[1^ b & 1]
-				on_screen[j*2]=o  // The corners are checked in a fixed order, but not the order of the vertices? 03 30 is switched?
+				let cond = ((b >> 1) & 1) ^ (gradient[b & 1] < 0 ? 1 : 0) ^ (gradient[1^b & 1] < 0 ? 1 : 0);
+				if ((b &1 )==0 )  cond=1
+				o.pixel_ordinate_int = cond==0 ? Math.floor(pixel_ordinate) : Math.ceil(pixel_ordinate) //Math.floor(pixel_ordinate) //coords[1^ b & 1]
+				console.log("pixel horizon", o.pixel_ordinate_int, cond==0 ? "floor" : "ceil", "on border", b)
+				on_screen[j * 2] = o  // The corners are checked in a fixed order, but not the order of the vertices? 03 30 is switched?
 			}
 
 			{
@@ -1029,10 +1032,16 @@ export class Polygon_in_cameraSpace {
 					const d = gradient.v
 					Bresenham.slope = [-d[1], d[0]]; // Convention
 				}
-				console.log("Bresenham.accumulator double (", Bresenham.accumulator, Bresenham.slope, "@", x_at_y_int, y_int)
+				console.log("Bresenham.accumulator double (", accumulator, Bresenham.slope, "@", x_at_y_int, y_int)
 
 				// It seems like Bresenham cares more about this than we. Horizon is symmetric. We would need to know the side to compensate actively
+				const backup=x_at_y_int
 				x_at_y_int += this.subpixelCorrectionBorder(accumulator,  gradient  , x_at_y_int, Bresenham, check_here, y_int);  // Looks like I am undecided if for borders I should use a candidate for x. Good for debugging, weird for the speical case of (almsost) horizontal lines
+				if (x_at_y_int<-this.half_screen[0] || x_at_y_int>this.half_screen[0]){
+					// retry
+					//this.subpixelCorrectionBorder(accumulator,  gradient  , backup, Bresenham, check_here, y_int)
+					throw new Error("fine correction pushed us over the border. y_int is too small by one")
+				}
 				console.log("Bresenham.accumulator double )", Bresenham.accumulator, Bresenham.slope, "@", x_at_y_int, y_int)
 				//Bresenham.accumulator = accumulator   // Somehow I feel like pixel_ordinate_int should be calculated here . For release build: Use code path from vertex to border to 
 				break
@@ -1097,7 +1106,7 @@ export class Polygon_in_cameraSpace {
 					Bresenham.slope = [-d[1], d[0]]; // gradient -> slope : -minus in front  . This is my convention. The other code should follow		
 					// EdgeShader just reverses this (sign): floored = this.slope*_[1]  - _[0] 
 
-					if (Bresenham.slope[1]<0){
+					if (Bresenham.slope[1]<-0.000001){  // Todo: FixedPoint
 						throw new Error("go down")
 					}
 					var check_here=v_val[0].position
@@ -1206,11 +1215,11 @@ export class Polygon_in_cameraSpace {
 	private subpixelCorrectionBorder(accumulator: number, gradient: Vec, x_at_y_int: number, Bresenham: Gradient, check_here: number[], y_int: number) {
 		if (Math.abs(accumulator) < (this.screen[0] + 1) * Math.abs(gradient.v[0])) { // Todo: Why d[0] < 0 ?
 			x_at_y_int = Math.floor(-accumulator / gradient.v[0]); // - is for compensation. Floor is for the left top pixel convention // This should be the same code for all edges
-			if (isNaN(x_at_y_int)) {
+			if (isNaN(x_at_y_int) || x_at_y_int<-this.half_screen[0] || x_at_y_int>this.half_screen[0]) {
 				throw new Error("HowCanThisBe?");
 			}
 			Bresenham.accumulator = accumulator + x_at_y_int * gradient.v[0];
-			console.log("accu x", accumulator, "from x", x_at_y_int);
+			console.log("accu x", Bresenham.accumulator, "from x", x_at_y_int);
 
 			if (isNaN(Bresenham.accumulator) || Bresenham.accumulator > 0) { // we floor(x) && Gradient >0  => accu <= 0
 				throw new Error("akku needs to be a number");
@@ -1363,7 +1372,12 @@ export class Polygon_in_cameraSpace {
 			let chosen_gradient=gradient[1 ^ (border & 1)]  // int 
 			//if (chosen_gradient!=0) throw new Error("averted a crash") //chosen_gradient=100 // probably some bug
 			const compensate_along_border = chosen_gradient==0 ? 0: gradient_builing_up / chosen_gradient  // can be infinite
-			var pixel_ordinate = vs[0].onScreen.position[1 ^ (border & 1)] - compensate_along_border  // compensate means minus
+			const pixel_ordinate = vs[0].onScreen.position[1 ^ (border & 1)] - compensate_along_border  // compensate means minus
+
+			let cond = ((border >> 1) & 1) ^ (gradient[border & 1] < 0 ? 1 : 0) ^ (gradient[1^border & 1] < 0 ? 1 : 0);
+			if ((border &1 )==0 )  cond=1
+			var pixel_ordinate_int= cond==0 ? Math.floor(pixel_ordinate):Math.ceil(pixel_ordinate)
+			console.log("pixel border", pixel_ordinate_int, cond==0 ? "floor" : "ceil", "on border", border)
 			const lll=0
 		}
 		else{
@@ -1371,7 +1385,8 @@ export class Polygon_in_cameraSpace {
 			if (slope[border]>0) border|=2
 			// | Math.max(0, (Math.sign(slope[1]))) << 1  // corner
 
-			var pixel_ordinate = vs[0].onScreen.position[1 ^ (border & 1)] ;console.log("straight",border,pixel_ordinate)
+			const pixel_ordinate = vs[0].onScreen.position[1 ^ (border & 1)] ;console.log("straight",border,pixel_ordinate)
+			var pixel_ordinate_int=pixel_ordinate
 			const lll=0
 		}
 		//for (var corner = -1; corner <= +1; corner += 2) {
@@ -1404,7 +1419,7 @@ export class Polygon_in_cameraSpace {
 		// const axis = border & 1  // border++ implies that we need to look at the lsb
 		// {
 		// 	const nxs = (~border & 1)  // fail for border=2
-		onborder.pixel_ordinate_int = Math.floor(pixel_ordinate + (1^border&1)) //vs[0].onScreen.position[axis] - (corner[nxs] - vs[0].onScreen.position[nxs]) * slope[nxs] / slope[axis]   // wedge product // The index galore would be a bunch of move in JRISC in the if above.
+		onborder.pixel_ordinate_int =pixel_ordinate_int //vs[0].onScreen.position[axis] - (corner[nxs] - vs[0].onScreen.position[nxs]) * slope[nxs] / slope[axis]   // wedge product // The index galore would be a bunch of move in JRISC in the if above.
 		//	}
 
 		onborder.z_gt_nearplane = true // todo    . vs[1].onScreen.position[1] > this.near_plane
