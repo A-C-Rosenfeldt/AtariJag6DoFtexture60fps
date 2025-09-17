@@ -1204,7 +1204,7 @@ export class Polygon_in_cameraSpace {
             // | Math.max(0, (Math.sign(slope[1]))) << 1  // corner
             const pixel_ordinate = vs[0].onScreen.position[1 ^ (border & 1)];
             console.log("straight", border, pixel_ordinate);
-            var pixel_ordinate_int = pixel_ordinate;
+            var pixel_ordinate_int = Math.ceil(pixel_ordinate); // Get_y uses ceil ?? without floor this did glticht   todo  I don't know why border needs ceil when I used floor everywhere else
             const lll = 0;
         }
         //for (var corner = -1; corner <= +1; corner += 2) {

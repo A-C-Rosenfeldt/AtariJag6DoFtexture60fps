@@ -19,7 +19,7 @@ export class EdgeShader {
             const _ = Bresenham_k_gradient.slope;
             const floored = this.slope * _[1] - _[0]; // We always go down by one- Wedge product
             this.Bresenham.increment = [floored, floored + _[1]];
-            this.Bresenham.accumulator = Bresenham_k_gradient.accumulator + this.Bresenham.increment[0]; // We set up the decision value for the next line (y+1)
+            this.Bresenham.accumulator = Bresenham_k_gradient.accumulator + this.Bresenham.increment[1]; // We set up the decision value for the next line (y+1) and on the positve side ( because in the end, accu needs to be <0 according to our convention (usesd in clipping))
         }
         // //console.log("edge",slope_floored,this.Bresenham.increment,this.Bresenham.accumulator)
         //  if (x_at_y_int==0 && y==0){

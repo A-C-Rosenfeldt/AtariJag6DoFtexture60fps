@@ -1338,18 +1338,17 @@ export class Polygon_in_cameraSpace {
 
 
 
-		if (slope.map(s=>Math.abs(s)).reduce((t,p)=>Math.min(t,p),1)>0){	// ah, edge cases . JRISC has abs(), but not really min. 0 is exception. So test 0 JZ ; test 0; JZ . JRISC allows to interleave this with move of all kind ( load store ) because they don't affect flaga like 6502 would. xor chekcer subq adc checker subq adc checker BNZ does not look faster
+		if (slope.map(s => Math.abs(s)).reduce((t, p) => Math.min(t, p), 1) > 0) {	// ah, edge cases . JRISC has abs(), but not really min. 0 is exception. So test 0 JZ ; test 0; JZ . JRISC allows to interleave this with move of all kind ( load store ) because they don't affect flaga like 6502 would. xor chekcer subq adc checker subq adc checker BNZ does not look faster
+			{
+				const t = Math.max(0, Math.sign(slope[0])) | Math.max(0, (Math.sign(slope[1]))) << 1  // corner
+				// border before. I just went through the truth table in my head
+				border = ((t & 1) ^ ((t >> 1) & 1))
+				border |= t & 2
 
-		{
-			const t = Math.max(0, Math.sign(slope[0])) | Math.max(0, (Math.sign(slope[1]))) << 1  // corner
-			// border before. I just went through the truth table in my head
-			border = ((t & 1) ^ ((t >> 1) & 1))
-			border |= t & 2
+				// console.log("slope => border: ",Math.sign(slope[0]), Math.sign(slope[1])," => "+t+" => "+border)
 
-			// console.log("slope => border: ",Math.sign(slope[0]), Math.sign(slope[1])," => "+t+" => "+border)
-
-			let d = 0
-		}			
+				let d = 0
+			}
 			// The signs of the slope have a meaning.
 			let corner = this.half_screen.map((s, i) => s * Math.sign(slope[i]))  // slope from 3d vector is permutated // I need the corner coordinates to calculate the intersection with the border
 
@@ -1365,29 +1364,29 @@ export class Polygon_in_cameraSpace {
 				border++
 				border &= 3; console.log("adjusted border", border)
 			}
-		
+
 
 			const to_border_signed = verts.v[border & 1]
 			const gradient_builing_up = to_border_signed * gradient[border & 1]
-			let chosen_gradient=gradient[1 ^ (border & 1)]  // int 
+			let chosen_gradient = gradient[1 ^ (border & 1)]  // int 
 			//if (chosen_gradient!=0) throw new Error("averted a crash") //chosen_gradient=100 // probably some bug
-			const compensate_along_border = chosen_gradient==0 ? 0: gradient_builing_up / chosen_gradient  // can be infinite
+			const compensate_along_border = chosen_gradient == 0 ? 0 : gradient_builing_up / chosen_gradient  // can be infinite
 			const pixel_ordinate = vs[0].onScreen.position[1 ^ (border & 1)] - compensate_along_border  // compensate means minus
 
-			let cond = ((border >> 1) & 1) ^ (gradient[border & 1] < 0 ? 1 : 0) ^ (gradient[1^border & 1] < 0 ? 1 : 0);
-			if ((border &1 )==0 )  cond=1
-			var pixel_ordinate_int= cond==0 ? Math.floor(pixel_ordinate):Math.ceil(pixel_ordinate)
-			console.log("pixel border", pixel_ordinate_int, cond==0 ? "floor" : "ceil", "on border", border)
-			const lll=0
+			let cond = ((border >> 1) & 1) ^ (gradient[border & 1] < 0 ? 1 : 0) ^ (gradient[1 ^ border & 1] < 0 ? 1 : 0);
+			if ((border & 1) == 0) cond = 1
+			var pixel_ordinate_int = cond == 0 ? Math.floor(pixel_ordinate) : Math.ceil(pixel_ordinate)
+			console.log("pixel border", pixel_ordinate_int, cond == 0 ? "floor" : "ceil", "on border", border)
+			const lll = 0
 		}
-		else{
-			border=(slope[0]==0) ? 1:0
-			if (slope[border]>0) border|=2
+		else {
+			border = (slope[0] == 0) ? 1 : 0
+			if (slope[border] > 0) border |= 2
 			// | Math.max(0, (Math.sign(slope[1]))) << 1  // corner
 
-			const pixel_ordinate = vs[0].onScreen.position[1 ^ (border & 1)] ;console.log("straight",border,pixel_ordinate)
-			var pixel_ordinate_int=pixel_ordinate
-			const lll=0
+			const pixel_ordinate = vs[0].onScreen.position[1 ^ (border & 1)]; console.log("straight", border, pixel_ordinate)
+			var pixel_ordinate_int = Math.ceil(pixel_ordinate)   // Get_y uses ceil ?? without floor this did glticht   todo  I don't know why border needs ceil when I used floor everywhere else
+			const lll = 0
 		}
 		//for (var corner = -1; corner <= +1; corner += 2) {
 		//	if ((corner - vs[0].onScreen[0]) * slope[1] > (-1 - vs[0].onScreen[1]) * slope[0]) {  // ERror Verex 1 is on screen, but vertex 2 is not. outside=true should mean a diferent type!
