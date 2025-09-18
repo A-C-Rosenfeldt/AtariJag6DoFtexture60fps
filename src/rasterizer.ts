@@ -685,30 +685,18 @@ export class Polygon_in_cameraSpace {
 			for (let j = 0; j < 2; j++) {
 				// Calculate pixel cuts for the rasterizer . we don't care for cuts .. I mean we do, we need them for the beam tree. But with a single polygon we only need y_pixel
 				// code duplicated from v->edge
-				let coords = [0, 0]
+				//let coords = [0, 0]
 				let b = borders[j]  // todo: integrate in this loop. Revert by just reverting the pointer to end of list ( inside the underlying array)
-				coords[1 & b] = this.half_screen[b & 1] * ((b & 2) - 1)
+				//coords[1 & b] = this.half_screen[b & 1] * ((b & 2) - 1)
 
-				// todo: dupe -- this uses the exact same slope ( not gradient) from vertex to border. Includes the JRISC integer/float optimazation :-()
-				const to_border_signed = this.half_screen[b & 1] * ((b & 2) - 1)  // from center (0,0) where bias. Same as other coordinate 
-				//const gradient=[gradient[1],-gradient[0]]
-				const gradient_builing_up = to_border_signed * gradient[b & 1]
-				const with_bias = gradient_builing_up + gradient[2]  // todo rename slop(2). Unify edge test with : get slope
-				let chosen_gradient = gradient[1 ^ (b & 1)]  // int 
-				//if (chosen_gradient!=0) throw new Error("averted a crash") //chosen_gradient=100 // probably some bug
-				const compensate_along_border = chosen_gradient == 0 ? 0 : with_bias / chosen_gradient  // starting from center
-				const pixel_ordinate = - compensate_along_border  // compensate means minus
+				const  pixel_ordinate_int  = this.pixel_ordinate2(b, gradient); //Math.floor(pixel_ordinate) //coords[1^ b & 1]
 
-
-
-				coords[1 & b ^ 1] = pixel_ordinate //- (slope[2] + this.half_screen[b & 1] * ((b & 2) - 1) * slope[1^b & 1]) / slope[b & 1];  // I do have to check for divide by zero. I already rounded to 16 bit. So MUL on corners is okay.
-				console.log("Border-Horizon-Border", b, coords)
 				let o = new Onthe_border(this.half_screen)
 				o.border = b
-				let cond = ((b >> 1) & 1) ^ (gradient[b & 1] < 0 ? 1 : 0) ^ (gradient[1^b & 1] < 0 ? 1 : 0);
-				if ((b &1 )==0 )  cond=1
-				o.pixel_ordinate_int = cond==0 ? Math.floor(pixel_ordinate) : Math.ceil(pixel_ordinate) //Math.floor(pixel_ordinate) //coords[1^ b & 1]
-				console.log("pixel horizon", o.pixel_ordinate_int, cond==0 ? "floor" : "ceil", "on border", b)
+				o.pixel_ordinate_int = pixel_ordinate_int;
+				console.log("pixel horizon", o.pixel_ordinate_int, "on border", b)
+
+
 				on_screen[j * 2] = o  // The corners are checked in a fixed order, but not the order of the vertices? 03 30 is switched?
 			}
 
@@ -721,6 +709,8 @@ export class Polygon_in_cameraSpace {
 		}
 		return on_screen
 	}
+
+
 
 	private isEdge_visible(vertices: Array<Vertex_in_cameraSpace>,veto_face_vertex:number[][]): number {
 		// coarse and fast  like with the vertices I check if stuff is inside a 45 half angle FoV. Of course in JRISC this is free to change with 2^n
@@ -1273,81 +1263,15 @@ export class Polygon_in_cameraSpace {
 
 		const slope =false ? [gradient[1], -gradient[0]] : [-gradient[1], gradient[0]]  // should be the same for left and right side / (counter) clock  because it is always going off screen. . // check in test: when hitting the upper border, slope[1] should be negative.
 
-		// switch (this.mode) {
-		// 	case modes.NDC:
-		// 		var swap = abs[0] > abs[1]
-		// 		if (swap) { slope.reverse() }
-
-		// 		if (slope[0] == 0) return
-		// 		break
-		// 	case modes.guard_band:
-		// 		// I guess that this is not really about guard bands, but the second version of my code where roudning of slope can have ( polymorphism, will need a branch ) with positions.
-		// 		if (Math.abs(slope[0]) * this.screen[0] < Math.abs(slope[1])) return
-		// 		break
-		// }
-
-		/*
-		// check the top screen corners. Why not check all corners (ah that is the case if both vertices are outside) ? Or rather one!
-		// similar code for both cases
-		vs[1].onScreen = vs[0].onScreen.slice()
-		var si=slope.map(l=>Math.sign(l))  // sign bitTest in JRISC
-
-		vs[0].onScreen
-		// Rasterizer sub pixel-precision start value. No NDC or GuardBand here. Just full 32bit maths
-		// I use a lot of 32 bit math here. It would be a shame to meddle with the results. So why NDC which rounds the lsb? Why a guard band
-		// This code will be called by the rasterizer
-		let scanline=(vs[0].onScreen[1] * this.screen[1]  ) 
-		let flip=false;if (slope[1]<0) {slope[1]=-slope[1]; scanline=-scanline;flip=true}
-		let fraction=scanline % 1
-		let integer=Math.floor(scanline)
-
-		// To avoid overflow, I also need x .
-		let x=vs[0].onScreen[0] ,mirror=false;if (slope[0]<0) { slope[0]=-slope[0];x=-x;mirror=true }
-
-		let implicit=(this.screen[0]/2-x )*slope[1]+fraction*slope[0]
-		if (implicit <0 ) { return }  //edge leaves screen (to the side) before next scanlinline
-		
-		// no overflow will happen
-		let slope_float=vs[1].onScreen[1] / vs[1].onScreen[0] // 16.8 bits. => two MUL instructions . Difficult to calculate cuts ( 48 bits ? )
-		// Or is it: For cut DMZs I only calcualte on scanlines. Subract 24 bits from eacht other. Integer result .
-		// How do I calculate DMZ with light slopes? So where x needs the higher precision?
-		// No Problem: insert the result for y ( 16/24 ) into the linear equation : 32/24
-		// With fractions this would be 16(bias)*16(transpose') / 32(det) .. the same
-
-		let corner=implicit+integer*slope[0] // I reuse implict because JRISC only accepts 16 bit factors in  singe instruction  
-		if (corner < 0 ) {} // edge passes through vertical border. Use this to start beam tree.
-		
-
-		if (si[1]<0) 
-
-		if (slope[0]==0) {vs[1].onScreen[1] = sl[1]*this.screen[1] }  // I cannot use epsilon here because the vertex could have a fraction of (0) or (F)
-
-		*/
-
-		// todo unify with
-		//this.which_border(vs[0])
-
-
-
-
-		//if (  slope[0] > slope[1]) { // Nonsense  slope tells us that the edge comes from above.  This is branching only for NDC
-		// correct order . At least every other vertex need to be on inside for this function
-
 
 		let border = -1
 
-
-
-		if (slope.map(s => Math.abs(s)).reduce((t, p) => Math.min(t, p), 1) > 0) {	// ah, edge cases . JRISC has abs(), but not really min. 0 is exception. So test 0 JZ ; test 0; JZ . JRISC allows to interleave this with move of all kind ( load store ) because they don't affect flaga like 6502 would. xor chekcer subq adc checker subq adc checker BNZ does not look faster
+		if (slope.map(s => Math.abs(s)).reduce((t, p) => Math.min(t, p), 1) > 0) {	// ah, edge cases. Todo: copy to horizon . JRISC has abs(), but not really min. 0 is exception. So test 0 JZ ; test 0; JZ . JRISC allows to interleave this with move of all kind ( load store ) because they don't affect flaga like 6502 would. xor chekcer subq adc checker subq adc checker BNZ does not look faster
 			{
 				const t = Math.max(0, Math.sign(slope[0])) | Math.max(0, (Math.sign(slope[1]))) << 1  // corner
 				// border before. I just went through the truth table in my head
 				border = ((t & 1) ^ ((t >> 1) & 1))
 				border |= t & 2
-
-				// console.log("slope => border: ",Math.sign(slope[0]), Math.sign(slope[1])," => "+t+" => "+border)
-
-				let d = 0
 			}
 			// The signs of the slope have a meaning.
 			let corner = this.half_screen.map((s, i) => s * Math.sign(slope[i]))  // slope from 3d vector is permutated // I need the corner coordinates to calculate the intersection with the border
@@ -1365,18 +1289,9 @@ export class Polygon_in_cameraSpace {
 				border &= 3; console.log("adjusted border", border)
 			}
 
+			var pixel_ordinate_int = this.pixel_ordinate1(verts, border, gradient, vs);
 
-			const to_border_signed = verts.v[border & 1]
-			const gradient_builing_up = to_border_signed * gradient[border & 1]
-			let chosen_gradient = gradient[1 ^ (border & 1)]  // int 
-			//if (chosen_gradient!=0) throw new Error("averted a crash") //chosen_gradient=100 // probably some bug
-			const compensate_along_border = chosen_gradient == 0 ? 0 : gradient_builing_up / chosen_gradient  // can be infinite
-			const pixel_ordinate = vs[0].onScreen.position[1 ^ (border & 1)] - compensate_along_border  // compensate means minus
-
-			let cond = ((border >> 1) & 1) ^ (gradient[border & 1] < 0 ? 1 : 0) ^ (gradient[1 ^ border & 1] < 0 ? 1 : 0);
-			if ((border & 1) == 0) cond = 1
-			var pixel_ordinate_int = cond == 0 ? Math.floor(pixel_ordinate) : Math.ceil(pixel_ordinate)
-			console.log("pixel border", pixel_ordinate_int, cond == 0 ? "floor" : "ceil", "on border", border)
+			console.log("pixel border", pixel_ordinate_int, "on border", border)
 			const lll = 0
 		}
 		else {
@@ -1388,46 +1303,91 @@ export class Polygon_in_cameraSpace {
 			var pixel_ordinate_int = Math.ceil(pixel_ordinate)   // Get_y uses ceil ?? without floor this did glticht   todo  I don't know why border needs ceil when I used floor everywhere else
 			const lll = 0
 		}
-		//for (var corner = -1; corner <= +1; corner += 2) {
-		//	if ((corner - vs[0].onScreen[0]) * slope[1] > (-1 - vs[0].onScreen[1]) * slope[0]) {  // ERror Verex 1 is on screen, but vertex 2 is not. outside=true should mean a diferent type!
-		// 		vs[1].onScreen[0] = corner //, vs[1].onScreen.border=corner // Todo: I need corners with rotation sense to fill the polygon
-		// 		switch (this.mode) { // todo: different edge clases?
-		// 			case modes.NDC:
-
-
-		// 				break;
-		// 			case modes.guard_band: // The displacement is given by the other vertex. We store the float 
-		// 				// check for overflow
-		// 				vs[1].onScreen[1] = slope[1] * (2 << 16) / slope[0] // JRISC fixed point
-		// 				break;
-		// 		}
-		// 		cc++;
-		// 		break;	
-		// 	}
-		// }
-		// if (cc == 0) {
-		// 	vs[1].onScreen=new Vertex_OnScreen()  // todo: looks like this object will be destroyed right after this function. Or rather: it leaks!!
-		// 	vs[1].onScreen.position[0] = -1;
-		// 	vs[1].onScreen.position[1] = (vs[0].onScreen.position[0] * slope[1] + this.screen[1 & 1] * (-1 - vs[0].onScreen.position[1]) * slope[0]) / slope[1]; // no rounding error allowed // Error: slope is NaN
-		// }
-		// else vs[1].onScreen.position[1] = -1;
 
 		let onborder = new Onthe_border(this.half_screen) // todo
 		onborder.border = border
-
-		// const axis = border & 1  // border++ implies that we need to look at the lsb
-		// {
-		// 	const nxs = (~border & 1)  // fail for border=2
 		onborder.pixel_ordinate_int =pixel_ordinate_int //vs[0].onScreen.position[axis] - (corner[nxs] - vs[0].onScreen.position[nxs]) * slope[nxs] / slope[axis]   // wedge product // The index galore would be a bunch of move in JRISC in the if above.
-		//	}
-
 		onborder.z_gt_nearplane = true // todo    . vs[1].onScreen.position[1] > this.near_plane
+
 
 		on_screen.push(onborder)  // todo check if border edge is defined enough. Then check out why rasterizer cannot get a gradient ( fromt the border / corner info)
 		//}
 
 		return on_screen
 	}
+
+	private pixOrd_common(gradient: number[], b: number, on_the_border: number, position: number) {
+		let chosen_gradient = gradient[1 ^ (b & 1)]; // int 
+
+		//if (chosen_gradient!=0) throw new Error("averted a crash") //chosen_gradient=100 // probably some bug
+		const compensate_along_border = chosen_gradient == 0 ? 0 : on_the_border / chosen_gradient
+		const pixel_ordinate = position - compensate_along_border; // compensate means minus
+
+		let cond = ((b >> 1) & 1) ^ (gradient[b & 1] < 0 ? 1 : 0) ^ (gradient[1 ^ b & 1] < 0 ? 1 : 0);
+		if ((b & 1) == 0) cond = 1;
+		const pixel_ordinate_int = cond == 0 ? Math.floor(pixel_ordinate) : Math.ceil(pixel_ordinate)
+		return pixel_ordinate_int
+	}
+
+	pixel_ordinate1(verts: Vec2, b: number, gradient: number[], vs: Vertex_in_cameraSpace[]) {
+		const v = verts.v;
+		const position = vs[0].onScreen.position[1 ^ (b & 1)];
+		//////////
+	// 	return this.pix_ord1(v          , b        , gradient          , position);  }
+	// private pix_ord1        (v: number[], b: number, gradient: number[], position: number) {
+		const to_border_signed = v[b & 1];
+		const on_the_border = to_border_signed * gradient[b & 1];
+		return this.pixOrd_common(gradient, b, on_the_border, position);
+	}
+
+	pixel_ordinate2(b: number, gradient: number[]) {
+		const to_border_signed = this.half_screen[b & 1] * ((b & 2) - 1); // from center (0,0) where bias. Same as other coordinate 
+
+		//const gradient=[gradient[1],-gradient[0]]
+		const gradient_build_up = to_border_signed * gradient[b & 1];
+		const on_the_border = gradient_build_up + gradient[2]; // todo rename slop(2). Unify edge test with : get slope
+		const position = 0
+		return this.pixOrd_common(gradient, b, on_the_border, position);
+	}		
+
+	/*
+	private pixel_ordinate1(verts: Vec2, border: number, gradient: number[], vs: Vertex_in_cameraSpace[]) {
+		const to_border_signed = verts.v[border & 1];
+		const gradient_builing_up = to_border_signed * gradient[border & 1];
+		let chosen_gradient = gradient[1 ^ (border & 1)]; // int 
+
+		//if (chosen_gradient!=0) throw new Error("averted a crash") //chosen_gradient=100 // probably some bug
+		const compensate_along_border = chosen_gradient == 0 ? 0 : gradient_builing_up / chosen_gradient; // can be infinite
+		const pixel_ordinate = vs[0].onScreen.position[1 ^ (border & 1)] - compensate_along_border; // compensate means minus
+
+		let cond = ((border >> 1) & 1) ^ (gradient[border & 1] < 0 ? 1 : 0) ^ (gradient[1 ^ border & 1] < 0 ? 1 : 0);
+		if ((border & 1) == 0) cond = 1;
+		var pixel_ordinate_int = cond == 0 ? Math.floor(pixel_ordinate) : Math.ceil(pixel_ordinate);
+		return  pixel_ordinate_int
+	}
+
+	private pixel_ordinate2(b: number, gradient: number[]) {
+		const to_border_signed = this.half_screen[b & 1] * ((b & 2) - 1); // from center (0,0) where bias. Same as other coordinate 
+
+		//const gradient=[gradient[1],-gradient[0]]
+		const gradient_builing_up = to_border_signed * gradient[b & 1];
+		const with_bias = gradient_builing_up + gradient[2]; // todo rename slop(2). Unify edge test with : get slope
+		let chosen_gradient = gradient[1 ^ (b & 1)]; // int 
+
+		//if (chosen_gradient!=0) throw new Error("averted a crash") //chosen_gradient=100 // probably some bug
+		const compensate_along_border = chosen_gradient == 0 ? 0 : with_bias / chosen_gradient; // starting from center
+		const pixel_ordinate = -compensate_along_border; // compensate means minus
+
+
+		// coords[1 & b ^ 1] = pixel_ordinate //- (slope[2] + this.half_screen[b & 1] * ((b & 2) - 1) * slope[1^b & 1]) / slope[b & 1];  // I do have to check for divide by zero. I already rounded to 16 bit. So MUL on corners is okay.
+		// console.log("Border-Horizon-Border", b, coords)
+		let cond = ((b >> 1) & 1) ^ (gradient[b & 1] < 0 ? 1 : 0) ^ (gradient[1 ^ b & 1] < 0 ? 1 : 0);
+		if ((b & 1) == 0) cond = 1;
+		const pixel_ordinate_int = cond == 0 ? Math.floor(pixel_ordinate) : Math.ceil(pixel_ordinate); //Math.floor(pixel_ordinate) //coords[1^ b & 1]
+		return pixel_ordinate_int
+	}
+	*/
+
 
 	private get_edge_slope_onScreen(vertex: Array<Vertex_in_cameraSpace>, half_screen: number[]): Array<number> {
 		/*
