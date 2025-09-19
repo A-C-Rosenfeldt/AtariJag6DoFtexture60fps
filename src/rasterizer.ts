@@ -298,7 +298,7 @@ export class Polygon_in_cameraSpace {
 		let l = v.inSpace.length - 1   // weird that special component z is last. Probably in assembler I will interate backwards
 		for (let i = 0; i < l; i++) {
 			if (Math.abs(v.inSpace[i]) > z) {
-				outside = true; break
+				outside = true; break // todo: for isEdgeVisible() I need a bit [0=+ 1=-] set in cases_xy[direction]. NDC are great. State is your enemy, but JRISC loves single source registers 
 			}  // abs works because there is a (0,0) DMZ between the four center pixels. DMZ around the pixels are used as a kindof mini guard band. symmetric NDC. For Jaguar with its 2-port register file it may makes sense to skew and check for the sign bit (AND r0,r0 sets N-flag). Jaguar has abs()
 		}
 		if (v[2] < this.near_plane) {
@@ -327,7 +327,7 @@ export class Polygon_in_cameraSpace {
 			}
 			if (outside == false)
 				for (let i = 0; i < l; i++) {
-					if (Math.abs(v.inSpace[i]) <= z2) {
+					if (Math.abs(v.inSpace[i]) <= z2) { // Do the rest. Just performance optimization
 						v.onScreen.position[i] = v.inSpace[i] * this.screen_FoV[i] / z
 					}  // This makes no sense behind a portal
 
@@ -713,8 +713,7 @@ export class Polygon_in_cameraSpace {
 
 
 	private isEdge_visible(vertices: Array<Vertex_in_cameraSpace>,veto_face_vertex:number[][]): number {
-		// coarse and fast  like with the vertices I check if stuff is inside a 45 half angle FoV. Of course in JRISC this is free to change with 2^n
-		
+		// We need to clasify the vertices first (and precise). did not work: coarse and fast  like with the vertices I check if stuff is inside a 45 half angle FoV. Of course in JRISC this is free to change with 2^n		
 		const z = vertices.map(v=>v.inSpace[2])
 		for (let direction = 0; direction < 2; direction++) {
 			const xy = vertices.map(v => {
@@ -742,23 +741,24 @@ export class Polygon_in_cameraSpace {
 		const bias = corner_screen[2] * cross.v[2]
 		//let head = [false, false]  // any corner under water any over water?
 		let pattern4 = 0, inside = 0, debug_pattern="("
-		const field=new Corner()
-		for (field.corner=3;field.corner>=0;field.corner--){ //corner_screen[1] = -1; corner_screen[1] <= +1; corner_screen[1] += 2) {
-			//for (corner_screen[0] = -1; corner_screen[0] <= +1; corner_screen[0] += 2) {
-			corner_screen.splice(0,2,...field.get_one_digit_coords() )
-				inside = bias 
-				for(let axis=0;axis<2;axis++){
-					if (this.FoV[axis]>1) throw new Error("These factors only let the uses Fov expand a little inside the 45° pyramide from the coarse check")
-				 	inside+= corner_screen[axis]*this.FoV[axis] * cross.v[axis]   
-				}
-				pattern4 <<= 1; if (inside > 0) pattern4 |= 1
-				debug_pattern+=inside.toFixed(2) +","//> 0 ? "1":"0"
-			//}
+		{  // Todo: get_one_digit coords looks like it does something special. Just apply the method. Throughout the code there is binary code to go from border number to corner vector. For a portal they all need to change to array[] reads
+			const field=new Corner()
+			for (field.corner=3;field.corner>=0;field.corner--){ //corner_screen[1] = -1; corner_screen[1] <= +1; corner_screen[1] += 2) {
+				//for (corner_screen[0] = -1; corner_screen[0] <= +1; corner_screen[0] += 2) {
+				corner_screen.splice(0,2,...field.get_one_digit_coords() )
+					inside = bias 
+					for(let axis=0;axis<2;axis++){
+						if (this.FoV[axis]>1) throw new Error("These factors only let the uses Fov expand a little inside the 45° pyramide from the coarse check")
+						inside+= corner_screen[axis]*this.FoV[axis] * cross.v[axis]   
+					}
+					pattern4 <<= 1; if (inside > 0) pattern4 |= 1
+					debug_pattern+=inside.toFixed(2) +","//> 0 ? "1":"0"
+				//}
+			}
+			this.corner11 |= 1 << (Math.sign(inside) + 1) // I need any point in screen to decide if a polygon covers the full screen or is invisible. Can just as well use the last corner
+
+			console.log("edge produces this pattern with the corners", pattern4.toString(2) , debug_pattern+")")
 		}
-		this.corner11 |= 1 << (Math.sign(inside) + 1) // I need any point in screen to decide if a polygon covers the full screen or is invisible. Can just as well use the last corner
-
-		console.log("edge produces this pattern with the corners", pattern4.toString(2) , debug_pattern+")")
-
 		if (pattern4 == 15 || pattern4 == 0) return 0
 		// check for postive z
 		const base = new Vec3([vertices[0].inSpace])
@@ -1138,14 +1138,12 @@ export class Polygon_in_cameraSpace {
 				}
 			}
 
-			// todo: unite with corner.
-			if (edge == null) {
+			if (edge == null) { // this code block seems to be specific to a square screen
 				const c = [[0, 0], [0, 0]]
 				let checker=true  // center of screen would be vertex on screen
 				for (let j = 0; j < 2; j++) {
 					const v= v_val[j]  // I had a problem with intheritnace.  InstanceOf only here fits both these types
-					if (v instanceof Onthe_border) {c[j]=v.get_one_digit_coords()}//;console.log("border",v.border)}
-					if (v instanceof Corner) {c[j]=v.get_one_digit_coords()}//;console.log("corner",v.corner)}
+					if (v instanceof Onthe_border|| v instanceof Corner) {c[j]=v.get_one_digit_coords()}//;console.log("corner",v.corner)}
 					checker &&=  (c[j][0]!=0 || c[j][1]!=0 )
 				}
 				console.log("checks", c[0],c[1],checker )
