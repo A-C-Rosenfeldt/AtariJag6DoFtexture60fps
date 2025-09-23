@@ -110,6 +110,14 @@ export class Vec{ // looks like I need 2 and 3 dimensions to show off this (adap
 			this.v[i]+=other.v[i]*(weight||1)
 		}		
 	}
+
+	apply(other: number[]):number[] {
+		const ret=other.slice()
+		for(let i=0;i<this.v.length;i++){
+			ret[i]+=this.v[i]
+		}		
+		return ret
+	}	
 }
 
 export class Vec2 extends Vec{

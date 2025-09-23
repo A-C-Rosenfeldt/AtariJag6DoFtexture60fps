@@ -1,5 +1,6 @@
 import {  Matrix, Matrix_frac, Vec } from "clipping"
-import {Gradient,Item } from "rasterizer"
+import {Gradient } from "rasterizer"
+import { Item } from './Item'
 import { Mapper } from "./infinite_plane_mapper"
 
 // Define Gradient type (adjust as needed for your code)
