@@ -29,7 +29,23 @@ class Uncertain {
 	uncertainty: number
 }
 
-// I never start from a portal. Always scrren rectangle as start and then a cascade of portas. So Horizon edges at least end in On_the_border_vertices, which may help with debugging
+// New
+// we look forward -- no FoV>180 no matter the shape. So the most independet thing to do is first to check if line going through both vertices passes in front of us
+// so the z plane is back because at least one vertex need to have positive z
+// any line will be in positive z -> so this is no test . The actual test is at the end of this paragraph and rather expensive
+// the portal is already projected. It is 16 bit. The polygon vertices are still 3d (and I want large z) so they are around 24 bit
+// The multiplication is still kinda cheap.  16x14 sha 16x14 add  store the sign bit somewhere ( shr to remove other bits; shl packet to make space OR to combine)
+// so we know through which faces of the pyramid the edge passes through .. candidates
+// My check was to expand the edge and camera into a surface. The pyramid edges (rays) then have an elevation
+// The edge passe through fades where the elevation changes. Why do we need candidates? Is it only to discriminate against vertex-border ? Probably was a stupid bug in my old(prior to portals) code
+// Now how to I detect lines, whose surface cuts through the pyramid, but not the line itself
+// One half of the surface lies in negative z. I can shot a ray along the negative z axis, just deviating minimally ( some normal projection stuff ) 
+// Ah this is a double cross product? These feel weird. I converted these equations to cross and then subtract inner product
+// camera x edge_slope => normal   . normal x cross slope => shortest direction from camera to edge .  If the z component is negative then cull!
+// compensation formulation:    vertex[0].z - slope.z*(vertex[0 | slope ) / (slope^2)    // 24x24 MUL because it is in 3d  . The DIV becomes MUL , of course
+// Even though BSP mergers may come. Probably (for low poly) 3d polygon into 2d portal will be the normal case. BSP MVP will add poylgons sequentielly. Multi-Edge rasterizer -> mostly binaray tree. The DMZ thing did not pan out yet, mostly due to slithers: 3 almost parallel lines. The only vailable solution is indeed infinite precision. We have all the coefficients in scratchpad memory. We just need to add the products of the lower bits ( signed with some overlap to postpone carry )
+
+// OLD: I never start from a portal. Always scrren rectangle as start and then a cascade of portas. So Horizon edges at least end in On_the_border_vertices, which may help with debugging
 class Portal implements Pyramid {
 	private cut_wedge(item: Item) {
 		const vec2 = new Vec2([[2]])
