@@ -2,7 +2,7 @@ import { Vec3, Matrix, Matrix2, Vec2, Vec } from './clipping.js';
 //import { SimpleImage } from './GL.js';
 import { Camera_in_stSpace, Mapper, CameraViewvector } from './infinite_plane_mapper.js'
 import { EdgeShader, PixelShader } from './PixelShader.js';
-import { Vertex_OnScreen, Corner, Item, Onthe_border, vertex_behind_nearPlane, Edge_Horizon, Point, Edge_on_Screen, Edge_w_slope } from './Item.js';
+import { Vertex_OnScreen, Corner, Item, Onthe_border, vertex_behind_nearPlane, Edge_Horizon, Point, Edge_on_Screen, Edge_w_slope, Vertex_in_cameraSpace } from './Item.js';
 // The rasterizer needs to projected points from the beam tree. The tree is the start, and the polygon only lives in the leaf
 // I think that most polygons in a dense mesh are split by their neighbours. I would need extra code to check for back faces. This does neither fit into the MVP nor the cache
 // So I guess that I can go full tree. Still need to switch cases per vertex: Projected, vs cut of two edges, though do I, both are rationals. Ah, but with one x and y share w. Even this is the same for both.
@@ -42,21 +42,6 @@ class Span {
 
 	render(x: number[], texture_base: number[], texture_delta: number[] /* vec2 ? */) {
 
-	}
-}
-
-// Even without lazy precision, clipping and mapping tends to go back to the rotated vertex
-export class Vertex_in_cameraSpace {
-	inSpace: Array<number>   // Not a Vec3 because projection deals so differently with the z-component
-	outside: boolean
-	// NDC would not need this and minimize state, but for debugging (getter?!) , okay for JRISC we use bits. 32 vertex limit for polygons is okay.
-	outside_of_border:number  // border = bit pos . my edge code uses patt |= 1 << border to find edges which are in front and in back of border beams .. I never debugged  check z fixed corner,edge directio, sweep camera-vertex => z does not flip sign. 2d field or just ^= <<1
-	add_outside_rect=(i:number)=>{
-		this.outside_of_border|=1<< (i |  (Math.sign(this.inSpace[i])+1&2))
-	}
-	onScreen: Vertex_OnScreen //Point //Pointing
-	constructor(inSpace: Array<number>) {
-		this.inSpace = inSpace;
 	}
 }
 

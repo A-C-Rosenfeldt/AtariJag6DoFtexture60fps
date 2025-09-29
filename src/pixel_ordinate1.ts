@@ -1,5 +1,5 @@
 import { Vec2 } from "./clipping";
-import { Vertex_in_cameraSpace } from "./rasterizer";
+import { Vertex_in_cameraSpace } from './Item';
 
 export class Polygon_in_cameraSpace {
 	screen = [320, 200];

@@ -18,7 +18,7 @@ import { Vec3,Vec,Matrix } from "./clipping.js";
 
 //import { SimpleImage } from "./GL";
 import { field2Gl, SimpleImage } from './GL.js'
-import { Vertex_in_cameraSpace } from "./rasterizer.js";
+import { Vertex_in_cameraSpace } from './Item.js';
 
 export class CameraViewvector{
 	

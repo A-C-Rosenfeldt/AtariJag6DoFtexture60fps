@@ -1,5 +1,5 @@
 import { Vec2, Vec3, Matrix2, Vec2_den, Matrix } from "./clipping"
-import { Edge_w_slope, Item, Point, Vertex_OnScreen } from './Item'
+import { Edge_w_slope, Item, Point, Vertex_in_cameraSpace, Vertex_OnScreen,Corner } from './Item'
 
 interface Pyramid {
 	//logic
@@ -47,6 +47,47 @@ class Uncertain {
 
 // OLD: I never start from a portal. Always scrren rectangle as start and then a cascade of portas. So Horizon edges at least end in On_the_border_vertices, which may help with debugging
 class Portal implements Pyramid {
+	FoV:number[]
+	constructor(half_screen:number[]){
+		this.FoV=half_screen
+	}
+	// 2 or 3 item, 2 vertices
+	classify23(items:Item[],v3:Vertex_in_cameraSpace,b:number){ // v3.outside_of_border|=1<<b
+		items.forEach((item,i)=>{			
+			let p3:Vec3
+			// todo: switch
+			if (item instanceof Corner) p3=new Vec3([[...this.FoV,100]])  // this is real. Corners don't need subpixel. But I will not invest in a separate code path
+			if (item instanceof Vertex_OnScreen) p3=new Vec3([[...item.position,1000]])    // rounded, so a little cascade // todo 1000 is screen*(fraction=subpixel)/foV 
+
+			const normal=p3.crossProduct(p3)  // two vertices. => 32 bit !!! This is t After projection the wedge product is only 16 bit. Not just due to the removed z, but 
+			// 3d vertex is 32 bit  , well 24 . What if a polygon is split by a BPS? I clearly only want this effort on the real, outermost portal. If I stick to corners I can save a lot of code
+			const only_sign_matters=p3.innerProduct(new Vec2([v3.inSpace]) ) // vertex-camera -> vector !! Then stick to it
+			// how much code is this anyways? Does 16x32 rotation give me signed vectors?
+			// imult, imac, imac, resmac    3 of these
+			// carry  (read this from bottom to top):
+			//    cpy low,high
+			//    SAR  15,high      // two register shift.                         the sign of the product of the lows
+			// 	  signed low word assumes that its expanded sign bits are added to the high word
+			//		CMP -1,low  single out sign  -- same as sub for carry     the sign left in the stored low result
+			//		ADC low,high  // compensate
+			// ; clean low
+			//	SHL 17
+			//  SAR 17   ( even the 16 bit factors pulled in by MUL need leeway for the carry inside MAC)
+			
+			//    imult low, 1   // this alone is not enough. Think of BigInt, not fractions. 
+			//
+
+			v3.outside_of_border|=1<<b
+		})
+		
+	}
+
+	// 2 or 3 item, 2 vertices
+	cut23(item:Item[],v3:Vertex_in_cameraSpace[]){
+		
+	}
+
+
 	private cut_wedge(item: Item) {
 		const vec2 = new Vec2([[2]])
 		const p = (item as Vertex_OnScreen).position

@@ -1,6 +1,7 @@
 import "./clipping.js"
 import { Camera, Mesh } from "./Transform.js"
-import { Polygon_in_cameraSpace, Vertex_in_cameraSpace } from "./rasterizer.js";
+import { Polygon_in_cameraSpace } from "./rasterizer.js";
+import { Vertex_in_cameraSpace } from './Item.js';
 import { Mapper } from "./infinite_plane_mapper.js";
 
 let controller = new Camera()

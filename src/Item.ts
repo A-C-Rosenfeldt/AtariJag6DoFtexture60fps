@@ -121,3 +121,19 @@ export class Onthe_border extends Point {
 		this.half_screen = half_screen;
 	}
 }
+
+// Even without lazy precision, clipping and mapping tends to go back to the rotated vertex
+
+export class Vertex_in_cameraSpace {
+	inSpace: Array<number>; // Not a Vec3 because projection deals so differently with the z-component
+	outside: boolean;
+	// NDC would not need this and minimize state, but for debugging (getter?!) , okay for JRISC we use bits. 32 vertex limit for polygons is okay.
+	outside_of_border: number; // border = bit pos . my edge code uses patt |= 1 << border to find edges which are in front and in back of border beams .. I never debugged  check z fixed corner,edge directio, sweep camera-vertex => z does not flip sign. 2d field or just ^= <<1
+	add_outside_rect = (i: number) => {
+		this.outside_of_border |= 1 << (i | (Math.sign(this.inSpace[i]) + 1 & 2));
+	};
+	onScreen: Vertex_OnScreen; //Point //Pointing
+	constructor(inSpace: Array<number>) {
+		this.inSpace = inSpace;
+	}
+}
