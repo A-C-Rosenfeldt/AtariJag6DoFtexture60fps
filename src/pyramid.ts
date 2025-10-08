@@ -1,6 +1,30 @@
 import { Vec2, Vec3, Matrix2, Vec2_den, Matrix } from "./clipping"
 import { Edge_w_slope, Item, Point, Vertex_in_cameraSpace, Vertex_OnScreen,Corner } from './Item'
 
+/*
+Beamtree with infinite precision is not really slower.
+Looks like the code needs to be duplicated for screenSpace2d and worldSpace3d
+For cascade portals in 3d, we need to check if 3 edges eclose an area clockwise  ( 2d rasterizer does not care, but that is far away)
+can just as well do this before rotation for a wide dataflow. code stays almost as complex in squence. screenspace would need rounding also
+beam.normal = fromCamera x slope .   rotation=volume.sign = late product(normals)
+vertex inner normal  ' works both ways
+all products with three elements, but no bias. JRISC bias is slow anyways
+behind camera : inner product with nose
+	edge  
+	plane
+
+vertex projection is good: edge tracer are limited to 16bit. 16*24
+rounding errors everywhere: clipping with epsilon should avoid out of bounds draw. rasterizer just uses while y< and if dx>0
+
+Since I cannot do portals perfectly in any way, I accept that the projection wobble, edge wobble and texture wobble lead to glitches
+The edge loop is already quite fat, so detectin of abs()<epsilon would be okay.
+	ray trace ( how about the signs? Ah, yeah make sure that in increases along x. Single ray? Difficult) => ray needs to check all edges of triangle
+	ray trace would be 16(pixel)x16(rotation) + camera (32) signs with edges (infinite precision). Texture: later
+
+Even is this may be slower ( I miss the simple screen border cuts ), I am very interested in the timing results.
+Math debugging using self consistency ( the expressions are free of Matrix math where I always confuse rows and cols)
+*/
+
 interface Pyramid {
 	//logic
 	corner_count(b: number[]): number
