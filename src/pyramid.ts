@@ -20,9 +20,32 @@ Since I cannot do portals perfectly in any way, I accept that the projection wob
 The edge loop is already quite fat, so detectin of abs()<epsilon would be okay.
 	ray trace ( how about the signs? Ah, yeah make sure that in increases along x. Single ray? Difficult) => ray needs to check all edges of triangle
 	ray trace would be 16(pixel)x16(rotation) + camera (32) signs with edges (infinite precision). Texture: later
+		ray trace also would need the inverse transfomration matrix and I don't want Matrix inverse ( it makes the code hard to read).
 
 Even is this may be slower ( I miss the simple screen border cuts ), I am very interested in the timing results.
 Math debugging using self consistency ( the expressions are free of Matrix math where I always confuse rows and cols)
+*/
+
+/*
+Game objects inside the level need a fast solution. So 2d BSP it is. Cuts are stored as 16:16. As with clipping on borders,
+the order of cuts may be wrong when we compare two of them and (of course) use the original edge slope. On the border moving is simple, but still in 2s we could just swap pixels, ah no cascade.
+To not grow the glit, a cut which lands outside the sector is just moved on the border. Shortest distance. Does it even matter? Divide by zero?
+So this is inhertently glitchy. With 8bit screen resolution and 8 bit to hide rounding, an edge crossing the screen will have on wrong pixel?
+But then again this glitch only happens when 3 edges nearly cross at the same position.
+It only affects many pixels if these edges are also nearly parallel. NDC makes sure to use the full precision ( up to minimal value to stay compatible with ABS).
+Cuts use relative position. So uh, still only 15 bit usable for me. DIV is unsinged, MAC is signed. What a mess. Costs 4 cycles.
+
+With a scene graph, game objects coordinates don't even manifest in world coordinates (Collision boxes or spheres).
+So how can I use a portal renderer to clip game objects? What about LoD NURBS? I like racing games. There I draw a lot of road, but solve collsions only at some location (and on the car: Only the wheel patches. bb with other cars bb. But cars are anchored on the road patches at this time. So most of the frames: no car-car collision checks).
+Same for height field. I mean, MAC is fast, but there is still no reason to not combine transformations. Like, I don't want a global height field like in Magic Carpet! As a physicist, this is not my style.
+
+Rough front to back ordering. Longest edge first. No BSP merge yet. Should already look okay. Unlike my thoughts about glitches in Tomb Raider,
+the sorting here is only for performance. So I it is okay not to merge objects in levels. Just insert the object center z into the level z.
+Descent levels are composed of convex polyhedra. So sorting is -- yeah well portal renderer. We sort objects by z and then draw the surrounding polyhedron then go through portals.
+
+Ah scrap that. For meshes and height field it is more important to go over shared edges and vertices to create a compact BSP.
+I don't even plan for huge height fields. NURBS with their smoothness may need special code anyways. NURBS have bounding boxes.
+Okay, I see how large NURBS and height fields in a racing game me better materialize in a world. Then far way occlusion can indeed be solved using events and floats with epsilon (beware the camera rotation: Only allow this for pseudo2d game. I think on Jaguar we are allowed to provide a limited backview like the rear mirrors in a lot of old games).
 */
 
 interface Pyramid {
