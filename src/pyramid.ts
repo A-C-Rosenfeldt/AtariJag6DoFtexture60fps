@@ -5,8 +5,23 @@ import { Edge_w_slope, Item, Point, Vertex_in_cameraSpace, Vertex_OnScreen,Corne
 Beamtree with infinite precision is not really slower.
 Looks like the code needs to be duplicated for screenSpace2d and worldSpace3d
 For cascade portals in 3d, we need to check if 3 edges eclose an area clockwise  ( 2d rasterizer does not care, but that is far away)
-can just as well do this before rotation for a wide dataflow. code stays almost as complex in squence. screenspace would need rounding also
-beam.normal = fromCamera x slope .   rotation=volume.sign = late product(normals)
+can just as well do this before rotation for a wide dataflow. code stays almost as complex in sequence. screenspace would need rounding also
+beam.normal = fromCamera x slope .   rotation=volume.sign = late product(normals) = (beam0 x beam1 = ray) inner normal
+so infinite precision would be a graph: vertices -> normals -> edges -> signs . Each vertex has an index. The graph operators let us identify every node
+MAC Output is 32 bit which can be stored easily. So rounding happens before.
+To add precision, we just shift in the other direction. So at least here, double register shift is not missing for us.
+There is still the problem of the sign. Sign affects the significiant bits! It cost lies in the default path. But then again it is just round: shift Addq shift  2 added cycles
+So now we have to persist 48 bits. Data becomes bigger than all the linking indices. But for correction, we need the new 32 bits separately.
+In the next step we get the the LH+HL and the LL outputs. Both 32 bit. Both better be persisted. But we feed along the LH. So I need a precision per node and one per edge.
+Precision grow is the exception. I alread gathered all links from backtracking. I can easily allocate new ( larger ) nodes.
+I feel like generic malloc needs a b-tree for the gaps. A fixed granularity could help. Ah, I should clear this buffer per frame. Or: move node from the start into the gap.
+So this is still a queue. The wider high precision nodes are filled by two standard nodes. Like in the rare case that I have to increase precision twice.
+Precision increase request backtrack. They stop when full precision is present at a node already.
+With 24 bit world coordinates, perhaps I can backtrack projected vertices? With NDC there are 3 steps!
+Bresenham has these changed signs, but otherwise? Too close to zero, reset the tracer/cursor like you would at a vertex. Use infinite precision here.
+Of course, this does not really fit screen2d BSP for quick and dirty occlusion. On screen I can build the BSP roughly front to back, but draw back to front
+Jaguar does not have much memory, but far less speed. I can keep this information. Then draw cuts 10% wider than necessary. Would still be ugly with translucency, but Jaguar has none.
+
 vertex inner normal  ' works both ways
 all products with three elements, but no bias. JRISC bias is slow anyways
 behind camera : inner product with nose
