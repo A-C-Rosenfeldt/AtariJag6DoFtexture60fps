@@ -1,6 +1,48 @@
 import { Vec2, Vec3, Matrix2, Vec2_den, Matrix } from "./clipping"
 import { Edge_w_slope, Item, Point, Vertex_in_cameraSpace, Vertex_OnScreen,Corner } from './Item'
 
+// I want efficient 3d clipping. Instructions take time. I want to showcase portals. Not as band aids as in Tomb Raider, but as foam as in Duke3d.
+// Already with NDC and even pixel clipping, the 3 cut order needs to be rechecked. So there is 2d checking. Just I don't want to apply it and then discard the vertex most of the time.
+// This applies to both the walls in the room behind the portal and the ships.
+/* I need to avoid overflow. All vertices need to be clearly inside .. yeah well if I use NDC, they have 1px guard band to not overflow
+with portals we have to squeeze in two tolerance: NDC -> portal -> edge .
+The 3d portal needs to be a little wider than the 2d portal. This feels expensive to be -- or at least disturbing to the concept.
+Edge test also happens in 3d. Also needs wider portals. Okay, widening is rotation of the beam normals. Expensive: take xy, wedge, normalize. No: 
+r= sqrt(x^2+y^2) 
+z+= r
+x += x/r * z
+y += y/r * z
+
+So this rotation only eats half of the overflow .. Ah I can increase the guard band.
+So now, all vertices are on screen and even the horion edges have different signs on the corners.
+As I discuss with the BSP, the cut points will be rounded. Vertices will be sorted into the BSP perfectly. Edges may not:
+First edge is clipped on root.
+then edge is clipped on child. The cut vertex cooridnate makes it look like it is fully in one grand child, but in reality it is not.
+After the BSP tree is done, each edge needs to gain a width. I don't have two disjunct types here: portal vs solid. No, everything is soup. So how do I deal with it?
+z comparison acts on sectors .. I can use the split horizon to be implement tolerance
+so after bsp .. edge may have gaps
+	return to axis-alignment errm y sort per room. x order switch on scanline. I only need one cut .. not 3. Compare it with scanline is 8 bit * denominator (32 bit (area spanned by slopes) )
+		this is not too bad (compared to checks on 16 scanline on average). And it works for slithers. Ah, basically rounding creates DMZ. When 3 cuts are between 4 pixel rays, we don't care. Creative use of fractions and floats does not give us this.
+	So, BSP is back. Tree became natural and organic again.
+	Rooms are used to fill this tree in a way to keep heuristic. Portals are as effective inside a tree. It would be a liberating feeling to use 90° FoV in 3d and let BSP handle the rest.
+	Looks like the BSP tree cuts are the ones which don't need any correction (unlike the my MVP with simple rectangle borders: the 3d clipping). BSP is the correction.
+	Is flowing over the bounds of a portal possible? Rectangle checks by ray tracing. I may need to to this on the outside pixels. So for each vertex, check the signs of its edges.
+	If I have those outer bounds around in 2d space, I can project them back into 3d. These are tighter than just expanding the edges. So I fight overflow right from the start (for slither portals)?
+	Ah, so these pixels are used only ones ( no bean counting here ), but they allow me to keept overflow inside the 1px "guard band".
+	Good thing is: This works with scene graphs. No matter how much I like the infinite precision for levels, the z-buffer on Jaguar is just broken. And I hate those Wing Commander I slow downs.
+
+*/
+/**
+ Backprojection works like:  use slope ( 2d floated) z=0, vertex  , z= value given by field of view. Cross product => xz xz xy+yx rounding is in out budget if our pixels are not just rounded, but include 1px guard. They do include this on the screen border because we clip tigtly (some smaller epsilon) around the in screen rays.
+ I think horizon is already a floated normal. But the bias shift follows from the vertex math. Take the wedge, normalize, multply with grad. I don't need precision. Floating would be good enough. Though fast inverse is very fast after said floating. low precision MUL is fast in JRISC.
+ So really, I should not use pixel floor/ceil and epsilon. This will collide with the screen borders. The other way: epsilon and then rounding. I just don't like this kind of code here when infinite precision would not need it. 
+ */
+/*
+For z order I use the cut -> horizon. Then some math on which side of the cut which polygon is in front. So epsilon stuff just like for the projection. Clipping to avoid overflow also.
+Z still is just like texture. I don't care about errors. Just, gaps between geometry are so much more ugly than z-fighting
+And for the textures I should drop the Atlas. Oh wait: Without GL_REPEAT even transparent pixels may appear. So, for high quality graphics I need to move any result of the perspective projection into bounds. Same for delta*span length (integer division is actually exact here, no rounding happens within the blitter). Same if I ever plan to use the z-buffer for more than validation (problem of the horizon or some minor location shift letting us change sides).
+This is really a reason to use screen space affine texture mapping. 15 bit delta for whole screen. Let's limit to small triangles: 12 bit delta -> 24 bit determiand . Ah rounding still does happen!
+ */
 /*
 Beamtree with infinite precision is not really slower.
 Looks like the code needs to be duplicated for screenSpace2d and worldSpace3d
