@@ -33,6 +33,59 @@ so after bsp .. edge may have gaps
 
 */
 /**
+ * My code already calls methods on vectors. So I could probably come up with a small set of operations which will be called (back) from the data flow graph.
+ * If I go full precision, I can have flat n-gons ( like Doom ) in a scene graph. Matrix multiplication appears here ( and in a limited way in UV mapping (I should pull the feed-through out of the Matrix))
+ * Keep in mind that I don't use full precision for physics or even frame to frame iteration. I stick to a single frame for the MVP. And scene graphs also don't need full precision. Just the nodes need to be consistent so that walls of houses stay flat as do the windshield and hood of a car. Or its plate. IMHO warping on n-gons gives this typical Jaguar (Skyhammer) early PC underdog 3d games () look. Doom ressurection on 32x ?
+ * Usually, fixed point ease the calculation. With infinite precsion, the "exception" to add more bits is so expensive that floats makes sense
+ * Vectors need to be floated as a whole to be able to use MAC. The rotation matrix is 15 bit so that I don't have a special case with the normalisation of vector lengths. So I can use it right away for other math.
+ * It does not matter if it is slightly above the norm because both factors will be approx 1/2 below max abs value. 3d math only adds 3 values max. So 1/4 + tolerance avoids any overflow.
+ * float vertices are kinda logical. The clipping introduces the normalized vectors of the beam planes. The exception I identified is when the camera is close to long edge, but both vertices are far away.
+ * How does the code throw this : I probably need to look into the code. vertex:slope : slope may throw because small camera movement changes it. This is before any division: just (vertex-camera) x edge
+ * so the lower bits of vertex may need to be rotated, too. To preserve flat n-gons, the first vector needs 46 bit precsion. We don't care. Just implementing the throw is expensive (code size, coding). Doing it twice not so much.
+ * Horizon is not really more difficult. Screen filling floor is similar.
+ */
+
+/* JRISC/42
+The remainder register may be read after the divide has completed, this value in this register may either be 
+positive, in which case it contains the actual remainder, or negative, in which case it contains the remainder 
+minus the divisor. 
+
+Uh this costs some cycles. How do I deal with more bits in the divisor? Pentium says: Do an estimate with low precsion. Then multiply the full precision. Divide the remainder.
+I think that we can prove that the remainder only changes the result by a small ammount. Like: We don't have to repeat endlessly. Just once for more precision. Anyways: integrate in the precision pull
+*/
+
+/**
+ * Going infinite precsion, the guardband and NDCs are off the table. Portals are a first class citizen. Exact cuts are calculated using the exception mechanism. The two step 3dNDC 3dpixel process is replaced by this.
+ * I do it because it is fun. I do it because it profits from my short cascade of calculations. I like descent.
+ * What about the miner robots in descent? Did I not opt for fast BSP and DMZ? No problem here: cuts are still only calculated with pixel precsion (DMZ), just there is no additional epsilon:
+ * Once a cut comes too close to the border of the DMC, the precision ramps up. Same with edge tracers. For textures it is okay to know the start and end pixel.
+ * In the atlas I don't accept fences which are not aligned. When I just round down the slope of either x or y, I can be sure that they don't expand beyond an x or y maximum value. Second system: I could add half of the rest to the start?
+ */
+
+/*
+All the code uses portals and going clock-wise. No abs() tricks or bit-logic on signs. No delta_x or delty_y = 0 speed ups. All projected edges have projected vertices (DMZ)
+Corner vertices are gone. XY property of "on the border" is not special anymore. Only thing may be that : vertex slope :  the slope is anchored only on one vertex. The other is only pixel precise.
+Horizon still exists: slope+bias .
+
+Ah, it is weird how I still embrace the DMZ for cuts . So: No area between 3 edges calculation ( which would be a shorter data path).
+The real killer for using tolerances was that it seems to pull in normalization. I mean, I still like tolerances in general, but for vector graphics they look like a bad fit.
+*/
+/**
+ * Epsilon: I can use only positive factors and then some adds to feed intervals through the calculation, but the idea of an exception is to make the trigger cheap. So I use a worst case of worst case so to say.
+ * Still, this is derived from the interval calculation. Multiplication of scalars is precise, just afterwards we round to nearest ( needs an add ) ( not how slope in the blitter is rounded towards zero which needs a branch or SHR 15; ADD)
+ * The rounding errors of the factors add up in MAC. A scalar multiplication has 2 * input error + 0.5 final rounding error. Cross product has 2*2*input error. Inner product has 3*2 .
+ * Propagation lets the tolerance rise exponentially. Like, after 3 operations we lost half of our bits. Makes no sense to proceed? The good thing: small triangle with short edges have a lower chance of triggering reevalutions.
+ * Small triangles without clipping have a short cascade. Yeah, there is the check against the BSP, though.
+ * It makes sense to float the results of cross product. Matrix is almost normalized, not much happens. Inner product is scalar. Usually we care only for the sign? But when we use it subtract, then subtract at 32 bit (sign?), and then float.
+ * 
+ * Is it kinda weird that feeding the tolerance throught the Matrix allows for flat n-gons and glitch free texture? Ah, and portals.
+ * Yeah, on sane hardware, portals would only be a minor speed up and would be axis aligned ( see Tomb Raider ). Back projection is cheap due to the low number.
+ * I read that the software renderer on Quake uses spans not unlike the column buffer on Doom. No idea how occlusion culling is to work with this, but it can help with the fill rate:
+ * Funny thing on the Jaguar is that we could make an axis aligned tree and flip x and y direction. Possibly triggered by geometry. Span buffer is just no my cup of tea.
+ * In contrast to scanline rendering, this would support portals. It sucks in b-trees or bucket sort. Ugly.
+ */
+
+/**
  Backprojection works like:  use slope ( 2d floated) z=0, vertex  , z= value given by field of view. Cross product => xz xz xy+yx rounding is in out budget if our pixels are not just rounded, but include 1px guard. They do include this on the screen border because we clip tigtly (some smaller epsilon) around the in screen rays.
  I think horizon is already a floated normal. But the bias shift follows from the vertex math. Take the wedge, normalize, multply with grad. I don't need precision. Floating would be good enough. Though fast inverse is very fast after said floating. low precision MUL is fast in JRISC.
  So really, I should not use pixel floor/ceil and epsilon. This will collide with the screen borders. The other way: epsilon and then rounding. I just don't like this kind of code here when infinite precision would not need it. 
