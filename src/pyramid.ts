@@ -1,5 +1,6 @@
 import { Vec2, Vec3, Matrix2, Vec2_den, Matrix } from "./clipping"
 import { Edge_w_slope, Item, Point, Vertex_in_cameraSpace, Vertex_OnScreen,Corner } from './Item'
+import { Polygon_in_cameraSpace } from "./rasterizer"
 
 // I want efficient 3d clipping. Instructions take time. I want to showcase portals. Not as band aids as in Tomb Raider, but as foam as in Duke3d.
 // Already with NDC and even pixel clipping, the 3 cut order needs to be rechecked. So there is 2d checking. Just I don't want to apply it and then discard the vertex most of the time.
@@ -36,6 +37,7 @@ so after bsp .. edge may have gaps
  * My code already calls methods on vectors. So I could probably come up with a small set of operations which will be called (back) from the data flow graph.
  * If I go full precision, I can have flat n-gons ( like Doom ) in a scene graph. Matrix multiplication appears here ( and in a limited way in UV mapping (I should pull the feed-through out of the Matrix))
  * Keep in mind that I don't use full precision for physics or even frame to frame iteration. I stick to a single frame for the MVP. And scene graphs also don't need full precision. Just the nodes need to be consistent so that walls of houses stay flat as do the windshield and hood of a car. Or its plate. IMHO warping on n-gons gives this typical Jaguar (Skyhammer) early PC underdog 3d games () look. Doom ressurection on 32x ?
+ * Bezier curves or similar for roads: Efficency says: transform the control points. Then tesselate in camera space. I like twists: Road needs triangulation anyways.
  * Usually, fixed point ease the calculation. With infinite precsion, the "exception" to add more bits is so expensive that floats makes sense
  * Vectors need to be floated as a whole to be able to use MAC. The rotation matrix is 15 bit so that I don't have a special case with the normalisation of vector lengths. So I can use it right away for other math.
  * It does not matter if it is slightly above the norm because both factors will be approx 1/2 below max abs value. 3d math only adds 3 values max. So 1/4 + tolerance avoids any overflow.
@@ -45,7 +47,7 @@ so after bsp .. edge may have gaps
  * Horizon is not really more difficult. Screen filling floor is similar.
  */
 
-/* JRISC/42
+/* JRISC/42   aka Divide by 42 bits
 The remainder register may be read after the divide has completed, this value in this register may either be 
 positive, in which case it contains the actual remainder, or negative, in which case it contains the remainder 
 minus the divisor. 
@@ -76,6 +78,7 @@ The real killer for using tolerances was that it seems to pull in normalization.
  * The rounding errors of the factors add up in MAC. A scalar multiplication has 2 * input error + 0.5 final rounding error. Cross product has 2*2*input error. Inner product has 3*2 .
  * Propagation lets the tolerance rise exponentially. Like, after 3 operations we lost half of our bits. Makes no sense to proceed? The good thing: small triangle with short edges have a lower chance of triggering reevalutions.
  * Small triangles without clipping have a short cascade. Yeah, there is the check against the BSP, though.
+ * And we always need to cull. Just, the culling result is binary and without error to propagate.
  * It makes sense to float the results of cross product. Matrix is almost normalized, not much happens. Inner product is scalar. Usually we care only for the sign? But when we use it subtract, then subtract at 32 bit (sign?), and then float.
  * 
  * Is it kinda weird that feeding the tolerance throught the Matrix allows for flat n-gons and glitch free texture? Ah, and portals.
@@ -84,6 +87,8 @@ The real killer for using tolerances was that it seems to pull in normalization.
  * Funny thing on the Jaguar is that we could make an axis aligned tree and flip x and y direction. Possibly triggered by geometry. Span buffer is just no my cup of tea.
  * In contrast to scanline rendering, this would support portals. It sucks in b-trees or bucket sort. Ugly.
  */
+
+
 
 /**
  Backprojection works like:  use slope ( 2d floated) z=0, vertex  , z= value given by field of view. Cross product => xz xz xy+yx rounding is in out budget if our pixels are not just rounded, but include 1px guard. They do include this on the screen border because we clip tigtly (some smaller epsilon) around the in screen rays.
@@ -158,27 +163,27 @@ I don't even plan for huge height fields. NURBS with their smoothness may need s
 Okay, I see how large NURBS and height fields in a racing game me better materialize in a world. Then far way occlusion can indeed be solved using events and floats with epsilon (beware the camera rotation: Only allow this for pseudo2d game. I think on Jaguar we are allowed to provide a limited backview like the rear mirrors in a lot of old games).
 */
 
-interface Pyramid {
-	//logic
-	corner_count(b: number[]): number
-	//vector
-	corner_ray(corner: number): Vec3
-	border_normal(border: number): Vec3
-	is_edge_inside_corner(): number
-}
+// interface Pyramid {
+// 	//logic
+// 	corner_count(b: number[]): number
+// 	//vector
+// 	corner_ray(corner: number): Vec3
+// 	border_normal(border: number): Vec3
+// 	is_edge_inside_corner(): number
+// }
 
-// special case: All vertices are Corners, and all edges are null
-class Rectangle implements Pyramid {
-	is_edge_inside_corner(): number {
-		inside = bias
-		for (let axis = 0; axis < 2; axis++) {
-			if (this.FoV[axis] > 1) throw new Error("These factors only let the uses Fov expand a little inside the 45° pyramide from the coarse check")
-			inside += corner_screen[axis] * this.FoV[axis] * cross.v[axis]       // So, how does this work with portals? Portals behind portals corners created by a cut between two edges (with rounded 16 bit screen coefs). The cut is not rounded
+// // special case: All vertices are Corners, and all edges are null
+// class Rectangle implements Pyramid {
+// 	is_edge_inside_corner(): number {
+// 		inside = bias
+// 		for (let axis = 0; axis < 2; axis++) {
+// 			if (this.FoV[axis] > 1) throw new Error("These factors only let the uses Fov expand a little inside the 45° pyramide from the coarse check")
+// 			inside += corner_screen[axis] * this.FoV[axis] * cross.v[axis]       // So, how does this work with portals? Portals behind portals corners created by a cut between two edges (with rounded 16 bit screen coefs). The cut is not rounded
 
 
-		}
-	}
-}
+// 		}
+// 	}
+// }
 
 // This is for future code to check per pixel "ray tracing" as an exception for abs(value) < uncertainty
 class Uncertain {
@@ -203,11 +208,92 @@ class Uncertain {
 // Even though BSP mergers may come. Probably (for low poly) 3d polygon into 2d portal will be the normal case. BSP MVP will add poylgons sequentielly. Multi-Edge rasterizer -> mostly binaray tree. The DMZ thing did not pan out yet, mostly due to slithers: 3 almost parallel lines. The only vailable solution is indeed infinite precision. We have all the coefficients in scratchpad memory. We just need to add the products of the lower bits ( signed with some overlap to postpone carry )
 
 // OLD: I never start from a portal. Always scrren rectangle as start and then a cascade of portas. So Horizon edges at least end in On_the_border_vertices, which may help with debugging
-class Portal implements Pyramid {
+
+class PortalFactory {
+	screenBordersWithNoSpecialCodePath(){
+		const p=new Polygon_in_cameraSpace()  // seems to be the most clean way to share code (constants ,) with rectangle
+		return new Portal(p.FoV)
+	}
+}
+
+class DMZ_corner{
+	angle:number
+	signs:number[]
+}
+
+// So it looks like this is pure mathematical code. Error propagation code will deal with special cases like 0 ( screen )
+// all edges are derived from 3d vertices no matter if clipped ( they may end up clipped in a cascade portal or polygon ). Advantage: no branches of code paths
+class Portal { //implements Pyramid {
+
 	FoV:number[]
+	
+	// A portal needs slopes. Do I care if they are derived from vertices? I can pull in the explict code later
 	constructor(half_screen:number[]){
 		this.FoV=half_screen
 	}
+
+	edge_as_beams=new Array< Vec3 > (5) // before something becomes a portal, it is either the screen border or a polygon which was clipped by another portal ( contains refs to slopes (no error propagation in the narrow sense) )
+	vertex_SideOf_Beam(Vertex_in_cameraSpace:Vec3){    // (  (( vertex:point - camera:point ):vector) &* Matrix ) : vector
+		this.edge_as_beams.map(beam => beam.innerProduct(Vertex_in_cameraSpace) )
+	}
+
+	pixelRay_portal= new Array<Vec2> (5)
+	ray_SideOf_Edge(ray:number, edge_as_beam:Vec2){
+		const p=this.pixelRay_portal[ray]
+		const s:DMZ_corner[]=this.edge_as_beams.slice(ray, ray+1).map(r=> ( {angle:this.karthesic_to_angle(r.v.map(o=>Math.sign(o))), signs:r.v.map(o=>Math.sign(o)) } ) as DMZ_corner )
+
+		// from point of view of DMZ, slope needs to be negated
+		s[0].angle+=4
+		s[0].signs.map(s=>-s)
+
+		for(let end=0;end<2;end++){
+			// pulling
+			let corner=s[end].signs // ref 
+			// rotate to wrap
+			let ordinate=0
+			for (;ordinate<2;ordinate++){
+				if (corner[ordinate]==0 ) {corner[ordinate] = corner[1-ordinate] * (end*2-1);break} //todo:return
+			}
+			if (ordinate > 1) {
+				this.rotate(corner, end)
+			}
+			s[end].angle=this.karthesic_to_angle(corner)
+			// exception : axis aligned slithers => invisible
+		}
+
+		if (s[1].angle<s[0].angle) s[1].angle+=4
+
+		const cursor=s[0].signs.slice()  // should I already convert to bitfields as I will for JRISC?
+		for(var angle=s[0][0];angle<s[1][0];angle++){ // todo: bring back cyclic, but in a clean way
+			// check exposed corners of pixel DMZ
+			const c=p.v.map((o,i)=> (o+cursor[i]+1)/2)  // top left pixel convention. So like, the offset needs to be >=0 . Is also memory management convention
+			const v=new Vec3([[...c,1000]])   // todo: Ah, here the z appears again. This has to match the relation between FoV 0.8 (mostly used to define aspect ratio) and FoV in pixels. The real (common FoV) is determined by the transformation into camera space.
+			var collection=edge_as_beam.innerProduct(v)  // collection is for debugging. We keep the whole number, not just the sign for this. Later shorten, but how much: still need to scan for two sign changes
+
+			this.rotate(cursor,0)
+		}
+	}
+
+	private rotate(corner: number[], end: number) {
+		const copy = corner.slice()
+		for (let target = 0; target < 2; target++) {
+			corner[target] = (1 - 2 * (target ^ end)) * copy[1 - target]
+		}
+	}
+
+	// not only borders provoke funny sign bit logic, but pixel co-ordinates, too
+	// along x should be angle=0
+	karthesic_to_angle(sign:number[]):number{
+		// usual case encompass one exceptions
+		if (sign[1]>0) return 2 - sign[0] 
+		if (sign[1]<0) return 6 + sign[0] 
+
+		// exceptions
+		//if (sign[1]==0)
+		return (1-sign[0])*4 // <<2 JRISC    branches: ==1 ? 0 : 4
+		//if (sign[0]==0) return sign[1] ==1 ? 2 : 6
+	}
+
 	// 2 or 3 item, 2 vertices
 	classify23(items:Item[],v3:Vertex_in_cameraSpace,b:number){ // v3.outside_of_border|=1<<b
 		items.forEach((item,i)=>{			

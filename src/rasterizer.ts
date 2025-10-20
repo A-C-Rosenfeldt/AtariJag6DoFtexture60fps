@@ -108,8 +108,19 @@ export class Gradient {
 	//	alongEdge = new Array<number>(2) // I use a new type for this callen accumulator_increment -- todo: Harmonize names!
 }
 
-// Todo: God class and too many dated comments
 export class Polygon_in_cameraSpace {
+	screen = [320, 200];
+	half_screen = this.screen.map(s => s / 2);
+	FoV = [0.8, 0.5]//[1.6, 1.0]  //
+	FoV_rezi = this.FoV.map(f => 1 / f)  // todo: Multiply with rotation matrix . Need to be 1 <=   < 2
+
+	// Square pixels on my dev machine make thise elements equal
+	screen_FoV = this.FoV_rezi.map((f, i) => f * this.half_screen[i])     // Forward for vertices  ..Needs to be this.screen <  < 2*this.screen for the machine language optimized clipping
+	infinite_plane_FoV = this.FoV.map((f, i) => f / this.half_screen[i])    // backwards for "ray tracing"
+
+}
+
+export class SymmetricRectangle_clipper extends Polygon_in_cameraSpace {
 	near_plane = 0.001
 	// vertex_to_vertex(){} transformation happens elsewhere
 	// vertex_to_clip(up:boolean){}  this rasterizer does not work with clipping because edges become first class citizens
@@ -126,20 +137,13 @@ export class Polygon_in_cameraSpace {
 	mode: modes = modes.NDC; // This is public. Change it to GuardBand to compare both versions ( artefacts, instruction count )
 
 	// NDC -> pixel
-	screen = [320, 200];
-	half_screen = this.screen.map(s => s / 2);
-	FoV = [0.8, 0.5]//[1.6, 1.0]  //
-	FoV_rezi = this.FoV.map(f => 1 / f)  // todo: Multiply with rotation matrix . Need to be 1 <=   < 2
-
-	// Square pixels on my dev machine make thise elements equal
-	screen_FoV = this.FoV_rezi.map((f, i) => f * this.half_screen[i])     // Forward for vertices  ..Needs to be this.screen <  < 2*this.screen for the machine language optimized clipping
-	infinite_plane_FoV = this.FoV.map((f, i) => f / this.half_screen[i])    // backwards for "ray tracing"
 
 	epsilon = 0.001  // epsilon depends on the number of bits goint into IMUL. We need to factor-- in JRISC . So that floor() will work.
 	readonly m: Mapper;
 	dbuggy: any;
 
-	constructor(m: Mapper) {
+	constructor(m: Mapper) {		
+		super();
 		this.m = m
 		// for rasterization of clipped edges ( potentially very long) we want max precision (similar to vertices on opposed corners). So we expand the fraction
 		//let whyDoWeCareBelo16=this.screen.map(s=> Math.ceil(Math.log2(s))  )   // the function is a native instruction in JRISC. Okay , two instructions. need to adjust the bias
