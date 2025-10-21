@@ -264,6 +264,26 @@ class Portal { //implements Pyramid {
 		if (s[1].angle<s[0].angle) s[1].angle+=4
 
 		const cursor=s[0].signs.slice()  // should I already convert to bitfields as I will for JRISC?
+
+		// How exactly does the top-left rule look like? For axis aligned edges (polygon at higher values), a fraction of 0 means that we just reached the next higher integer .. so we just dodged the ray at exact pixel position. "Flooring rule"
+		// If a portal and an edge behind it exactly cross a pixel, what does it mean for our DMZ. I mean the case where the wrap goes over 3 corners.
+		// the portal edges may meet at the internal (far) corner. And the meet with the polygon
+		// This would be the only case where the far corner even matters. Now it seems if this corner is on the lower right, it is inside the portal
+		// if a polygon sneaks into the portal there, the same flooring rule applies and the ray does not hit
+		// if a polygon ends there, the corner hits the polygon, but we don't need the edge for this.
+		// So: we don't care for the internal corner. For the other corners we know that the cut with the actual edge not overflow -- ah no, we lost this property ( grazing incidence, slithers )
+		// Grazing incidence will probably trigger precision issues when floating. Pure algebra. Sadly, the geometric connection is lost. Out of bounds crossings can simply be detected using integer ranges on x and y.
+		// Geometric interpretation: Check over the (closed (because we don't know which DMZ border is crossed)) x or y interval. Axis alignment with camera space simplfies calculation.
+		// The calc y for two x or vice versa. Check if delta between both edges changes (last operation is XOR). Using fractions, this becomes multiplication.
+		// Temporary values can be reused for checking forEachEach n-gon vs m-portal edges.
+		// Special case of horizontal always exists. This would imply that two DMZs at the end of a portal edge share one intY value. So I already need to check there?
+		// All cases with cut on integer x or y will give us a zero ( so sign is not that meaningful ). TopLeft rule again? Floor rule?
+		// IMHO the portal vs polygon situation will make this edge irrelavant. It needs to be clearly inside at either y.
+		// Closed interval hurts, we don't care about cuts in the DMZ. So just another "refinement" step :-(. Remedy: check inside corners of DMZ to find the border which is actually crossed.
+		// Special case: All cuts in the same DMZ .. can this even happen? Otherwise this a closed interval. It is enough to check one range. Ah, I don't want to depend on the rasterizer, not even for a convention here. I need to check both, even for a closed intervall
+		// Ah, DMZ becomes the old guad band all over again? I can only cull edges fast. It almost looks like I need to calculate all cuts with all portal edges for all passing polygon edges.
+		// If the portal area (in real covered pixels -- consider for sithers an alignment! You need to rasterize) becomes small enough, I may switch to raytracing in Camera 3dspace.
+
 		for(var angle=s[0][0];angle<s[1][0];angle++){ // todo: bring back cyclic, but in a clean way
 			// check exposed corners of pixel DMZ
 			const c=p.v.map((o,i)=> (o+cursor[i]+1)/2)  // top left pixel convention. So like, the offset needs to be >=0 . Is also memory management convention
