@@ -2,6 +2,31 @@ import { Vec2, Vec3, Matrix2, Vec2_den, Matrix } from "./clipping"
 import { Edge_w_slope, Item, Point, Vertex_in_cameraSpace, Vertex_OnScreen,Corner } from './Item'
 import { Polygon_in_cameraSpace } from "./rasterizer"
 
+
+// Well it seems I failed the tolarance and even the DMZ. They are not efficient to make free of glitches
+// using fractions is difficult ( there is something in this file ), but two edges forming a portal in 3d feels natural
+// as we go through the portals, we collect the cuts. And we collect edges: Each edge = (vertex-camer) x slope . Cut = edge0 x edge1 ( of course real vertices stay as is ).
+// inner product with edge2 tells us if edge2 is visible throught the portal. (again: beam normal is cached in graph)
+// Now the reason: Cut in (x,y) on screen cannot be easily bound be geometric arguments using the DMZ, but it can using infinite precision and the naive 3d expression.
+// In 3d the equation for this cut is simple and symmetric ( see above ). For projection we do 1/z ( float with tolerance ). Then multiply with x and y. (without infinite precision and thanks to the more powerful DIV, I would have used two DIVs)
+// The projected cuts of the portal or even just the corners rounded to integer pixels ( rasterizer needs integer ). Ah with fraction 9.5 can be used to cull other vertices .. after they have been projected. This will not happen because I don't double check. Any double whatever happens in the graph upgrader. Perhaps later I build a hybrid . Obviously NDC is a bit more expensive with the graph. And portals don't care for NDC or guard band. BSP Beamtree is full of portals and full of edge cuts. For it I invented DMZ. But now it is dead. So no DMZ in 2d-BSP.
+// It goes against my phiplosophy to DIV without bounds. But uh, what is philosphy ? Yeah, so it would be possible to get all the cuts in 2d. Check for zeros and check for overflow using bitscan (floats).
+// I have the feeling, that portal corners may pull in more precsion one or two times, but then offer a fast test: inner product . Both factors floated . We do this for nxm . n-gon vs n-corner. And lots of polygons.
+// We can then estimate the error of the result:  Lots of pulling in, so only the final rounding: 15 significant bits. This is a thin silver lining where the final innerproduct would have to be upgraded ( symmetrically to 30x30)
+// Inner product can utilize MAC . 6 LoHi pairs look nice. So I need 3 bits for carry. If I don't want weird multi-register shifts, these carry take on the ripple from the 3 LoLo.
+// Signed Lo Word better also is persisted
+
+// Graph
+// I keep the low precison nodes. The higher precision nodes may have other bits set in HI. So once a path pulled up precision, it only uses the upgraded node. But old pathes my still point to the old node
+// operators are binary. So every node depends on two other nodes. As discussed above regarding the portals, many nodes can depend on a node. I don't want (growing) lists within my growing structure.
+// So instead each node has one link to the higher precision
+
+// The graph launches from the vertices in the scene. I am open scene graphs (Blender GeoNodes), but right now, these vertices are all materialized. Links can point to them
+// Camera rotation is the first link, if I want flat n-gons (uh I want, like in Doom, am a fan. And actually, portals are n-gons and need to be flat). Otherwise I would hide this first step from the precision upgrader.
+
+// ~ 2025-10-25 AR
+
+
 // I want efficient 3d clipping. Instructions take time. I want to showcase portals. Not as band aids as in Tomb Raider, but as foam as in Duke3d.
 // Already with NDC and even pixel clipping, the 3 cut order needs to be rechecked. So there is 2d checking. Just I don't want to apply it and then discard the vertex most of the time.
 // This applies to both the walls in the room behind the portal and the ships.
@@ -274,6 +299,7 @@ class Portal { //implements Pyramid {
 		// So: we don't care for the internal corner. For the other corners we know that the cut with the actual edge not overflow -- ah no, we lost this property ( grazing incidence, slithers )
 		// Grazing incidence will probably trigger precision issues when floating. Pure algebra. Sadly, the geometric connection is lost. Out of bounds crossings can simply be detected using integer ranges on x and y.
 		// Geometric interpretation: Check over the (closed (because we don't know which DMZ border is crossed)) x or y interval. Axis alignment with camera space simplfies calculation.
+		// the multiplication tests around the DMZ set up the precision pulled for edge slope and bias. The cut between the two edges need to use at least the same precision. This is probably expensive, but looks like the a mandatory cost. Real. Based on some underlying maths.
 		// The calc y for two x or vice versa. Check if delta between both edges changes (last operation is XOR). Using fractions, this becomes multiplication.
 		// Temporary values can be reused for checking forEachEach n-gon vs m-portal edges.
 		// Special case of horizontal always exists. This would imply that two DMZs at the end of a portal edge share one intY value. So I already need to check there?
