@@ -4,6 +4,27 @@
 
 ; inner product MAC
 
+#if more precisio: Multi-register shift. No alternative {
+
+copy mantissa,t
+shl 32-2,t  
+sar 16-3,t    ; compensate round to nearest here.  this should work. if bit 1 then sar will sign = negative. And the Add 2 ( see below ) will have triggered a carry
+                 ; again: keep top bits clear. This time we have twice as many values to add. So 3 bits?
+shr 16+5,fresh  ; push fresh into low16 . Make space for the 2 bits from AB plus the 3 bit we need now.
+or  fresh,t     
+
+add 2    ; round to nearest
+SAR mantissa,2+16  ; make space for carry   , I need these value for Ab+Ba
+
+;tolerances
+; I don't want another exponent. Precision and value exponent must be enough. tolerance is a mantissa. tolerance has the same expontent.
+; If we max out tolerance (32bit?), we clearly are carrying too much deadwood and need to refine previous calculation steps.
+; But do the maths: with more precision, every product creates more and more bits. We store everything in order to be able to improve on it
+; the next operation may not load all of it, at first. Or another dependent operation.
+; Precision does not add up like the value. We just throw away the old precision. So yeah, it is a float. Once precision>0 (or 1), it has its own exponent
+
+#precision  }
+
 ; Mantissa as usual
 IMACN  ;only works on signed
 MAC
@@ -49,13 +70,20 @@ addq 1,tt      ; Rounding needs to be explicit because it gets reduced by SAR fu
 
 ; Mantissa as usual
 IMULT  ; components have individual signs, while the exponent is shared
-IMULT ,A  ; manual says C:undefined  vs C:unaffected. 
+IMULT ,A  ; manual says C:undefined  ,but sadly not: C:unaffected. 
 IMULT
 ;copy
+copy A, Asign
+SAR sign
+copy A, Asign
+SAR sign
+copy A, Asign
+SAR sign
 ADD A   ; binding via C prevents a lot of interleave -- but A and C interleave works!
-ADC 0,
+ADC Bsign,Asign
 ADD A
-ADC 0,C
+ADC Csign,Asign
+
 
 ; Catch overflow.  
 copy C,sign
