@@ -222,7 +222,62 @@ or t-,t+   ; negative good
 sar t+
 and akku,t+
 nop
+Jump negative    ; loop probable step
+nop
+Jump positive    ; no jump allowed in delay slot
+nop
+
+
+;Scale coeeficients but use 64 bit
+ADD inc_lo, akku_lo
+nop  ; not really, the next instruction needs 2 cycles to load registers
+ADC inc, akku
+nop
 Jump negative
 nop
 Jump positive    ; no jump allowed in delay slot
 nop
+throw exception   ; 0 can happen for full precision. Then don't throw. Just go to one of the others. Don't repeat this code and change the decision. Then you are good to go.
+
+;Try to free register
+MFA inc_lo
+MFA inc_hi
+ADD inc_lo, akku_lo
+ADC inc_hi, akku
+nop
+Jump negative
+nop
+Jump positive    ; no jump allowed in delay slot
+nop
+throw exception   ; 0 can happen for full precision. Then don't throw. Just go to one of the others. Don't repeat this code and change the decision. Then you are good to go.
+
+
+;Synergy
+
+;two edges
+;line counter
+;probable jump should be first ( probably on both edges)
+;3 other cases . 
+;last line . combine with 
+;throw
+
+; n z p allows for two branches per one test 
+prop
+second prop
+
+test
+other two steps 
+
+last line
+.
+This almost looks like a jump table to me
+zpnpn   32 entries
+some can never happen. like any p=1 & n = 1. So slap over end of scanlines to these 
+16 entries
+
+I am not sure if combining the edges really helps so much. I guess what I really want:
+If positive then both edges probable  > 1/4
+if negative then any other edge step combination
+exceptions ( as seen from the PoV of the loop block (as in python), and this specific exception is cheap)
+if tolerance<violated (edge or (texture after persepective)) then log precision    ; if tolerance only 1 or 2 bits, then proceed. Otherwise let the following lines profit from higher precision vertices. KISS: always abort polygon. Don't need more variables to dump. Just recreate as if this was a portal.
+if scanlines_todo then loop
