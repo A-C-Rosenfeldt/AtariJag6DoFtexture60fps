@@ -3,7 +3,21 @@ import { Edge_w_slope, Item, Point, Vertex_in_cameraSpace, Vertex_OnScreen,Corne
 import { Polygon_in_cameraSpace } from "./rasterizer"
 
 
-// Well it seems I failed the tolarance and even the DMZ. They are not efficient to make free of glitches
+// Well it seems I failed the tolarance and even the DMZ. I am not quite sure if it is the maths, or JRISC, but glitch free is expensive with these
+// The unreal ( because it does not exist in the real world ) inifite precision is mathematically more clean and lends itself to compact JRISC ( to fit into 4 kB )
+// The bummer is though that even inside Bresenham a precision Exception can be thrown. But this is it:
+// Ordering is done using cuts on screen. This allows for low precsion in easy ordering case. I catch intersections outside of the Bresenham innerloop.
+// Texture gaps are different from polygon gaps. I don't have to please boths sides of an edge. Just clamp to the Atlas. Very sad that Jaguar GL_REPEAT is broken.
+// I mean: The DDA happens inside the blitter anyway. Of course I could aim for a specific sub-pixel precision on the start and end texel of the span?
+// The effect is that polygons will be drawn only partially. All the local variables need to be dumped for later because I cannot fit all code needed for the pipeline into the cache.
+// This also means: Zero overdraw is mandatory. No transparent textures are allowed.
+// How to proceed in the following scanlines? I think that I can estimate a precsion which will allow me to draw 99% of all spans. Then fill in the rest later.
+// So I don't need to dump all variables, just polygonID and y and a bitfield: left? right? And if I want: texelLeft? TexelRight?
+// In my current float.asm I feedthrough precision explicitely. Bresenham does not mutate it inside the loop, just read
+// if akku>tolerance then goto less_probable_step
+// if akku>-tolerance then throw
+// // probable step
+
 // using fractions is difficult ( there is something in this file ), but two edges forming a portal in 3d feels natural
 // as we go through the portals, we collect the cuts. And we collect edges: Each edge = (vertex-camer) x slope . Cut = edge0 x edge1 ( of course real vertices stay as is ).
 // inner product with edge2 tells us if edge2 is visible throught the portal. (again: beam normal is cached in graph)

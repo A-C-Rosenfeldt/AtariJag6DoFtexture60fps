@@ -185,3 +185,44 @@ Store:
 ;   same normalization like after cross product
 ; I think that pure add (sub) only happens once with the camera position and there wer are still using int. Anyways, rare. We don't mind the normalization
 ;so yeah, inner product output may be input of further calculations
+
+
+;Bresenham needs branches. I tried to do without, but it got very long for the textures
+
+;Bresenham with tolerance
+NEG tol      ; pull register
+nop
+CMP tol, akku   ; ruse
+nop   ; for some silly reason , JRISC wastes a cycle here. Put in some load or store?
+Jump negative
+nop    ; is it allowed to set a flag in branch delay slot?
+NEG tol      ; pull register
+nop
+CMP
+nop
+Jump positive
+nop
+
+;Rather scale the Bresenham coeeficients to the tolerance to be within 0 ?
+ADD inc, akku
+nop
+Jump negative
+nop
+Jump positive    ; no jump allowed in delay slot
+nop
+throw exception   ; 0 can happen for full precision. Then don't throw. Just go to one of the others. Don't repeat this code and change the decision. Then you are good to go.
+
+;Hybrid
+mfa tolerance,t+
+sub akku,t+      ; positive? good
+mfa tolerance,t-
+add akku,t-      ; negative ? good
+neg t+      ; negtaive good
+or t-,t+   ; negative good
+sar t+
+and akku,t+
+nop
+Jump negative
+nop
+Jump positive    ; no jump allowed in delay slot
+nop
