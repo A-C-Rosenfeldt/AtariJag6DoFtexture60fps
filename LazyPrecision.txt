@@ -1,4 +1,113 @@
-=== new: Floats are better than lazy precision ===
+=== 2025-11-09 ===
+Float and precision match ( see float.asm )
+JRIC code does somehow stay compact.
+precision can use the same exponent as all components. This leads to more natural code than a second exponent.
+Precision is upgraded in 16 bit steps to match the storage. Some operations can only add 14 bits, so some storage will be wasted,
+but not really. These operations start with 14 bit to even stay below 32 for the result.
+Yeah, rounding degenerates the precision through the chain, yet I feel like it is difficult to decide for high precision -> precision funnel.
+I hope that this comes automatically due to dependency. Important values will be backtracked to often. This would mean to swap out code. This would kill the code cache.
+I can abort the current polygon. I can forward trace the vertices (just the pointers, no math) for cheap. Additional code sounds like a "second system" to me.
+So, just abort the polygon and add allocate it as a new wider structure with 32bit fields (double links)
+Then load backtracking code, mark with iterationCounter. The +=16 bits in mantissa rule will go all the way back to the rotation matrix.
+Some traces will stop because they encounter a link to the next higher precision version of the vertex.
+Run through all forward steps again, this time on the higher precision versions of the edges.
+Tolerance is again calculated. Tolerance is not split into 14bit sections, but a single 32 bit value ( I only use add and shift, which are 32 bit on JRISC)
+Tolerance can overflow starting with precision 3. Then: cut off the lower bits of the value. This can basically replace the fixed point math where 1.14 * 1.14 = 1.28 basically means throwing away 14 bits by default.
+This is consistent with the rounding error added to tolerance. I just mean that we could perhaps only need one branch. On first pass, I should abort if tolerance has eaten up half of the bits?
+These are still correction values, are they? But on the other hand, it would be faster now, to just throw away the old calculations at higher tolerance.
+	(only the least significant 14 bit section)
+	Ah, no, we need correction carry. This also shows that carry needs to have a sign. This shows that carry needs two bits. IMUL is due to vectors, so don't blame JRISC.
+	Are 4 bit enough? I think that a correction only needs +-1. So it has the same range as the carry from inner product ( accidental coincidence ).
+There are types of nodes. The number of input edges is constant per type.
+So allocation is always like:  struct node{edges[]}  .
+Set all the y start values.
+Run the rasterizer ( the rasterizer always expects y_int different from the top vertex due to subbpixel precision.)
+Oh, subbpixel and persepective correction now also want higher precision. Edge equations are now 16bitPixel * 32bit coeeficients.
+So really: Load different code:  16bit pixel * (n*16 bit) coeeficients.
+So actually, Bresenham can use Add on JRISC. So once we sit on an edge, we can
+ADD 32,32   .
+If on zero {   ; this is a jump because it is an exception, but this whole doc deals with exceptions, so here it is a block
+	use IMAC to improve precision   ( no need to log code. This one just jumps into the latter part of subpixel precsion, which fits into our 4kB)
+	;notice how we throw away this result for the next scanline: the low precision coeeficients and akkumulator are already optimal in the limits given by rounding.
+	; -> no coupling, no bugs
+}
+
+16 * (n*16) needs a lot of shifts. Cannot really use MAC?
+
+for n=m to 0 {  '0 is the probably state. m is arbitrary ( well <6 but you know)  . Step is implied in my language. If you want step, use C for loop
+	load coeeficients   
+	imultn x
+	imac   y
+	resmac s
+	load 0, hi
+	add lo,s
+	adc 0,hi   ; no other way to carry a carry flat around without loop unrolling ( 4kB limit!! ). 0 eats a register because addq has no adc version.
+	; To write more MIPS like, clean code without flags, mantissa strings need to adhere to 14 bits from the start. 15 bits. 
+	;I invented 14 for the inner product. But do we need it? length is the product. lenght squared. Think of corner
+	;Looks like I don't get around two register shift.
+
+	;shifting load .  I mean, I need something like this already for 16 bit.
+	subq 14, cx
+	If carry {
+		copy a,b
+		addq SI
+		load [SI],a
+	}
+	and 31,cx
+	SHR 14,shifted    ; Cut off works .  Looks like keeping the shifted values saves us on instruction. Now: We need an idle pass throught the whole loop to init values.
+	copy a,as
+	SH cx,as   ; CX needs to be positive ( we are no yet "there" in a) and decreasing .  Cut off works
+	or as,shifted 
+}
+
+
+;inner nodes need to stream out the product. The shifter code just needs to be reversed. 
+;somehow working with 32 bit is .
+ROR 
+AND low
+store
+AND high
+store 
+
+For variable precision the start is a bit akward because the of the two low precision bits. But really those still allow us to add the next 
+MUL lo,lo
+load 2bits from hihi
+Add lo,2bits    ; so obviously I need to have stored the 2bit with 2bit headroom . Clearly this is needed for value alignment.
+; the top two bits now contain the carry  . So at least half as akward as having only a single bit set.
+
+copy 2bits, fromAbove
+load hi
+shr fromAbove, 30
+add fromAbove, hi   ; this is not allowed to trigger  Exponent++, but thankfully, our compontents are not normalized, and the same 2 bits headroom we used before, still hold
+
+
+
+;Variable precision multiplication walks over an L pattern if we only calcuate the change.
+ForEach outputDigit n iterations
+	for L_arm  2 iterations
+		for input0_digt  1 iterations   the L is thin  => 2 carry bits it is. Really only one. but.  If I stick to 14 bits. 
+			;Alignment would mean that every even 14 bit just go through, and every odd need a  
+				cpy pre, factor  
+				addq 1,SI
+				test 1,SI				;alternative: toggle extra register. 
+				if even 
+					SHR factor
+					load [si],pre   ;are low bits of si just ignored for local memory?
+				maths
+			. With more and more carry bits, and code size consideration, this starts to looks attractive . I still hate the double register shift. Now it is even aligned to 16. Thorn in my eye
+			MUL    ; Simple MUL because clearly dynamic grouping of IMULTN IMAC RESMAC is slow . This is not hardware!!
+			ADD      arms and carry_in
+			copy 0
+			ADC , carry_out   ; just find out how to do the sign. Correction factors are still signed. Well, they don't have to, but I would lose one bit precision
+	16 bit output shift
+
+
+
+
+;(variable shifter on both inputs very much looks like "smart idea")
+;starting from lo,lo ( no carry space needed -- but consider synergy with sum in cross or inner) ln n / ln 2 bits   . Still looks like a wast of MUL to me
+
+=== Floats are better than lazy precision on fixed ===
 
 So basically lazy precision is slow on JRISC like on all other real hardware.
 I could easily tweak transistors to make this faster. Latency on the used DRAM would even be low enough to pull more precision throught the graph.
