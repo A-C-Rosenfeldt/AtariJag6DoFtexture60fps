@@ -54,10 +54,10 @@ for n=m to 0 {  '0 is the probably state. m is arbitrary ( well <6 but you know)
 		load [SI],a
 	}
 	and 31,cx
-	SHR 14,shifted    ; Cut off works .  Looks like keeping the shifted values saves us on instruction. Now: We need an idle pass throught the whole loop to init values.
+	SAR 14,shifted    ; Cut off works .  Looks like keeping the shifted values saves us on instruction. Now: We need an idle pass throught the whole loop to init values.
 	copy a,as
 	SH cx,as   ; CX needs to be positive ( we are no yet "there" in a) and decreasing .  Cut off works
-	or as,shifted 
+	ADD as,shifted   ; needed for sign
 }
 
 
@@ -68,6 +68,77 @@ AND low
 store
 AND high
 store 
+
+# For precision correction we need to store the full akkumulator
+# to go full MIPS, we use a lot of carry in akku. Synergy between precision and cross product: upto 3 carry bits. Even 1 carray works: Sign means SBC. zero means nothing.
+# do this sign thing on load and store 
+# flag free version
+shr 31, lo
+add lo,hi  ; on store  .. what if carry happens here? we don't care, we actually load 14 bits?
+sub lo,hi  ; on load  .. okay, feels weird to store signed if a shift anyways?
+
+math
+	int14
+
+carry: int32
+lo -> hi
+rmw
+	load 32 unsigned
+	# JRISC cannot detect overflow. Here : int + unsigned is super sepcial anyway
+	add mod, stored 
+	 if  SHR 31,mod then sbc stored-1
+	 else adc stored-1
+
+To get rid of flags, I need to go through the complete stored akkumulator
+from lo to hi   ;forced by carry on math, but also on load and store
+	stream in akkumulator 14 bits at a time ( this happens on both operands, too )
+	if previously streamed value <0 then --
+	math
+	local akku can be negative.
+		SAR akku
+		load akkuS
+		SHL akkuS
+		and 0011,akkuS  ; top bits are for carry . akkus is unsigned (stored as, no double cary please). So: stored signed akku would be beneficial
+		Add akkuS,akku   ; akku s does not overflow as per the general arument about the top bits
+
+	stream out the lowest 14 bit to buffer {*}. If negative then local akku++  ; round commercially to keep akku most precise . Storing directly and signed to 32 bit is only fast for the first run
+	*local bit buffer     . For some reason, signs make no sense in long number. Could bits be +1/2 -1/2 ? IMUL does not work with these. Need to add bias? 1111 would be +1/2 and 000 -1/2. We lose the lsb.
+	1/2 could be corrected
+	MUL A-100,B-100 -> C   # bias.int    so we flip the sign? xor -1 ?
+	C += (A+B )>>16  #bias.frac   theoretically, this should preserve the 32 bit  ADd to the fraction part of the result
+		A+B should correct the 0*B and A*0 case . But it still is normal digits 10101. I need to add 1000,5 to go into +-+-+-+-+-
+		So really 
+
+	I feel like 1/2 just add extra steps
+	1/2 * 1/2 = 1/4
+	1000 * 1000 = 1000000
+	0 * 0 = 0  ; 0 needs to be used for positive to keep the balance
+	1 * 1 = 1
+
+
+	if full
+		store
+		copy akku again
+		shift
+
+	akku string needs to be signed ( on 32 EG ), so that we pull commercially rounded values.
+	There is no rounding cascade 01010   010.10 -> 011  01.1 -> 10   but   01.010 -> 01
+	So, to be able to pull limited precision, the akku string needs to be made of unsigned words
+	We round on read.
+	Or we use fixed segments of 14 bits.
+
+	I need to store the new akku for fresh users. I need delta for correction runs.
+
+node{
+	indices
+
+	int32 akku
+	# what happens when precision is added? Others pull on this. Do they expect signes? Yeah, on 32bit boundarais
+
+	#dz
+
+}
+
 
 For variable precision the start is a bit akward because the of the two low precision bits. But really those still allow us to add the next 
 MUL lo,lo
