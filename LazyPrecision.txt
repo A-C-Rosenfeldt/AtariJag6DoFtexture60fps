@@ -2,7 +2,8 @@
 Float and precision match ( see float.asm )
 JRIC code does somehow stay compact.
 precision can use the same exponent as all components. This leads to more natural code than a second exponent.
-Precision is upgraded in 16 bit steps to match the storage. Some operations can only add 14 bits, so some storage will be wasted,
+Precision is upgraded in number of bits given by the node. Nodes can sit on different "steps" depending on the bit-width and if tolerance was too high on previous pass.
+Some operations can only add 14 bits, so some storage will be wasted,
 but not really. These operations start with 14 bit to even stay below 32 for the result.
 Yeah, rounding degenerates the precision through the chain, yet I feel like it is difficult to decide for high precision -> precision funnel.
 I hope that this comes automatically due to dependency. Important values will be backtracked to often. This would mean to swap out code. This would kill the code cache.
@@ -173,8 +174,68 @@ ForEach outputDigit n iterations
 	16 bit output shift
 
 
+=== Memory requirements===
+Jaguar is slow, there will be less than 64k node ( instances of precision ) in frame. Alignment means that high precision instances eat more pointer space:
+All operator nodes can upgrade precision in any order. Pools of different precision make no sense ( besides, growing higer precsion from the other side in our one big graph memory)
+So it looks like the mark in combination of forward and backtrace phase, really needs the double link ( symmetry is beautiful, so I like this )
+Node need a link to their higher precision, in case another path touches them (could use special values for: this is highest, already marked)
+Node has a type. This all fits into a phrase ( low bus hog graph traversal):
+Operation_node{
+	type:byte						1
+	operands:doubleLink[2]			4
+	higherPrecisionInstance:Link	2
+	exponent:byte					1
+	tolerance:uint16				2 ( 16 would mean that no bit is significant anymore and tolerance exception must have been thrown by now)
+	len_string_in_bits:int16        2 (bias=32 (output of RESMAC) .starts =0 )  ( my math once said: 6 multiplications. 6*5(camera position) )
+}								--------
+								   12 bytes
+
+Base_precision:Operation_node{
+	len_string_in_bits=0
+	value:int32[1..3]    // Do I need to call it cache or memor? I don't like those words. In a directed graph it is clear what a value is
+}                                 -----
+									12 bytes ( typical)
+
+Higher_precision:Operation_node{
+	len_string_in_bits>0
+	value:binary_string
+	delta:binary_string   // relative to value of one less precise node	
+}
+
+lets go with 32 bytes on average. 4 byte alignment. A phrase alignement!!  16 bit = 64k bytes  . 16+3=19 = 500 kB  (out of 2MB) only for nodes? Clearly: 16 bit pointers are good enough.
+
+I would like to have one generic algorithm to pull bits in chunks of 13,14,15(?) from the binary string. For this, the first 32 bit need.. ah no need. the pull method will work just fine.
+It looks like binary strings want bit alignment. So: back to 32bit pointers? I don't feel like Higher_precision should contain references.
+Clearly, len and all the other fields should be aligend ( though I have to rotate anyways? But sadly not 64 bit).
+I want the value in base precision to be read fast: aligend!
+bit_string need to fill a continous region in memory. But they can start at any bit. So best I can do is ( second system ):
+If I push a higher precision node onto another higher precision node with trailing strings, the next strings lead.
+While values start at 32, each itertion adds 14 bits to the factors . Two bits go into carry. So the value grows by 28 bits. So bascially, each higher precision needs 64bit more (per component).
 
 
+There is no synergy with phrase loading, but it is also not too difficult.
+For the stream reader to be able to switch between operands, we need an index. So we use local memory (not registers).
+if we used up the last word ( even if exactly "look ahead" ) then
+	'shift words in local memory
+	load offset
+	load 
+	store			-> first register 
+	store offset   -> second register of two register shift ends up here
+	'request next word
+	if local memeory <3  then    // next phrase loaded when we enter the next word -> switch to read ahead. Other regisers?
+		load hi-word
+		store [hi-word requester]
+		readp ,first register of two register shift  -> score board     // First iteration / lazy load this register would be important
+		hi-word requester = me 
+		// we need separate init branch
+		init loads both registers direclty from external
+		stream cannot (most of the time) the first register because we still need to process some of its bits
+	call use_buffer
+	store reg,local buffer  <- score board
+
+StoreP is buggy and cannot be used anyways. StreamOut using Store .
+
+;Regarding full computation of a given precision:
 ;(variable shifter on both inputs very much looks like "smart idea")
 ;starting from lo,lo ( no carry space needed -- but consider synergy with sum in cross or inner) ln n / ln 2 bits   . Still looks like a wast of MUL to me
 
