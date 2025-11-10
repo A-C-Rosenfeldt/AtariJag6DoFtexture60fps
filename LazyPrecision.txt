@@ -115,7 +115,7 @@ from lo to hi   ;forced by carry on math, but also on load and store
 	1000 * 1000 = 1000000
 	0 * 0 = 0  ; 0 needs to be used for positive to keep the balance
 	1 * 1 = 1
-
+	See: Non-restoring division uses the digit set {−1, 1}   ( which is expanded on in algorithms "with tolerance" / carry flags along the way {-2,-1,0,+1,+2})
 
 	if full
 		store
