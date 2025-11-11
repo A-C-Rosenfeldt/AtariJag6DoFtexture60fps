@@ -145,8 +145,17 @@ from lo to hi   ;forced by carry on math, but also on load and store
 		the buffer is 32 bit. So there is 16+1 bit usable, while MUL accepts 16-1. So when we convert to signed (using an ADD), the carry is there. No Need for ADC.
 		Just when shiftint in
 		SHL fresh  ' really SH, but we know the sign
-		SHR buffer 
+		SAR buffer   <- free
 		ADD  <- important for carry   ' this is cheap compared to other methods. Yeah well, it is free. No Carry would still need OR .
+
+	Alternatives
+		Expontents are not allowed to change.   abs(result) + tolerance   BitScan
+		But I don't want to compromise first pass. Adding a correction to the result. The bits may not align. Delta does not align anyway (because we use new value for the string) . new value may not align with old, but we don't care.
+			MAC cannot align to 32 bits anyway. So we need to shift in and shift out. Only if we use ADD ADC, it would hurt to change exponent.
+			Stream in uses local memory. So one code for all 3 inputs (bit width can all be different). probably shared code for output??
+			Exponent needs to be checked after MAC anyway. So the string may be off . We need bit precise start pointers. Write little Endian ( per precision),
+			but next stage pulls not from the start anyway (no alignment advantage). Little Endian is really for exponent and allocation.
+			I just mean: fixed 15 bit signed int  inside 32 bit alignement does not work anyway with floats.
 
 	If both negative then
 		(1000 - 1)*(1000 - 1)=+1  -2=>-1  +1
