@@ -109,6 +109,33 @@ from lo to hi   ;forced by carry on math, but also on load and store
 	C += (A+B )>>16  #bias.frac   theoretically, this should preserve the 32 bit  ADd to the fraction part of the result
 		A+B should correct the 0*B and A*0 case . But it still is normal digits 10101. I need to add 1000,5 to go into +-+-+-+-+-
 		So really 
+	This seems to be no equivalent with unsigned storage and the carry sign method. This would proove that {+1;-1} is really different.
+	Is one of them faster?
+		A+B needs two cycles. We need to to it for every Multiplication. Cross has 6. Inner has 3. Factors: 6. With added precision we go over the L.
+	It looks like in the end:   1 complement? for factors . How to restore for the product?  1 complement need pre-processing of factors just like the other storage methodes. And it can overflow if tried on 32 bit.
+	So the correction value has a sign, but I can pull that out of the L loop? Ah no I cannot because NEG leads to a carry.
+	I could work with two akkumulators for example in the cross product. Then after multiplication:   ( or use 1 complement?)
+	
+	' 32 bit aligned precision loop sadly is incompatible with MAC in init phase. The speed comes from avoiding the double shift. Factors are 16 bit. Worst thing which will be needed is a single shr 16.
+	' this could work if low precision all pull 14 bits. Then the lower digits align to this. But this would be a waste for cross. One carry bit. The sign tells if add or sub.
+	loop  'every instruction here needs two cycles. A price to pay to get rid of shifts? Of course I would be great to use the same code for the loop=1 iteration start case.
+		MUL  correction, old_value
+		XOR sign_in_equation, global_sign_correction, global_sign_value -> flag
+		if flag
+			Add
+			adc
+		else
+			sub
+			sbc
+
+		Store
+	
+	if negative '1 complement
+		loop
+			NEG -> carry flag   ( minum negative number cannot be neg)
+			SBC 
+		but keep sign bit
+
 
 	I feel like 1/2 just add extra steps
 	1/2 * 1/2 = 1/4
