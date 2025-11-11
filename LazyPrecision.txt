@@ -118,12 +118,55 @@ from lo to hi   ;forced by carry on math, but also on load and store
 	
 	' 32 bit aligned precision loop sadly is incompatible with MAC in init phase. The speed comes from avoiding the double shift. Factors are 16 bit. Worst thing which will be needed is a single shr 16.
 	' this could work if low precision all pull 14 bits. Then the lower digits align to this. But this would be a waste for cross. One carry bit. The sign tells if add or sub.
+	' Storing the full 32 bit akkumulator was always the way to go. Only thing is pulling from this 14 bits at low precision misaligns the read pointer forever.
+	' Correction values are only relevant for the bits taken. The less significant bits, this operator has never seen. Use the current, absolute values. Might want to change rounding to floor()? Otherwise: one special bit
+	' The correction value has a sign. And it should have its own exponent. How do I sign extend? 1000 - 1 = 111 . Tolerance should never be grater than the value pulled. Correction pulled is 32bit.
+	MUL correction without sign, product       ; But what about MAC?   Anyway, I get signed corrections into the operation and go over the L and need to carry the sign along. anyway.
+	' I don't need sign extension. I need to go over all output precision with MAC anyway.
+	' Cross product would be aligend
+		Pull out the sign of the correction factor. 1 bit free.  ( inner product needs two free bits, so both factors need to lose one). How do I choose where to steal for cross? Tolerance?
+		' no MAC, just MUL sadly. So why even?
+	forEach negative correction in factor
+		shr correction, sign
+		sub product
+		copy 0, usigned
+		ADC other_factor, usinged [most significant] ' make sure that the SBC loop ends? No, we are not in 6502. most significant does not need to carry anything. JRISC will stop
+		; manual is not clear. OR is it borrow in English implies affecting. Why can't I shift in a bit?
+		;			Set according to carry or borrow out of all add and subtract operations; set with the 
+		;			bit that is shifted out of shift and rotate operations for shift by one;
+
+				SBC other_factor, usigned    ; should loop over both factors here.
+				while carry 
+					SBC 0,unsigned[DI]
+					ADDQT  n,DI
+				write back sign into most significant
+
+	StreamIn usigned -> signed
+		the buffer is 32 bit. So there is 16+1 bit usable, while MUL accepts 16-1. So when we convert to signed (using an ADD), the carry is there. No Need for ADC.
+		Just when shiftint in
+		SHL fresh  ' really SH, but we know the sign
+		SHR buffer 
+		ADD  <- important for carry   ' this is cheap compared to other methods. Yeah well, it is free. No Carry would still need OR .
+
+	If both negative then
+		(1000 - 1)*(1000 - 1)=+1  -2=>-1  +1
+
+	' This is so much harder then
+		load 14 bit
+		if global sign then negative
+		imul
+		still need to carry for value.
+	' At this point I feel like full re-evaluation in Multiplication matrix would be faster. MUL . So the signs of the vector are still a problem here.
+	' So 32 bit alignment with signs . Uh, still the signs from result sit at 32, but the once from factor need to sit at 16
+
+	' Still don't need a double link stored in memory. This is temporary
+	' The variable bit solution has it going for it that the happy path is fast.
 	loop  'every instruction here needs two cycles. A price to pay to get rid of shifts? Of course I would be great to use the same code for the loop=1 iteration start case.
 		MUL  correction, old_value
 		XOR sign_in_equation, global_sign_correction, global_sign_value -> flag
 		if flag
 			Add
-			adc
+			adc   ' so matter what, I need carry. Here I seem to need one less compared to sign? Sign has carry on both factors. And if I store unsigned less significant, a carry on product
 		else
 			sub
 			sbc
