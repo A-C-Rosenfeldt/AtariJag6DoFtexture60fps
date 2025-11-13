@@ -252,6 +252,30 @@ nop
 throw exception   ; 0 can happen for full precision. Then don't throw. Just go to one of the others. Don't repeat this code and change the decision. Then you are good to go.
 
 
+;Since Bresenham at precision can become expensive, I am glad that the rasterizer knows n-gons. Thanks to precision, these are guaranteed to be convex
+;In a BSP tree, I could mark edges of the convex sectors which meet another convex sector on the other side. For those scanline, only trace the the real edge with precision
+;Compared to the memory used by the graph, it is a small buffer to store the half-spans.
+Then on the other side (the slope of the split needs to have a left and right)
+close spans, prolong spans, start spans. Then I will only need a 200 entry buffer.
+This is not like Visiplanes in Doom because I do not convert between y-spans and x-spans.
+Power of two subspans for persepective correction are just better. There is no synergy by using "natural" subspans.
+Division already has a lot of bits, but even more can be kept alive by using Delta
+(A+a)/(B+b) = Q+q
+=>
+QB + Qb + qB + qb = A+a   // A=QB
+Qb + qB + qb = a
+qB + qb = a + Qb
+q = (a + Qb)/ (B + b )
+
+To init at high preci  (A+a )/B  using the remainder. Then more digits to the divisor: b using the delta equation
+Still no infinite precision. But while the delta calcuation does not win along a span (short subspans?), it seems to win along an edge.
+Precision is not the only way to never fall out of bounds. I can just clamp the start and end value to the clipping window (bascially size of the texture).
+I mean, I don't need to set those registers in the blitter. Just clamp start and end to it to never leave the texture. For example: negative s,t are always transparent. 
+It seems like large x just wrap around. Guard band towards 0.
+
+
+
+
 ;Synergy
 
 ;two edges
