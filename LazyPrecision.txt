@@ -15,6 +15,7 @@ Run through all forward steps again, this time on the higher precision versions 
 Tolerance is again calculated. Tolerance is not split into 14bit sections, but a single 32 bit value ( I only use add and shift, which are 32 bit on JRISC)
 Tolerance can overflow starting with precision 3. Then: cut off the lower bits of the value. This can basically replace the fixed point math where 1.14 * 1.14 = 1.28 basically means throwing away 14 bits by default.
 This is consistent with the rounding error added to tolerance. I just mean that we could perhaps only need one branch. On first pass, I should abort if tolerance has eaten up half of the bits?
+	Division nodes and Bresenham (adds) have higher precsion (24 and 32 bit). For consistency with the first path, do not stop here if too much bits are wasted. Division on low precision feels like pearls for pigs. 9 bits minimum?
 These are still correction values, are they? But on the other hand, it would be faster now, to just throw away the old calculations at higher tolerance.
 	(only the least significant 14 bit section)
 	Ah, no, we need correction carry. This also shows that carry needs to have a sign. This shows that carry needs two bits. IMUL is due to vectors, so don't blame JRISC.
@@ -32,6 +33,36 @@ If on zero {   ; this is a jump because it is an exception, but this whole doc d
 	;notice how we throw away this result for the next scanline: the low precision coeeficients and akkumulator are already optimal in the limits given by rounding.
 	; -> no coupling, no bugs
 }
+
+Subpixel correction uses 2d vectors for the texture, but the edges look very skalar. I need a sklar division edge.
+x_at_y_int = Math.floor(-accumulator / gradient.v[0]);
+//  Here it is int. How do I propage tolerance through division?
+// Use the remainder ( uh, I need to get rid of the sign? Gradient does not have, but accumulator ). Is it even a problem? Yeah, DIV needs to sign extend accumulator for the msb in the ratio. ( and for lsb in fixed point nees to sign extend the divisor)
+// With vertex on screen, this is a delta. Do I know that the result is within screen range. Ah, I have some code for this. So no need to detect overflow? Then I can use bias locally (to ease debugging)
+Math.abs(accumulator) < (this.screen[0] + 1) * Math.abs(gradient.v[0])
+This test is 16 bit . So the test result has a tolerance? It might be easier (especially for unsigned DIV ) to detect if the quotient is too big.
+Overflow (fixed point or Dividend all 1 because 111*1000=111000  oder auch 15*16 <256) and divide by zero should result in 1111... . The manual does not say anything.
+// I hate it when I am more than 1px sqrt(2) away from the line. So: No bias for akkumulator. Just plain
+copy sign bit
+abs akku
+div akku,grad as delta_x
+if sign
+	mul delta*grad->p    grad is 16?  I though s32     . So Bresenham has higher internal precision than the start node. It can pull tighter tolerances without upping its own bitcount
+	sub akku,p    32 
+	sub delta,x
+else
+	add delta,x
+
+NodeType is also used for clipping  (I do ray trace corners first, also anders als bei SubPixel(SubPixel like corner: first and last pixel, if sign change? division! )) => Division node ( first and last as input )
+	It is a good idea to have the multiplication in a different node: the division has higher precision. This is really integer. We look for 9 bit result. So dividend is 32 bit (unsigned), divisor is 23 bit.
+	Signes are all gone for DIV. Do they add bits? Gradient sign sets starting point at the lower akku value. Then go from there. So everything is positive. One condition, 3 instructions per branch
+	I could use the middle as start and then use the code with the sign in another register. Well, middle is add;sha. So: 31 bit. Well, first tolerance reduction
+		const compensate_along_border = chosen_gradient == 0 ? 0 : on_the_border / chosen_gradient
+		const pixel_ordinate = position - compensate_along_border; // compensate means minus
+	Still I don't want this low level code in the 3d code. For portals I trace all corners. And then divide on one edge. Even if I go around calling this code, the last value would need to be reused -- that is not functional.
+
+
+
 
 16 * (n*16) needs a lot of shifts. Cannot really use MAC?
 
@@ -317,6 +348,51 @@ StoreP is buggy and cannot be used anyways. StreamOut using Store .
 ;Regarding full computation of a given precision:
 ;(variable shifter on both inputs very much looks like "smart idea")
 ;starting from lo,lo ( no carry space needed -- but consider synergy with sum in cross or inner) ln n / ln 2 bits   . Still looks like a wast of MUL to me
+
+
+
+
+
+
+
+
+How do I generate these nodes? Do I need a speical programming language? Operator overloading -- hmm I already use alpha-function names in JS.
+First call will construct a node. In a way, all calls construct a node. But I don't want the keyword "new" spread all over my code.
+So a generator?
+OOP would write:
+VectorAdd.gen()
+Ah, but most operations are so asymmetric and no operator is null, so clipping.ts / export class Vec{  needs a different implementation in LazyNode.ts
+	which in turn imports clipping.ts? No, new vec.ts because I have to replace the operators with functions.
+	which imports skalar operations which round like JRISC does?
+	JS does not allow to overload operators ( so like Java, saddly)
+	In JS result of bitwise operators are signed int32's.  I just hope that it cuts off 
+	 +=   becomes  akkumulate()  with bits overflowing . So 
+	 	akkumulator.result()
+		  {
+			return this.value & (-1)    // sign is only important when extending
+		  }
+
+But this is a lot to write. So C style functions with static variable or JS closures. Does my existing code work with this? Though I would remove this check:
+clip edges on border: check for cuts between edges  <= this is really ugly without lazy precision. A guard band ( at least on Jaguar) it the ugly cousine of lazy precision.
+32 bit maths in fixed precision stands out like a sore thumb . I doesn't get better with floats.
+
+The operands cannot be JS numbers. Yeah, well I hope I don't need to debug nummerical values in the Browser anymore anyways.
+So I can emulate the rounding as it happens in real JRISC. I am kinda building an Emulator.
+
+
+The Operators pull in more precision by themselves. So the calling code does not need to change.
+
+Test / Asserts / Logs: Higher precision should converge. Higher precsion should lie within the rougher tolerance
+
+
+
+
+
+
+
+
+
+
 
 === Floats are better than lazy precision on fixed ===
 
