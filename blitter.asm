@@ -1,3 +1,18 @@
+Hopefully the emulator is fixed so that the base thread can use the other register bank.
+Then the line interrupt can feed a queue to the blitter.
+With lazy precision, the GPU jitters even more. To reach 60 fps, the actuall blitter activity on one polygon using one texture snippet should fit into the rest of a scanline.
+So the double buffer thing should not disturb us. I calcuate zero overdraw. So actually, there could be two active queues, which don't carry more overhead than a pointer.
+The problem is the size of elements in the queue. s,t the increments (I need those raw because I cannot repeat perspective here), const shading. x_0, len.
+Textures are small. 5+15 bit =20  times 4 80 .. so like two ReadP.
+The ugly part is the tuning: when is the buffer swapped? Can I still start the next blitter run?
+This is for upscaling. Fillrate is limited. So a large polygon will be cut into tiles aligned with to texture. Again: tune how large these tiles are.
+Scale down works like the SDK. Pull from RAM, write line into color ram .
+
+SRCSHADE may add to 4bpp texel read. Then write to 8bpp framebuffer. SRCSHADE is an offset into the palette ( better than the pages of ObjectProcessor).
+I feels so wrong to write 8bpp into DRAM, but at least it is possible. This one pixel extension to write into GPU local RAM is weird. Color RAM only works down to 16bit granularity, and we need it here for its original purpose anyways.
+Sadly, there is no greyscale mode. But I could render Gouraud to CRY colors and add to the texels in the linebuffer. At 60 fps this might be okay.
+Of course, a second CRY layer is expensive and hogs the bus. So I would not do it, if framerate drops.
+
 Rereading about the registers, loading them already takes so much time.
 So even if I may want to allow some overdraw, I should really avoid drawing invisible lines.
 Beam tree gives visibility values before it gives me visble pixels. Of course then again I would need to check for z-sort. And then blows up code size.
