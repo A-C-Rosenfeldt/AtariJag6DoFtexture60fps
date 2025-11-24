@@ -1,3 +1,65 @@
+/*
+The arbitraryness of the BSP is hard to discuss away. With lazy precision it is worth more to recombine split polygons.
+The biggest motivation are roughe splits needed for spatial subdivision of the scene.
+So on both sides of this split polygons will meet. Occluded Polygons are not always convex. The data strucutre for the shape is also a BSP.
+When I remove the cut, I may find out that multiple edges were cut, and one of them is higher in one side and the other in the other side.
+So I gotta keep the BSP. I just need to hide cut edges from Bresenham (in the loop over y). Then flood fill the sector on the left.
+So picking edges just got high memory needs.
+Additionally, criss cross cuts can happen. The BSP just needs to make sure that they are inside the visible vertices.
+The Rasterizer only needs the y of the visible vertices ( this the second inner loop ).
+This cuts are T if different edges were chosen as grandchilds.
+Invisible cuts pull precision for consistency. Once the sign is sure, it stops. This almost makes me beg for precision pulls.
+
+Instead of floodfill into a BSP, I could store the visible polygon as a list of (not necessarily) convex polygons created by fusing BSP children.
+So if the children have any overlap on the split of their parents: fuse.
+Of course, I render each polygon in the list individually. I don't want to stress my linear sort.
+Ah, debris seen from above with a huge ground plane will crash this. I need to limit the fusing: bottom up, only convex. I don't want to start with enclaves
+
+This means that there is no BSP independent intermediate data structure, which could eliminate the influence of the decisions.
+I kinda got rid of the idea that there is synergy between perspective correction and BSP ( thanks to the expensive precision ).
+
+I do BSP before portals because portals are boring and BSP only needs two triangles ( and for portal: one portal and one triangle is quite artificial).
+*/
+class InfinitePlane{}
+
+class BSPnode{
+	children: (BSPnode | InfinitePlane)[]  // 0,1   
+	split_line: number[]  // 2d vectors are used in my renderers to postpone DIVs . After BSP unit tests Do: Import the correct type with precision
+	// this could be 0,0 if merging still needs to happen, for this.resolve_occlusion_order
+
+	// These methods live on the node because I plan to use bounding volumes and portals
+	// 3d polygons are convex in my engine. There is a BSPtree.insert()
+	insertPolygon(){
+		// Block extreme degeneration where addressing in a tree cannot be done with a 32bit pointer anymore. JRISC is 32bit!!!! Log error, don't freeze.
+	}
+	// before insertion?
+	resolve_occlusion_order( split_from_3d_cut:number[] , grandchildren:BSPnode[]){}
+}
+
+class BSPtree{
+insertPolygon(){
+	// run the vertices down the tree . So, like clipping to screen borders. Vertice, edges , planes? Ah, plane check is the same for the whole screen.
+	const b=new BSPnode   // on common parent
+	b.insertPolygon()  // todo: still happens on a node
+}
+// this algorithm can queue in a compact data structure to draw trapezoids deferred if I wanna try vsync tricks
+floodfill(){
+	// start with one node
+	// punch through seams (on both sides because I don't want sort overhead)
+	let y_max:number // keep track of the y when the next vertex will be passed
+	let invaded:BSPnode[][]  // [left, right],[distance]
+
+	let self=new PartialFilled()  // or do I mark nodes as filled in some other way? I could define the toggle to start with state=filled and then switch beyond y_max
+
+	let covered:BSPtree // subtree . Child pointers are useless. The bits need to mean left and right in the base tree. Floodfill stops at the 32th child, and falls back to sector
+}
+}
+
+class PartialFilled extends BSPnode{
+	// tuned=8 ; Here I can use a fixed size because flood fill can just fall back to sector fill
+	flips :number[]  // y where state flips from not filled to filled ( and back )
+}
+
 /* So it occured to me that my hard limit is cache memory. I feel like a BSP is most efficient to keep temporary data for occlusion between solid polygons. Transparent textures ($0000$) may come later.
 With forward or backwards ray tracing the math subroutines throw exceptions when they are unsure.
 With backward tracing I set up a graph of dependencies ( and may keep it frame to frame ) and pull in more precision.
