@@ -31,6 +31,24 @@ class BSPnode{
 	// 3d polygons are convex in my engine. There is a BSPtree.insert()
 	insertPolygon(){
 		// Block extreme degeneration where addressing in a tree cannot be done with a 32bit pointer anymore. JRISC is 32bit!!!! Log error, don't freeze.
+
+		// Heurisitc is usally a problem for BSP. Random is hard to debug and unfair. I found some cheap heuristic for my limited soup
+		// after splitting down the polygon into cells of the BSP
+		// prefer any edge which crosses the whole cell  ( boolean logig)
+		//  close to center: Convex polygon can be triangluated as a fan. Calculate cg of each triangle. Sum . Expensive
+		// Add this (toned down): Short cut, aka the length of the clipped edge (within this sector) . If we only do short cut, we would get chipped of corners.
+		// prefer edges with at least one end on the border (or maybe not? The TieBreak seems to hint )
+		//  with multiple edges on different borders: normalize border vector. Biggest wedge product wins
+		//   fast inverse sqrt is a thing, but I did not need it elsewhere in the renderer, why here? Code smell!
+		//   I propose: wedge product of the parent, but only the part which is also a part of the sector border
+		// edge with biggest wedge product with parent edge (no need to normalize because we compare all candidates to the same parent)
+		//  this is really cheap and breakes the tie! It could be uses within the previous groups
+		// Tie brake does not care about tolerance, but of course likes to use the highest quality parameters it can fit into 16x16 
+		// convex polygons don't cut into themselves. So, with the given information there is not much left to optimize
+		//  I can find no reason to follow the polyon after the first edge has been identified. This would work if the first edge sticks in the border on one side?
+		//   if another edge sticks, we should prefer that one
+		// Insertion is serial, so the model mesh could be stored in a serial fashion as a strip/fan ( flags says, which vertex will be reused)
+		//  prefer shared edges 
 	}
 	// before insertion?
 	resolve_occlusion_order( split_from_3d_cut:number[] , grandchildren:BSPnode[]){}
