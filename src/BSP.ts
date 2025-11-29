@@ -49,6 +49,20 @@ class BSPnode{
 		//   if another edge sticks, we should prefer that one
 		// Insertion is serial, so the model mesh could be stored in a serial fashion as a strip/fan ( flags says, which vertex will be reused)
 		//  prefer shared edges 
+
+		// For portals I did only need to deal with polygons, but with two beam tree, I need sectors on the outside
+		// So I need to check above rules for rectangular borders
+		//  imposing order on those feels wrong (but after choosing, KD-tree motivates the symmetry break)
+		// The other rules translate to my old code
+		//  prefer horizon
+		//   then vertex to border
+		//   then vertex vertex
+		// then prefer
+		//  longer ( R^2 norm )
+
+		// Debugging: Seems like I not only need to show vertices. But also edges and those of the tree. Use color and allow toggle ( number keys? ).
+		// BSP edges are stored like polygon edges
+		//  elongation can "upgrade" a vertex to border -- an edge to horizon
 	}
 	// before insertion?
 	resolve_occlusion_order( split_from_3d_cut:number[] , grandchildren:BSPnode[]){}
