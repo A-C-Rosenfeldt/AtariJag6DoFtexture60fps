@@ -1,4 +1,4 @@
-import { Vec2, Vec3, Matrix2, Vec2_den, Matrix } from "./clipping"
+import { Vec2, Vec3, Matrix2, Vec2_den, Matrix, Vec } from "./clipping"
 import { Edge_w_slope, Item, Point, Vertex_in_cameraSpace, Vertex_OnScreen,Corner } from './Item'
 import { Polygon_in_cameraSpace } from "./rasterizer"
 
@@ -464,19 +464,8 @@ class Portal { //implements Pyramid {
 						}
 					})
 				});   
-				// old
-				if (vertex_involved_count > 0 && parts_carried_by_basis_vector.v.reduce((p, c) => p || Math.sign(c) < 0, false)) return null  // cut is on the outside of either edge. Think of it as a triangle. Delta is the basis. Polygon order wants the cut to be corner C . Also need to point up both of them.
-				if (vertex_involved_count == 2) {  // using the other vertices. Same triangle argument. Somehow I feel like I should check both other vertices relative to one of mine if they are on the same side of me. This is just early out. Perhaps a way to test the code for the 3d case? Area between cuts sign should give the saem result. I just do this because cuts are really expensive (in JRISC). Code size is not even the worst aspect here.
-					let arg = item.map(it => (it[1] as Vertex_OnScreen).position)
-					const delta = new Vec2(arg)
-					const parts_carried_by_basis_vector = grad.mul_left_vec(delta)
-					if (parts_carried_by_basis_vector.v.reduce((p, c) => p || Math.sign(c) < 0, false)) return null
-				}
 
-
-				///// This code may duplicate some math, but it needs to stay readabl? 
-
-				// new
+				// new  				///// This code may duplicate some math, but it needs to stay readabl? 
 				// so now, a slope vector  inner product  gradient vector  is 0 if with its dual, but wedge product if cross. I keep these arround for all edges of polygon and portal ( size of the total state of cuts() )
 				// How do we describe a cut? There is this relative vector between the bases. Bias looks ugly
 				// a cut is zero on grad is inner prod=> easy . But what is inversion here? How can xy be a result of two inner products ( the multiplication of the inverse matrix)
@@ -490,9 +479,14 @@ class Portal { //implements Pyramid {
 				const de = grad.nominator[0].innerProduct(slope.nominator[1])  // determinant = denominator to normalize the parts vector. This obviously scales with the length of our basis vectors. The formula for inverse tells us that this is correct. Physics units would be m^2 and compensates both products
 				if (de == 0) return null
 
-
-
-
+				//const parts_carried_by_basis_vector=new Vec() ; // the vector space is 2d (s,t) + z + .. There is no norm defined and no cross product. Inner product works though?
+				if (vertex_involved_count > 0 && parts_carried_by_basis_vector.v.reduce((p, c) => p || Math.sign(c) < 0, false)) return null  // cut is on the outside of either edge. Think of it as a triangle. Delta is the basis. Polygon order wants the cut to be corner C . Also need to point up both of them.
+				if (vertex_involved_count == 2) {  // using the other vertices. Same triangle argument. Somehow I feel like I should check both other vertices relative to one of mine if they are on the same side of me. This is just early out. Perhaps a way to test the code for the 3d case? Area between cuts sign should give the saem result. I just do this because cuts are really expensive (in JRISC). Code size is not even the worst aspect here.
+					let arg = item.map(it => (it[1] as Vertex_OnScreen).position)
+					const delta = new Vec2(arg)
+					const parts_carried_by_basis_vector = grad.mul_left_vec(delta)
+					if (parts_carried_by_basis_vector.v.reduce((p, c) => p || Math.sign(c) < 0, false)) return null
+				}
 
 				// add up the basis vectors    // this only needs a scalar factor per basis vector
 				const xy_rel = Matrix.mul__Matrices_of_Rows([[parts_carried_by_basis_vector], slope.nominator])  // adding up vectors brings up back into the xy coordinate system. Matrix of Rows looks weird as static method

@@ -48,6 +48,12 @@
             "type": "msedge",
             "url": "http://localhost:3000/index.htm",
             "webRoot": "${workspaceFolder}/public"
+        },        {
+            "name": "Launch Edge linePartitions",
+            "request": "launch",
+            "type": "msedge",
+            "url": "http://localhost:3000/lines_partition.htm",
+            "webRoot": "${workspaceFolder}/public"
         },
         {
             "name": "Launch Chrome",

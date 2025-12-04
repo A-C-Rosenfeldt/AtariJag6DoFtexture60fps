@@ -1,0 +1,41 @@
+<!DOCTYPE html>
+<html>
+
+<head>
+    <link rel="stylesheet" href="index.css">
+    <link rel="shortcut icon" type="image/x-icon" href="favicon.ico">
+</head>
+
+<body style="background-color: darkslategray;color: antiquewhite;">
+    <h2>Since the Jaguar blitter is very slow, I want to avoid overdraw. </h2>
+    <p>The broken memory controller does not like span buffer. So BeamTree it is (WIP)</p>
+    <canvas id="Canvas2d" width="640" height="400" style="border:1px solid #000000;image-rendering: pixelated;
+	    image-rendering: crisp-edges;" class=""></canvas>
+
+    <p>For touchpad.</p>
+    <div class="container">
+        <div> <button id="forward">focus forward +</button> </div>
+        <div> <button id="backward">focus backward -</button> </div>
+        <button id="up">move vertex up +</button>
+        <div> <button id="down">move down</button> </div>
+        <button id="left">move left</button>
+        <div> <button id="right" >move right</button> </div>
+    </div>
+    <p>
+        Portals can clip other polygons in 3d => beam . Portals cannot use NDC.
+        Infinite precision does not like NDC because it add another multiplication to all vertices on screen.
+        NDC does help with culling, but lazy precison float clip away the bulk at low precision anyway.
+        Clipping of edges is a bit easier with NDC.
+    </p><p>
+        Pixel needs two MUL to shear the x of two vertices to the center.
+        NDC needs one MUL y after clipping. I guess I should store the (x,y) = z * FoV.xy on the 3d vertex.
+        Then for edges add / sub in pixel like in NDC. Each ordinate can be null if the vertex does not have an edge across the respective border.
+        Can nullable be interpreted as the 0th order of lazy precision?
+    </p><p>
+        With screen area partition, z is resolved after x,y (I found no good way to aggregate z on a node (minimax belongs to quadtree)). So no clipping or culling can happen.
+        Homogenous coordinates here mean that we use normals in 3d instead of projected 2d vectors. So, internally, there are beams!
+        But this is only the case because I gave up on rounding the screen x,y to digits after a division. Division is deferred. No easy to debug, small values.
+    </p>
+</body>
+<script src="lines_partition.js" type="module" ></script>
+</html>
