@@ -20,16 +20,139 @@ I kinda got rid of the idea that there is synergy between perspective correction
 
 I do BSP before portals because portals are boring and BSP only needs two triangles ( and for portal: one portal and one triangle is quite artificial).
 */
-class InfinitePlane{}
 
-class BSPnode{
-	children: (BSPnode | InfinitePlane)[]  // 0,1   
-	split_line: number[]  // 2d vectors are used in my renderers to postpone DIVs . After BSP unit tests Do: Import the correct type with precision
+import { Vec2, Vec3 } from "./clipping"
+//import { Vertex_OnScreen } from "./Item"
+
+class CanvasObject {
+	static screen = [320, 200];
+	toCanvas(ctx: CanvasRenderingContext2D) { }   // virtual  todo Placeholder
+}
+
+// OOD of polygon shader got a bit messy in rasterizer.ts. Clean version 2025-12-05
+// clearly the normalized data looks like this
+class Vertex_in_cameraSpace {
+	onScreen: Vertex_OnScreen  //nullable
+}
+class Polygon_in_cameraSpace implements CanvasObject {
+	toCanvas(ctx: CanvasRenderingContext2D): void {
+		ctx.fillStyle = "red";
+		ctx.fillRect(100, 40, 3, 3);
+		this.vertices.forEach(v => v.toCanvas(ctx))
+	}
+	vertices: Array<Vertex_OnScreen>
+}
+
+/* // // nodes seem to be edges
+// // rasterizer.ts: edg_fun => item . Only lives as marker on the item list. It is nothing like a node
+// // item.ts
+// export class Edge_on_Screen implements Item {
+// }// and children. Those have properties that we want. But : how to avoid double inheritance?
+// for the BSP test I assume 2d. No borders
+// This may return for portals. Or there is just convex polygon code
+// Without portals, viewing frustum and BSP do not have much in common
+function CreateTreeFromScreenBorders(): BSPtree {
+	const b = new BSPtree()
+	b.root=new BSPnode()
+	b.root.split_line_beam=new Vec3([[1,0,1]])
+	return b
+} */
+
+
+class Vertex_OnScreen implements CanvasObject {
+	constructor() {
+		this.z = 1
+	}
+	toCanvas(ctx: CanvasRenderingContext2D): void {
+		ctx.fillRect(...this.normalize(), 3, 3)
+	}
+	xy: Vec2 // co-ordinate
+	z: number
+
+	//const coordinates = (id: number) => [id, id] as const;
+	// const coordinates: (id: number) => [number, number]
+
+	normalize(): [number, number] {
+		const v = this.xy.scalarProduct(1 / this.z).v
+		// does not work if (v.length==2) return v ;// typeGuard 
+		return [v[0], v[1]]  // okay for only 2
+	}
+}
+
+class BSPnode_ExtensiononStack extends Polygon_in_cameraSpace {
+	ctx: CanvasRenderingContext2D;
+	toCanvas(ctx: CanvasRenderingContext2D): void {
+		ctx.fillStyle = "green";
+		ctx.beginPath()
+		//ctx.moveTo(...this.vertices[this.vertices.length-1 ].normalize() )
+		this.vertices.forEach(v => ctx.lineTo(...v.normalize()))
+		ctx.closePath()
+		ctx.fill()  // stroke()
+		throw new Error("Method not implemented.");
+	}
+	//convex_polygon: Array<Vertex_OnScreen>[]   // cuts and perspective correction both want a z value ( homogenous coordinates : w ). Z-buffer z lives in clipspace and is different. I don't care for z-buffer (because it is so cumbersome to use on Jaguar).
+	face_or_edge: boolean
+	DFS(n: BSPnode | Leaf) {
+
+
+		if (!this.face_or_edge) { if (n instanceof Leaf) this.toCanvas(this.ctx) }
+		if (this.face_or_edge) {
+			if (n instanceof BSPnode) {
+				n.children.forEach(c => {
+					this.DFS(c)
+				})
+				n.toCanvas(this.ctx)
+			}
+		}
+	}
+	//constructor()
+}
+
+class BSPnode extends CanvasObject {
+	children: (BSPnode | Leaf)[]  // 0,1   
+
+
+	// local in a mesh : local variables hold Vertice
+	// elsewhere : the math likes this
+	//split_line_beam: Vec3  // no rounding for lazy_precision_float
+	// I flatten the structure her. Node is not fat enough for more structure. Vec3 is misleading
+	xy: Vec2  //normal
+	z: number  // bias
+	decide(v: Vertex_OnScreen): number {
+		return this.xy.innerProduct(v.xy) - this.z * v.z
+	}
+
+	decide_edge(cp: Vertex_OnScreen[]) { }
+
+	toCanvas(ctx: CanvasRenderingContext2D) {
+		let r: [number, number], last = 0, current = last, l = 0
+		for (let corner = 0; corner <= 4; corner++) {
+			const gray_xy = corner ^ ((corner & 2) >> 1)  // check code in screen clipping for single polygon
+			// cycle => xy   00 01 ! 10 11 ! 00
+			//               00 01   11 01   00
+			current = this.xy.innerProduct(new Vec2([BSPnode.screen.map((s, i) => s * r[i])])) - this.z
+			if (Math.sign(current) != Math.sign(last)) {
+				const from_corner = current / this.xy.v[corner & 1]
+				let co: [number, number]
+				co[corner & 1] = from_corner
+				co[(corner ^ 1) & 1] = BSPnode.screen[(corner ^ 1) & 1]
+				if (l++ == 0) ctx.moveTo(...co)
+			}
+
+		}
+	}
+
+
+	// For the test bench: Still: Don't haluzinate the existance of vertices withing in the tree
+	// ViewVector.InnerProduct(beam)
+
+
+	// 2d vectors are used in my renderers to postpone DIVs . After BSP unit tests Do: Import the correct type with precision
 	// this could be 0,0 if merging still needs to happen, for this.resolve_occlusion_order
 
 	// These methods live on the node because I plan to use bounding volumes and portals
 	// 3d polygons are convex in my engine. There is a BSPtree.insert()
-	insertPolygon(){
+	insertPolygon() {
 		// Block extreme degeneration where addressing in a tree cannot be done with a 32bit pointer anymore. JRISC is 32bit!!!! Log error, don't freeze.
 
 		// Heurisitc is usally a problem for BSP. Random is hard to debug and unfair. I found some cheap heuristic for my limited soup
@@ -65,31 +188,58 @@ class BSPnode{
 		//  elongation can "upgrade" a vertex to border -- an edge to horizon
 	}
 	// before insertion?
-	resolve_occlusion_order( split_from_3d_cut:number[] , grandchildren:BSPnode[]){}
+	resolve_occlusion_order(split_from_3d_cut: number[], grandchildren: BSPnode[]) { }
 }
 
-class BSPtree{
-insertPolygon(){
-	// run the vertices down the tree . So, like clipping to screen borders. Vertice, edges , planes? Ah, plane check is the same for the whole screen.
-	const b=new BSPnode   // on common parent
-	b.insertPolygon()  // todo: still happens on a node
-}
-// this algorithm can queue in a compact data structure to draw trapezoids deferred if I wanna try vsync tricks
-floodfill(){
-	// start with one node
-	// punch through seams (on both sides because I don't want sort overhead)
-	let y_max:number // keep track of the y when the next vertex will be passed
-	let invaded:BSPnode[][]  // [left, right],[distance]
+class Leaf {
 
-	let self=new PartialFilled()  // or do I mark nodes as filled in some other way? I could define the toggle to start with state=filled and then switch beyond y_max
+}  // InfinitePlane  -- z info and shader
 
-	let covered:BSPtree // subtree . Child pointers are useless. The bits need to mean left and right in the base tree. Floodfill stops at the 32th child, and falls back to sector
-}
+
+export class BSPtree implements CanvasObject {
+	// constructor  
+	root: BSPnode // I come to the conclusion that basically a tree with zero nodes is valid, for example after culling
+	insertPolygon() {
+		// run the vertices down the tree . So, like clipping to screen borders. Vertice, edges , planes? Ah, plane check is the same for the whole screen.
+		const b = new BSPnode   // on common parent
+		b.insertPolygon()  // todo: still happens on a node
+	}
+	// this algorithm can queue in a compact data structure to draw trapezoids deferred if I wanna try vsync tricks
+	floodfill() {
+		// start with one node
+		// punch through seams (on both sides because I don't want sort overhead)
+		let y_max: number // keep track of the y when the next vertex will be passed
+		let invaded: BSPnode[][]  // [left, right],[distance]
+
+		let self = new PartialFilled()  // or do I mark nodes as filled in some other way? I could define the toggle to start with state=filled and then switch beyond y_max
+
+		let covered: BSPtree // subtree . Child pointers are useless. The bits need to mean left and right in the base tree. Floodfill stops at the 32th child, and falls back to sector
+	}
+
+	toCanvas(ctx: CanvasRenderingContext2D) {
+		if (this.root == null) return
+		let n = this.root
+		let ne = new BSPnode_ExtensiononStack
+		ne.ctx = ctx
+		for (let i = 0; i < 2; i++) { // lines in front of faces
+			ne.face_or_edge = i == 1
+			const stack = new Array<BSPnode>
+			ne.DFS(n)
+			//stack.push(n) // well, a manual stack is combersome and error prone
+
+			//let sn=new BSPnode_ExtensiononStack()
+
+			//stack.pop()
+		}
+
+		const p = new Polygon_in_cameraSpace()
+		p.toCanvas(ctx)
+	}
 }
 
-class PartialFilled extends BSPnode{
+class PartialFilled extends BSPnode {
 	// tuned=8 ; Here I can use a fixed size because flood fill can just fall back to sector fill
-	flips :number[]  // y where state flips from not filled to filled ( and back )
+	flips: number[]  // y where state flips from not filled to filled ( and back )
 }
 
 /* So it occured to me that my hard limit is cache memory. I feel like a BSP is most efficient to keep temporary data for occlusion between solid polygons. Transparent textures ($0000$) may come later.
