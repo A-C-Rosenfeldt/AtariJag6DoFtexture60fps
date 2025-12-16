@@ -1,3 +1,19 @@
+Reasons to support z-buffer vis SRAM. Perspective correction, GL_REPEAT, sector lightning, and decals.
+This could be matched by a z-buffer which uses the full precision.
+Generally, the fraction has too many bits. We can SHL the values from the GPU to fill the significiant bits.
+To avoid overflow in the GPU, it might make sense to use uint31. Then differences are int32.
+Ah, DIV is usigned. So actually, no need. We separate the sign first. Then delta is unsigned.
+
+For the blitter we need to put back the sign. For spans <=2 overflow can happen in the blitter register.
+But short spans better use pixel mode? The blitter has two ways to use pre-calculated z: read_z elsewhere (I think there is something to enable this)
+Or be aligned within a phrase and we delta only in the GPU, then shift, and store. Unaligned spans need two calls.
+Phrasemode cannot come out of saturation. So a first call for the unaligned phrase may be necessary (if block). Else: subtract delta (oh wait, this is the condition). 
+Phrasemode only works with small deltas because it jumps 4px with even more unsignificiant precision.
+Looped Phrasemode should only be used starting with 8px. So we know that delta will be small.
+
+This works with transparent textures ( trees, fire, billboards ) and high detail modesl (head, hand).
+Probably should use bounding boxes (+portals) to limit the z area.
+
 Hopefully the emulator is fixed so that the base thread can use the other register bank.
 Then the line interrupt can feed a queue to the blitter.
 With lazy precision, the GPU jitters even more. To reach 60 fps, the actuall blitter activity on one polygon using one texture snippet should fit into the rest of a scanline.

@@ -21,7 +21,7 @@ I kinda got rid of the idea that there is synergy between perspective correction
 I do BSP before portals because portals are boring and BSP only needs two triangles ( and for portal: one portal and one triangle is quite artificial).
 */
 
-import { Vec2, Vec3 } from "./clipping"
+import { Vec, Vec2, Vec3 } from "./clipping.js"
 //import { Vertex_OnScreen } from "./Item"
 
 class CanvasObject {
@@ -34,13 +34,36 @@ class CanvasObject {
 class Vertex_in_cameraSpace {
 	onScreen: Vertex_OnScreen  //nullable
 }
-class Polygon_in_cameraSpace implements CanvasObject {
+export class Polygon_in_cameraSpace implements CanvasObject {
+	// I feel like this will the method for all polygons not matter if clipped
+	// Clipped edges behave special on projection, but actually clipping and projection happen shortly after each other
+	// We persist screen coordinates ( ah, well, z does not exist for clipped edges ) . Just integers for scanlines
 	toCanvas(ctx: CanvasRenderingContext2D): void {
-		ctx.fillStyle = "red";
-		ctx.fillRect(100, 40, 3, 3);
+		ctx.fillStyle = "green";
+		ctx.beginPath()
+		ctx.moveTo(...this.vertices[0].normalize() )
+		this.vertices.forEach(v => ctx.lineTo(...v.normalize()))
+		ctx.closePath()
+		ctx.fill()  // stroke()
+
+		this.edges.forEach(e => e.toCanvas(ctx))
+		ctx.fillStyle = "#911"
 		this.vertices.forEach(v => v.toCanvas(ctx))
+
+	}
+	constructor(vs?:Array<Vertex_OnScreen>){
+		if (vs === undefined) return
+		this.vertices=vs
+		let lv=vs[vs.length-1]
+		this.edges=vs.map(v=>{
+			const e=new Edge_on_Screen()
+			e.vs=[v,lv];lv=v
+			return e
+		}
+		)
 	}
 	vertices: Array<Vertex_OnScreen>
+	edges:Array<Edge_on_Screen> // double link: edges point to vertices, and may later point to faces in a mesh
 }
 
 /* // // nodes seem to be edges
@@ -59,12 +82,12 @@ function CreateTreeFromScreenBorders(): BSPtree {
 } */
 
 
-class Vertex_OnScreen implements CanvasObject {
+export class Vertex_OnScreen implements CanvasObject {
 	constructor() {
 		this.z = 1
 	}
 	toCanvas(ctx: CanvasRenderingContext2D): void {
-		ctx.fillRect(...this.normalize(), 3, 3)
+		ctx.fillRect(...this.normalize(1), 3, 3)
 	}
 	xy: Vec2 // co-ordinate
 	z: number
@@ -72,19 +95,39 @@ class Vertex_OnScreen implements CanvasObject {
 	//const coordinates = (id: number) => [id, id] as const;
 	// const coordinates: (id: number) => [number, number]
 
-	normalize(): [number, number] {
-		const v = this.xy.scalarProduct(1 / this.z).v
+	normalize(offset=0): [number, number] {
+		const v = this.xy.scalarProduct(1 / this.z).subtract(new Vec([[offset,offset]])).v
 		// does not work if (v.length==2) return v ;// typeGuard 
 		return [v[0], v[1]]  // okay for only 2
 	}
 }
 
+// So he BSP is a construct hovering over the actual polygons. Like an index in the database
+// If I feel the need for an edge object for debugging (and rendering), they are real
+// Likewise infinite lines are a real way to focus on the parting propterty. Should I call them cuts? It is like cutting a polygon out of a sheet of paper using large scissors.
+// But the name is already common. BSP Partitioning like in a database. No reference to cut. Probably because we keep both parts (after all, BSP is only necessary if we have more than one polygon)
+// full Draw method for polygon. I call it "ToCanvas" to mark it as debug function. I could also call the debug view wireframe
+// For the solid shading, the polygons don't have their own draw method, but are edge walkers called by the face => completely different interface. Also other state: uh, at one point I gotta include clipping on view frustum
+// So this is like Edge_between_vertices, while the partition is like the Horizon_Edge 
+export class Edge_on_Screen implements CanvasObject {
+	vs:[Vertex_OnScreen,Vertex_OnScreen]
+	toCanvas(ctx: CanvasRenderingContext2D): void {
+		ctx.strokeStyle = '#FFF'
+		ctx.beginPath(); // Start a new path
+		ctx.moveTo(...(this.vs[0].normalize()) ); // Move the pen to (30, 50)
+		ctx.lineTo(...(this.vs[1].normalize())); // Draw a line to (150, 100)
+		ctx.stroke(); // Render the path
+
+		// Might be need if caller is BSPtree this.vs.forEach(v=>v.toCanvas(ctx))
+	}
+}
+
 class BSPnode_ExtensiononStack extends Polygon_in_cameraSpace {
 	ctx: CanvasRenderingContext2D;
-	toCanvas(ctx: CanvasRenderingContext2D): void {
+	toCanvas(ctx: CanvasRenderingContext2D): void { // dupe
 		ctx.fillStyle = "green";
 		ctx.beginPath()
-		//ctx.moveTo(...this.vertices[this.vertices.length-1 ].normalize() )
+		ctx.moveTo(...this.vertices[0].normalize() )
 		this.vertices.forEach(v => ctx.lineTo(...v.normalize()))
 		ctx.closePath()
 		ctx.fill()  // stroke()
@@ -108,11 +151,12 @@ class BSPnode_ExtensiononStack extends Polygon_in_cameraSpace {
 	//constructor()
 }
 
+// So this is like Horizon_Edge , while the partition is like the Edge_between_vertices
 class BSPnode extends CanvasObject {
 	children: (BSPnode | Leaf)[]  // 0,1   
 
 
-	// local in a mesh : local variables hold Vertice
+	// local in a mesh : local variables hold Vertice  see Edge_on_Screen
 	// elsewhere : the math likes this
 	//split_line_beam: Vec3  // no rounding for lazy_precision_float
 	// I flatten the structure her. Node is not fat enough for more structure. Vec3 is misleading
