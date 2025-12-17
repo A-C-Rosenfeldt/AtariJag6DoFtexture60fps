@@ -1,5 +1,11 @@
-Reasons to support z-buffer vis SRAM. Perspective correction, GL_REPEAT, sector lightning, and decals.
-This could be matched by a z-buffer which uses the full precision.
+Reasons to support z-buffer via SRAM. Perspective correction, GL_REPEAT, sector lightning, and decals split spans more than necessary for zbuffer.
+Decals and lightning can be kinda combined for point light sources: because the blitter cannot shade using Gouraud, points should light up circles on walls like Quake1 software.
+Co-planar convex polygons should be joined like Doom VisiPlanes.
+Perhaps span based occlusion is possible by tracing transparancy in the texture?
+Subspan correction of texture could use a look up to find combinations of power of two or even trade more DIVs for less akward blitter calls: 16+1 => 8+9 . Makes shading look better.
+But this is possible: The beam tree could detect that short spans sections will be occluded. Then just rasterizer through them to make the blitter go vrooom.
+
+This high quality, feature rich renderer could be matched by a z-buffer which uses the full precision.
 Generally, the fraction has too many bits. We can SHL the values from the GPU to fill the significiant bits.
 To avoid overflow in the GPU, it might make sense to use uint31. Then differences are int32.
 Ah, DIV is usigned. So actually, no need. We separate the sign first. Then delta is unsigned.
@@ -11,8 +17,9 @@ Phrasemode cannot come out of saturation. So a first call for the unaligned phra
 Phrasemode only works with small deltas because it jumps 4px with even more unsignificiant precision.
 Looped Phrasemode should only be used starting with 8px. So we know that delta will be small.
 
-This works with transparent textures ( trees, fire, billboards ) and high detail modesl (head, hand).
+This works with transparent textures ( trees, fire, billboards ) and high detail models (head, hand, flat shaded).
 Probably should use bounding boxes (+portals) to limit the z area.
+
 
 Hopefully the emulator is fixed so that the base thread can use the other register bank.
 Then the line interrupt can feed a queue to the blitter.

@@ -2,6 +2,7 @@ import { Vec3, Vec2 } from './clipping.js';
 //import { SimpleImage } from './GL.js';
 import { Camera_in_stSpace } from './infinite_plane_mapper.js';
 import { EdgeShader, PixelShader } from './PixelShader.js';
+import { Vertex_OnScreen, Corner, Onthe_border, vertex_behind_nearPlane, Edge_Horizon, Point, Edge_on_Screen, Edge_w_slope } from './Item.js';
 // The rasterizer needs to projected points from the beam tree. The tree is the start, and the polygon only lives in the leaf
 // I think that most polygons in a dense mesh are split by their neighbours. I would need extra code to check for back faces. This does neither fit into the MVP nor the cache
 // So I guess that I can go full tree. Still need to switch cases per vertex: Projected, vs cut of two edges, though do I, both are rationals. Ah, but with one x and y share w. Even this is the same for both.
@@ -36,112 +37,6 @@ class Span {
     // Jaguar innerloop does not waste energy on abort criterium
     // It wants integer x range
     render(x, texture_base, texture_delta /* vec2 ? */) {
-    }
-}
-class Edge_on_Screen {
-}
-// class Edge_hollow extends Edge_on_Screen {
-// }
-class Edge_w_slope extends Edge_on_Screen {
-    get gradient() {
-        return this._gradient;
-    }
-    set gradient(value) {
-        // Slope is from vertex to border.  Vertex to vertex around the clock. Horizon is trying to mimic around the clock. But really, slope is never top down. Ah later I convert around-the-clock to top down.
-        // So anyways: slope can be upwards until we know which side ( left vs right) we are on
-        // if (value.v[0]<0){
-        // 	throw new Error("Gradient along x needs to be positive, to make up for the negative Akku and the negative x.fraction <=floor.  ")
-        // }
-        this._gradient = value;
-    }
-}
-class Edge_Horizon extends Edge_w_slope {
-}
-class Point {
-}
-class vertex_behind_nearPlane {
-}
-// Just as projected
-class Vertex_OnScreen extends Point {
-    constructor() {
-        super(...arguments);
-        this._position = new Array();
-    }
-    get position() {
-        return this._position;
-    }
-    set position(value) {
-        if (isNaN(value[0]) || isNaN(value[0]))
-            throw new Error(" value is nan");
-        this._position = value;
-    }
-    get_y() { return Math.ceil(this.position[1]); } // subpixel correction and drawing with increasing y mandates ceil() instead of my standard floor(). +1 wleads to minimal glitches. Ah, why risk. Addq 1. SAR .
-    // I use the vector constructor to do this. Seems like a silly hack?
-    fraction() { return this.position.map(p => p - Math.floor(p)); } // AI thinks that this looks better than % 1. Floor is explicit and is the way JRISC with twos-complemnt fixed point works
-}
-class Corner extends Point {
-    constructor() {
-        super();
-        this.corner = -1;
-    }
-    get_one_digit_coords() {
-        const r = [(this.corner + 1 & 2) - 1, (this.corner + 0 & 2) - 1];
-        return r;
-    } // Todo: UnitTest
-    get_y() {
-        // if (Corner.throttle--<0) {
-        // 	throw new Error("endless loop")}
-        const y = Corner.screen[1] * ((this.corner & 2) - 1);
-        // console.log("Corner ",this.corner," -> y", y)
-        // if (isNaN(y)) {
-        // 	let lll=0
-        // }
-        return y;
-    }
-}
-Corner.throttle = 10000;
-class Onthe_border extends Point {
-    constructor(half_screen) {
-        super();
-        this.half_screen = half_screen;
-    }
-    get border() {
-        return this._border;
-    }
-    set border(value) {
-        if (value < 0)
-            throw new Error("<0");
-        if (value > 3)
-            throw new Error(">3");
-        if (!Number.isInteger(value))
-            throw new Error("!Number.isInteger");
-        this._border = value;
-    }
-    get_one_digit_coords() {
-        let t = [(this.border & 2) - 1, 0];
-        if ((this.border & 1) == 0)
-            return t;
-        return [0, t[0]];
-    }
-    get pixel_ordinate_int() {
-        return this._pixel_ordinate_int;
-    }
-    set pixel_ordinate_int(value) {
-        if (isNaN(value) || value < -160 || value > 160) {
-            throw "out of range for all axes. btw, border is " + this.border + " value is " + value;
-        }
-        this._pixel_ordinate_int = value;
-    }
-    get_y() {
-        return (this.border & 1) == 0 ? this.pixel_ordinate_int : this.half_screen[1] * ((this.border & 2) - 1);
-        // this has to follow the generation of these objects. This was the orignal shortes formulation. It failed
-        // return this.border & 1 ? this.pixel_ordinate_int : this.half_screen[this.corner & 1] * (1 - (this.corner & 2))
-    }
-}
-// Even without lazy precision, clipping and mapping tends to go back to the rotated vertex
-export class Vertex_in_cameraSpace {
-    constructor(inSpace) {
-        this.inSpace = inSpace;
     }
 }
 var modes;
@@ -204,12 +99,8 @@ export class Gradient {
         this._slope = value;
     }
 }
-// Todo: God class and too many dated comments
 export class Polygon_in_cameraSpace {
-    constructor(m) {
-        this.near_plane = 0.001;
-        this.mode = modes.NDC; // This is public. Change it to GuardBand to compare both versions ( artefacts, instruction count )
-        // NDC -> pixel
+    constructor() {
         this.screen = [320, 200];
         this.half_screen = this.screen.map(s => s / 2);
         this.FoV = [0.8, 0.5]; //[1.6, 1.0]  //
@@ -217,6 +108,14 @@ export class Polygon_in_cameraSpace {
         // Square pixels on my dev machine make thise elements equal
         this.screen_FoV = this.FoV_rezi.map((f, i) => f * this.half_screen[i]); // Forward for vertices  ..Needs to be this.screen <  < 2*this.screen for the machine language optimized clipping
         this.infinite_plane_FoV = this.FoV.map((f, i) => f / this.half_screen[i]); // backwards for "ray tracing"
+    }
+}
+export class SymmetricRectangle_clipper extends Polygon_in_cameraSpace {
+    constructor(m) {
+        super();
+        this.near_plane = 0.001;
+        this.mode = modes.NDC; // This is public. Change it to GuardBand to compare both versions ( artefacts, instruction count )
+        // NDC -> pixel
         this.epsilon = 0.001; // epsilon depends on the number of bits goint into IMUL. We need to factor-- in JRISC . So that floor() will work.
         // So to fight rounding errors, every culling will happen twice. Can I reuse code? Virtual functions for do_vertex do_edge do_face
         // Once in 3d to a power of two viewing frustum
@@ -224,17 +123,21 @@ export class Polygon_in_cameraSpace {
         // then in 2d to a bounding rectangle.16 and later a BSP
         // In the second pass, vertices can move outside, edges can lose a vertex or become invisible. For faces depend on this. The face without-edges screen-filler stays.
         // corners of the rectangle!
+        // I need the same precsion to clip edges. This was an experiment to have somewhat higher precision for vertices (8 bit). So could use floats?
+        // For my main objectiv, the portals, i should probably just stick to 16x16 bit MUL. Even I round the portal to 
         this.classify_vertex_JRISCstyle = (v) => {
             var _a, _b;
             let z = v.inSpace[v.inSpace.length - 1], outside = false; // sometimes string would be easier: -1 . Field have name and id ?
             let l = v.inSpace.length - 1; // weird that special component z is last. Probably in assembler I will interate backwards
             for (let i = 0; i < l; i++) {
                 if (Math.abs(v.inSpace[i]) > z) {
+                    v.add_outside_rect(i); // Problem is, I need all bits if I want to clip. No break allowed
                     outside = true;
-                    break;
+                    break; // todo: for isEdgeVisible() I need a bit [0=+ 1=-] set in cases_xy[direction]. NDC are great. State is your enemy, but JRISC loves single source registers 
                 } // abs works because there is a (0,0) DMZ between the four center pixels. DMZ around the pixels are used as a kindof mini guard band. symmetric NDC. For Jaguar with its 2-port register file it may makes sense to skew and check for the sign bit (AND r0,r0 sets N-flag). Jaguar has abs()
             }
             if (v[2] < this.near_plane) {
+                throw new Error("Should never happen. What bits to I set in v.outside_of_border, anyways");
                 outside = true;
             }
             else
@@ -260,7 +163,7 @@ export class Polygon_in_cameraSpace {
                 }
                 if (outside == false)
                     for (let i = 0; i < l; i++) {
-                        if (Math.abs(v.inSpace[i]) <= z2) {
+                        if (Math.abs(v.inSpace[i]) <= z2) { // Do the rest. Just performance optimization
                             v.onScreen.position[i] = v.inSpace[i] * this.screen_FoV[i] / z;
                         } // This makes no sense behind a portal
                         //if (Math.abs(v[i] * this.screen_FoV[i]) > z*this.screen_FoV[2]) { outside = true }  // Notice how z will be shifted, but two register because 3d is 32 bit
@@ -441,7 +344,7 @@ export class Polygon_in_cameraSpace {
             if (neighbours[0].outside) {
                 if (neighbours[1].outside) {
                     let veto_face_vertex = [[0, 0], [0, 0]];
-                    let pattern4 = this.isEdge_visible([vertices[i], vertices[k]], veto_face_vertex); // tested 2025-09-09 for 0100
+                    let pattern4 = this.is_Edge_visible([vertices[i], vertices[k]], veto_face_vertex); // tested 2025-09-09 for 0100
                     console.log("pattern4", pattern4.toString(2));
                     if (0 != pattern4) {
                         let cuts = this.edge_crossing_two_borders([vertices[i], vertices[k]], pattern4, veto_face_vertex);
@@ -593,9 +496,34 @@ export class Polygon_in_cameraSpace {
         }
         return on_screen;
     }
-    isEdge_visible(vertices, veto_face_vertex) {
-        // coarse and fast  like with the vertices I check if stuff is inside a 45 half angle FoV. Of course in JRISC this is free to change with 2^n
-        const z = vertices.map(v => v.inSpace[2]);
+    is_Edge_visible(vertices, veto_face_vertex) {
+        // A Corner ray is the cut between two border planes
+        // The end points aka vertices need to lie on different sides of a plane to cut that border
+        // Here we only look at vertices which are "behind" at least one plane. For the edge to be visible, the behind-border bits have to be different borders ( logical AND -> 0) Works also in the case of one vertex on screen
+        // For portals there is no opposite border. Indeed we don't need this notion: Similar to Corner insertion, we go around and select the corner with where for each plane at least one vertex is inside ( think of BSP ).
+        // The code after that: inner product with that vertx -> sign. And then check for z > 0 ( I forgot how I do it) .
+        // Todo: Pull in all veto code up to here
+        // veto code does the same check, just that I originally only checked for a corner. Veto check goes over two corners in polygon-lingo .
+        // Already for a rectangular portal I may need to check multiple corners when a eG. 3 times screen size edge crosses opposite borders 
+        // old:  . We need to clasify the vertices first (and precise).        did not work: coarse and fast  like with the vertices I check if stuff is inside a 45 half angle FoV. Of course in JRISC this is free to change with 2^n		
+        //const z = vertices.map(v=>v.inSpace[2])
+        // new code "for each vertex" . Perhahps move into the vertex loop. Todo: Decide if early out is important to cull vertices? I say: In a portal renderer probably a lot of vertices get clipped and not much more culled.
+        const xy = vertices.map(v => {
+            let border = 0;
+            for (let direction = 0; direction < 2; direction++) {
+                const xy = v.inSpace[direction] * this.FoV_rezi[direction], z = v.inSpace[2];
+                border = (border << 1) | (+xy > z ? 4 : 0) | (-xy > z ? 1 : 0);
+            }
+            return border;
+        }); // At least in the second run I need to use the actual FOV ( ahhh I want NDC back!) to avoid false posistives
+        if ((xy[0] & xy[1]) != 0)
+            return 0; // vertices share a plane they are both outside of the viewing pyramid
+        // culling
+        // if (+xy[0] > z[0] && +xy[1] > z[1]) return 0 //false
+        // if (-xy[0] > z[0] && -xy[1] > z[1]) return 0 //false
+        //veto_face_vertex[direction]=xy
+        // I need this to make a decision about the direction along the horizon
+        // old code. Todo:remove  .. I don't even know how to test it because the function signature is wrong ( veto should not exist)
         for (let direction = 0; direction < 2; direction++) {
             const xy = vertices.map(v => {
                 const xy = v.inSpace[direction] * this.FoV_rezi[direction], z = v.inSpace[2];
@@ -619,24 +547,53 @@ export class Polygon_in_cameraSpace {
         const bias = corner_screen[2] * cross.v[2];
         //let head = [false, false]  // any corner under water any over water?
         let pattern4 = 0, inside = 0, debug_pattern = "(";
-        const field = new Corner();
-        for (field.corner = 3; field.corner >= 0; field.corner--) { //corner_screen[1] = -1; corner_screen[1] <= +1; corner_screen[1] += 2) {
-            //for (corner_screen[0] = -1; corner_screen[0] <= +1; corner_screen[0] += 2) {
-            corner_screen.splice(0, 2, ...field.get_one_digit_coords());
-            inside = bias;
-            for (let axis = 0; axis < 2; axis++) {
-                if (this.FoV[axis] > 1)
-                    throw new Error("These factors only let the uses Fov expand a little inside the 45° pyramide from the coarse check");
-                inside += corner_screen[axis] * this.FoV[axis] * cross.v[axis];
+        { // Todo: get_one_digit coords looks like it does something special. Just apply the method. Throughout the code there is binary code to go from border number to corner vector. For a portal they all need to change to array[] reads
+            const field = new Corner();
+            for (field.corner = 3; field.corner >= 0; field.corner--) { //corner_screen[1] = -1; corner_screen[1] <= +1; corner_screen[1] += 2) {
+                //for (corner_screen[0] = -1; corner_screen[0] <= +1; corner_screen[0] += 2) {
+                corner_screen.splice(0, 2, ...field.get_one_digit_coords());
+                inside = bias;
+                for (let axis = 0; axis < 2; axis++) {
+                    if (this.FoV[axis] > 1)
+                        throw new Error("These factors only let the uses Fov expand a little inside the 45° pyramide from the coarse check");
+                    inside += corner_screen[axis] * this.FoV[axis] * cross.v[axis]; // So, how does this work with portals? Portals behind portals corners created by a cut between two edges (with rounded 16 bit screen coefs). The cut is not rounded
+                    //Portal
+                    //I don't want to solve the rotation order of multiple cuts
+                    //It seems the easiest (shortest code, modest time) way? What precision?
+                    //So all edges already lost their depth at this point. (bias and cross should be rounded)
+                    //So even without pre clipping on the rectangle, I use screen coords (vertex culling (each vertex on each pyramid face) makes this work in 3d with vertices having negative z)
+                    //So really, how do I calculate the area of 3 edges cutting?
+                    //usually, I do wedge product (two vectors) in 2d and cross,inner with 3 vectors in 3d
+                    //Algebra? So the cuts are: bias.sum()+ [coefs 2x2] &* [x,y]  solve for  [x,y]
+                    // => [xy] = swapped &* bias  /  (det==wedge product)
+                    // So from these points I gather two vectors and calculate cross product finally.
+                    // for point->vectors and for cross(*-*) I need to subtract, so a common denominator: a*b * b*c * c*a 
+                    // nominator doubles the muls +1 in cross. Priorr they are bias*swapped*extent^2
+                    // 9 = 1+ 2 *(4)
+                    // 9 - 5 = 4   -- uh, if I add units ( like metres ) to xy
+                    // actually, the coefs (swapped or not) are 1/metres.
+                    //  2 *  (m^(-1) * m^2) = m^2
+                    // so even after this check: A lot of multiplication!!!
+                    // I scribbled some images regarding DMZ. So first I round all crossings to pixel coordinates
+                    // But then there are a lot of ways how the deges can pass from one DMZ ( the square rigth below of floored pixel coord) to another DMZ
+                    // Lot's of ways to create bugs. I always pixture special cases, but thanks to rounding, I don't even know rotation order.
+                    // Instead of getting crazy with DMZ rules, and considering that I need pair-wise cuts rounded to pixel coords,
+                    // I can calculate the area using pixel coords. If it is small: test each pixel ( raytracing is my base => no problem with rounding )
+                    // So only slithers are a problem? So not actually take the area? All cuts within a rectangle between all rays is still an interesting case.
+                    // for the other: Check if we even need to decide by multiply all combinations of pixels around DMZ -- haha. Number of executed operations are back at full float.
+                    // 16 bit rounded cuts (compatible vertex on screen, also the result of DIV) with epsilon = max( width, height ). I need this cuts for the rasterizer. As seen above 16x16 is enough
+                    // with an area below epsilon, I could rasterize this as a triangle and store the result in the beamtree / portal so that there is a definitive portal.
+                    // this rasterizer has a fat inner loop: 3 edges at ones. bubble sort per line. Accepts the same payload and calls the same mapper.
+                }
+                pattern4 <<= 1;
+                if (inside > 0)
+                    pattern4 |= 1;
+                debug_pattern += inside.toFixed(2) + ","; //> 0 ? "1":"0"
+                //}
             }
-            pattern4 <<= 1;
-            if (inside > 0)
-                pattern4 |= 1;
-            debug_pattern += inside.toFixed(2) + ","; //> 0 ? "1":"0"
-            //}
+            this.corner11 |= 1 << (Math.sign(inside) + 1); // I need any point in screen to decide if a polygon covers the full screen or is invisible. Can just as well use the last corner
+            console.log("edge produces this pattern with the corners", pattern4.toString(2), debug_pattern + ")");
         }
-        this.corner11 |= 1 << (Math.sign(inside) + 1); // I need any point in screen to decide if a polygon covers the full screen or is invisible. Can just as well use the last corner
-        console.log("edge produces this pattern with the corners", pattern4.toString(2), debug_pattern + ")");
         if (pattern4 == 15 || pattern4 == 0)
             return 0;
         // check for postive z
@@ -696,7 +653,7 @@ export class Polygon_in_cameraSpace {
         // It just knows that it has to divide everything by z (= last element)
         // Matrix is trans-unit. There is no reason for it to be square
         const ps = new PixelShader(this.half_screen); // InfiniteCheckerBoard is PixelShader
-        const es = Array(2);
+        const es = Array(2); // Portal: Multiple edges can be active if I could not sort out all cuts in order. This is not part of the MVP. It effect should be reduction of glitches. Portals behind portal may inherit this?
         // this is probably pretty standard code. Just I want to explicitely show how what is essential for the inner loop and what is not
         // JRISC is slow on branches, but unrolling is easy (for my compiler probably), while compacting code is hard. See other files in this project.
         const slope_accu_c = [[0, 0], [0, 0]]; // for debugging. Todo: remove // (counter) circle around polygon edges as ordered in space / level-mesh geometry
@@ -982,16 +939,12 @@ export class Polygon_in_cameraSpace {
                     break;
                 }
             }
-            // todo: unite with corner.
-            if (edge == null) {
+            if (edge == null) { // this code block seems to be specific to a square screen
                 const c = [[0, 0], [0, 0]];
                 let checker = true; // center of screen would be vertex on screen
                 for (let j = 0; j < 2; j++) {
                     const v = v_val[j]; // I had a problem with intheritnace.  InstanceOf only here fits both these types
-                    if (v instanceof Onthe_border) {
-                        c[j] = v.get_one_digit_coords();
-                    } //;console.log("border",v.border)}
-                    if (v instanceof Corner) {
+                    if (v instanceof Onthe_border || v instanceof Corner) {
                         c[j] = v.get_one_digit_coords();
                     } //;console.log("corner",v.corner)}
                     checker && (checker = c[j][0] != 0 || c[j][1] != 0);

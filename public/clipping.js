@@ -57,6 +57,20 @@ On the other hand it would be cool if vehicles -- even if we cannot enter them -
 // I need vec3 and only two products
 // I don't want external dependencies of fat because I later need to compile to JRISC
 export class Vec {
+    innerProduct(o) {
+        let sum = 0;
+        for (let i = 0; i < this.v.length; i++) {
+            sum += this.v[i] * o.v[i];
+        }
+        return sum;
+    }
+    innerProductM(o, k) {
+        let sum = 0;
+        for (let i = 0; i < this.v.length; i++) {
+            sum += this.v[i] * o[i].v[k];
+        }
+        return sum;
+    }
     //constructor(points:number[][],len)
     constructor(points) {
         if (points.length < 2) {
@@ -72,20 +86,6 @@ export class Vec {
             }
         }
     }
-    innerProduct(o) {
-        let sum = 0;
-        for (let i = 0; i < this.v.length; i++) {
-            sum += this.v[i] * o.v[i];
-        }
-        return sum;
-    }
-    innerProductM(o, k) {
-        let sum = 0;
-        for (let i = 0; i < this.v.length; i++) {
-            sum += this.v[i] * o[i].v[k];
-        }
-        return sum;
-    }
     // no overloaded parameter in this critical part. JRISC can't overlaod anyway
     // in-place also not
     scalarProduct(f) {
@@ -99,6 +99,13 @@ export class Vec {
         for (let i = 0; i < this.v.length; i++) {
             this.v[i] += other.v[i] * (weight || 1);
         }
+    }
+    apply(other) {
+        const ret = other.slice();
+        for (let i = 0; i < this.v.length; i++) {
+            ret[i] += this.v[i];
+        }
+        return ret;
     }
 }
 export class Vec2 extends Vec {
