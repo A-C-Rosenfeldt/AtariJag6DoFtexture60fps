@@ -35,6 +35,9 @@ function drawCanvasGame() {
 		v=new Vertex_OnScreen();v.xy=new Vec2([[80,70]]);vs.push(v)
 		const p=new Polygon_in_cameraSpace(vs)
 		p.toCanvas(ctx)
+		const t=new BSPtree()
+		t.insertPolygon(p)
+		t.toCanvas(ctx)
 	}
 }
 

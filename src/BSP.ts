@@ -151,22 +151,13 @@ class BSPnode_ExtensiononStack extends Polygon_in_cameraSpace {
 	//constructor()
 }
 
-// So this is like Horizon_Edge , while the partition is like the Edge_between_vertices
-class BSPnode extends CanvasObject {
-	children: (BSPnode | Leaf)[]  // 0,1   
-
-
-	// local in a mesh : local variables hold Vertice  see Edge_on_Screen
-	// elsewhere : the math likes this
-	//split_line_beam: Vec3  // no rounding for lazy_precision_float
-	// I flatten the structure her. Node is not fat enough for more structure. Vec3 is misleading
-	xy: Vec2  //normal
+// to harmonize splitting with lazy precision
+class BSPnode_edge{
+		xy: Vec2  //normal
 	z: number  // bias
 	decide(v: Vertex_OnScreen): number {
 		return this.xy.innerProduct(v.xy) - this.z * v.z
 	}
-
-	decide_edge(cp: Vertex_OnScreen[]) { }
 
 	toCanvas(ctx: CanvasRenderingContext2D) {
 		let r: [number, number], last = 0, current = last, l = 0
@@ -174,7 +165,7 @@ class BSPnode extends CanvasObject {
 			const gray_xy = corner ^ ((corner & 2) >> 1)  // check code in screen clipping for single polygon
 			// cycle => xy   00 01 ! 10 11 ! 00
 			//               00 01   11 01   00
-			current = this.xy.innerProduct(new Vec2([BSPnode.screen.map((s, i) => s * r[i])])) - this.z
+			current = this.xy.innerProduct(new Vec2([BSPnode.screen.map((s, i) => ( (gray_xy>>i) & 1 ) ==0 ? 0:s )])) - this.z
 			if (Math.sign(current) != Math.sign(last)) {
 				const from_corner = current / this.xy.v[corner & 1]
 				let co: [number, number]
@@ -185,6 +176,53 @@ class BSPnode extends CanvasObject {
 
 		}
 	}
+
+verts:[Vertex_OnScreen, Vertex_OnScreen]	
+}
+
+// So this is like Horizon_Edge , while the partition is like the Edge_between_vertices
+class BSPnode extends CanvasObject {
+	children:(BSPnode | Leaf)[] =new Array<BSPnode>() // 0,1   
+	edge: BSPnode_edge
+
+	// local in a mesh : local variables hold Vertice  see Edge_on_Screen
+	// elsewhere : the math likes this
+	//split_line_beam: Vec3  // no rounding for lazy_precision_float
+	// I flatten the structure her. Node is not fat enough for more structure. Vec3 is misleading
+
+	ref_count: number;
+
+
+	decide_edge( e:BSPnode_edge){//:BSPnode_childref { 
+		const explicit_mesh=e.verts.map(v=> this.edge.verts.indexOf(v))
+		const sides=explicit_mesh.map((f,i)=>{
+			if (f>=0) return 0
+			return Math.sign(this.edge.decide(e.verts[i]))
+		})
+		//if (Math.abs(sides[1]-sides[0])>1) // split ausrechnen
+		for(let s=0;s<2;s++){
+			if (Math.min(...sides)==(2*s)-1) {
+				let c=this.children[s]
+				if (c==null || (c instanceof Leaf) ){
+					const n=new BSPnode()
+					n.edge=e
+					this.children[s]=n  // I don't want too many instanceOf in my code.
+				}else{
+					return c.decide_edge(e)
+				}
+			}
+		}
+	}
+
+	toCanvas(ctx: CanvasRenderingContext2D) {
+		this.edge.toCanvas(ctx)
+	}
+
+
+	// This only should live while inserting a mesh
+	// In JS Objects can aquire and lose properties during their lifetime.
+	// On Jaguar I would probably live with nullable. Or I use references. Shrinking objects are a memory allocation nightmare
+	 
 
 
 	// For the test bench: Still: Don't haluzinate the existance of vertices withing in the tree
@@ -243,7 +281,47 @@ class Leaf {
 export class BSPtree implements CanvasObject {
 	// constructor  
 	root: BSPnode // I come to the conclusion that basically a tree with zero nodes is valid, for example after culling
-	insertPolygon() {
+	insertPolygon(p:Polygon_in_cameraSpace) {
+		if (this.root==null){ // I imply the screen borders to be match my clipping code
+			const s=p.edges.map(e=> {
+				const vecs=e.vs.map(v=> new Vec2( [ v.normalize() ]  ) )  // vertices start with v. I should rename to point to differentiate from vector -- but what about Transformation?
+				const delta=vecs[0].subtract01(vecs[1])  
+				const r:[number,Edge_on_Screen]=
+				[delta.innerProduct(delta),e]   //  ref type
+				return r
+			} )
+			s.sort((a,b)=> a[0] - b[0] )
+			for(let i=s.length-1;i>=0;i--){
+				const n = new BSPnode_edge()
+				const verts=(s[i][1] ).vs    //new Vec2( [ lv[1].normalize() ]  ) )
+
+				const delta=verts[0].xy.scalarProduct(verts[1].z).subtract01(verts[1].xy.scalarProduct(verts[0].z)).v  // calculation with fractions. No division. Looks random. Should this the duty of the compiler?
+				n.xy=new Vec2([[ delta[1], -delta[0] ]])  // wedge
+				n.z=+verts[0].xy.innerProduct(n.xy) / verts[0].z // be obvious how the implicit function would be 0 on a vertex => no wedge here and not "source of truth" ref to verts
+				// see:  this.xy.innerProduct(v.xy) - this.z * v.z              this=edge=n  = function    apply to ->  <- parameter  v= vertex =verts[], not normalized
+				// first the * v.z is compensated by / v.z , then the - does not need to be compensated here. Is it weird that I compensate at application?
+
+				// mesh insertion needs references to vertices
+				n.verts=verts
+
+				if (this.root==null){
+					const b=new BSPnode()
+					b.edge=n
+					this.root=b					
+				}
+				else{					
+					this.root.decide_edge(n) // insert edge
+
+					// this.root.insertPolygon(s.slice(0,i)) // to work for all sides 
+					// const midpoint_w=verts.map(v=>parent.decide(v)).reduce((p,c)=>p+c)  // fractions // Does this need an epsilon, or check vertex indices or infinite precision?
+					// parent.children[(Math.sign(midpoint_w)+1)/2]=n
+
+				}
+				
+			}
+			
+
+		}
 		// run the vertices down the tree . So, like clipping to screen borders. Vertice, edges , planes? Ah, plane check is the same for the whole screen.
 		const b = new BSPnode   // on common parent
 		b.insertPolygon()  // todo: still happens on a node

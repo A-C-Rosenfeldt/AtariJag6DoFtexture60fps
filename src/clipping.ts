@@ -104,6 +104,10 @@ export class Vec{ // looks like I need 2 and 3 dimensions to show off this (adap
 	subtract(other: Vec): Vec {
 		return new Vec([this.v, other.v])
 	}
+
+	subtract01(other: Vec): Vec {
+		return new Vec([ other.v,this.v])
+	}
 	
 	add(other: Vec, weight?:number) {
 		for(let i=0;i<this.v.length;i++){
