@@ -136,8 +136,6 @@ class BSPnode_ExtensiononStack extends Polygon_in_cameraSpace {
 	//convex_polygon: Array<Vertex_OnScreen>[]   // cuts and perspective correction both want a z value ( homogenous coordinates : w ). Z-buffer z lives in clipspace and is different. I don't care for z-buffer (because it is so cumbersome to use on Jaguar).
 	face_or_edge: boolean
 	DFS(n: BSPnode | Leaf) {
-
-
 		if (!this.face_or_edge) { if (n instanceof Leaf) this.toCanvas(this.ctx) }
 		if (this.face_or_edge) {
 			if (n instanceof BSPnode) {
@@ -160,21 +158,31 @@ class BSPnode_edge{
 	}
 
 	toCanvas(ctx: CanvasRenderingContext2D) {
+		ctx.strokeStyle = "#00F";
+		ctx.beginPath()
+
 		let r: [number, number], last = 0, current = last, l = 0
 		for (let corner = 0; corner <= 4; corner++) {
 			const gray_xy = corner ^ ((corner & 2) >> 1)  // check code in screen clipping for single polygon
 			// cycle => xy   00 01 ! 10 11 ! 00
-			//               00 01   11 01   00
-			current = this.xy.innerProduct(new Vec2([BSPnode.screen.map((s, i) => ( (gray_xy>>i) & 1 ) ==0 ? 0:s )])) - this.z
-			if (Math.sign(current) != Math.sign(last)) {
-				const from_corner = current / this.xy.v[corner & 1]
-				let co: [number, number]
-				co[corner & 1] = from_corner
-				co[(corner ^ 1) & 1] = BSPnode.screen[(corner ^ 1) & 1]
+			//               00 01   11 10   00
+			const cxy = BSPnode.screen.map((s, i) => ((gray_xy >> i) & 1) == 0 ? 0 : s);			
+			current = this.xy.innerProduct(new Vec2([cxy])) - this.z
+			console.log("cc",corner,current,Math.abs( Math.sign(last) - Math.sign(current) ))
+			if (Math.abs( Math.sign(last) - Math.sign(current) ) >1) {
+				const from_last = (corner ^ 1) & 1;
+				let from_corner = current / this.xy.v[from_last]
+				cxy[from_last]-=from_corner
+				let co:[number,number]=[cxy[0],cxy[1]]				
 				if (l++ == 0) ctx.moveTo(...co)
+					else ctx.lineTo(...co)
 			}
-
+			last=current
 		}
+		if (l!=2) {
+			console.warn("there should only be 2 crossings for Horizon. l ",l)
+		}		
+		ctx.stroke()
 	}
 
 verts:[Vertex_OnScreen, Vertex_OnScreen]	
@@ -354,8 +362,7 @@ export class BSPtree implements CanvasObject {
 			//stack.pop()
 		}
 
-		const p = new Polygon_in_cameraSpace()
-		p.toCanvas(ctx)
+
 	}
 }
 
