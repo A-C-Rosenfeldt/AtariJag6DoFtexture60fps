@@ -25,7 +25,7 @@ import { Vec, Vec2, Vec3 } from "./clipping.js"
 //import { Vertex_OnScreen } from "./Item"
 
 class CanvasObject {
-	static screen = [320, 200];
+	static screen = [640, 400];
 	toCanvas(ctx: CanvasRenderingContext2D) { }   // virtual  todo Placeholder
 }
 
@@ -41,7 +41,7 @@ export class Polygon_in_cameraSpace implements CanvasObject {
 	toCanvas(ctx: CanvasRenderingContext2D): void {
 		ctx.fillStyle = "green";
 		ctx.beginPath()
-		ctx.moveTo(...this.vertices[0].normalize() )
+		ctx.moveTo(...this.vertices[0].normalize())
 		this.vertices.forEach(v => ctx.lineTo(...v.normalize()))
 		ctx.closePath()
 		ctx.fill()  // stroke()
@@ -51,19 +51,19 @@ export class Polygon_in_cameraSpace implements CanvasObject {
 		this.vertices.forEach(v => v.toCanvas(ctx))
 
 	}
-	constructor(vs?:Array<Vertex_OnScreen>){
+	constructor(vs?: Array<Vertex_OnScreen>) {
 		if (vs === undefined) return
-		this.vertices=vs
-		let lv=vs[vs.length-1]
-		this.edges=vs.map(v=>{
-			const e=new Edge_on_Screen()
-			e.vs=[v,lv];lv=v
+		this.vertices = vs
+		let lv = vs[vs.length - 1]
+		this.edges = vs.map(v => {
+			const e = new Edge_on_Screen()
+			e.vs = [v, lv]; lv = v
 			return e
 		}
 		)
 	}
 	vertices: Array<Vertex_OnScreen>
-	edges:Array<Edge_on_Screen> // double link: edges point to vertices, and may later point to faces in a mesh
+	edges: Array<Edge_on_Screen> // double link: edges point to vertices, and may later point to faces in a mesh
 }
 
 /* // // nodes seem to be edges
@@ -95,8 +95,8 @@ export class Vertex_OnScreen implements CanvasObject {
 	//const coordinates = (id: number) => [id, id] as const;
 	// const coordinates: (id: number) => [number, number]
 
-	normalize(offset=0): [number, number] {
-		const v = this.xy.scalarProduct(1 / this.z).subtract(new Vec([[offset,offset]])).v
+	normalize(offset = 0): [number, number] {
+		const v = this.xy.scalarProduct(1 / this.z).subtract(new Vec2([[offset, offset]])).v
 		// does not work if (v.length==2) return v ;// typeGuard 
 		return [v[0], v[1]]  // okay for only 2
 	}
@@ -110,11 +110,11 @@ export class Vertex_OnScreen implements CanvasObject {
 // For the solid shading, the polygons don't have their own draw method, but are edge walkers called by the face => completely different interface. Also other state: uh, at one point I gotta include clipping on view frustum
 // So this is like Edge_between_vertices, while the partition is like the Horizon_Edge 
 export class Edge_on_Screen implements CanvasObject {
-	vs:[Vertex_OnScreen,Vertex_OnScreen]
+	vs: [Vertex_OnScreen, Vertex_OnScreen]
 	toCanvas(ctx: CanvasRenderingContext2D): void {
-		ctx.strokeStyle = '#FFF'
+		ctx.strokeStyle = '#bbb'
 		ctx.beginPath(); // Start a new path
-		ctx.moveTo(...(this.vs[0].normalize()) ); // Move the pen to (30, 50)
+		ctx.moveTo(...(this.vs[0].normalize())); // Move the pen to (30, 50)
 		ctx.lineTo(...(this.vs[1].normalize())); // Draw a line to (150, 100)
 		ctx.stroke(); // Render the path
 
@@ -127,7 +127,7 @@ class BSPnode_ExtensiononStack extends Polygon_in_cameraSpace {
 	toCanvas(ctx: CanvasRenderingContext2D): void { // dupe
 		ctx.fillStyle = "green";
 		ctx.beginPath()
-		ctx.moveTo(...this.vertices[0].normalize() )
+		ctx.moveTo(...this.vertices[0].normalize())
 		this.vertices.forEach(v => ctx.lineTo(...v.normalize()))
 		ctx.closePath()
 		ctx.fill()  // stroke()
@@ -135,62 +135,100 @@ class BSPnode_ExtensiononStack extends Polygon_in_cameraSpace {
 	}
 	//convex_polygon: Array<Vertex_OnScreen>[]   // cuts and perspective correction both want a z value ( homogenous coordinates : w ). Z-buffer z lives in clipspace and is different. I don't care for z-buffer (because it is so cumbersome to use on Jaguar).
 	face_or_edge: boolean
-	DFS(n: BSPnode | Leaf) {
+	DFS(n: BSPnode | Leaf, pi?: Array<Vec2> /*ref*/) {
+		let portal = [pi]
 		if (!this.face_or_edge) { if (n instanceof Leaf) this.toCanvas(this.ctx) }
 		if (this.face_or_edge) {
 			if (n instanceof BSPnode) {
-				n.children.forEach(c => {
-					this.DFS(c)
-				})
-				n.toCanvas(this.ctx)
+				portal = n.toCanvas(this.ctx, pi)
 			}
 		}
+		if (n instanceof BSPnode) {
+			n.children.forEach((c, i) => {
+				this.DFS(c, portal[i])
+			})
+		}
+		//constructor()
 	}
-	//constructor()
 }
 
 // to harmonize splitting with lazy precision
-class BSPnode_edge{
-		xy: Vec2  //normal
+class BSPnode_edge {
+	xy: Vec2  //normal
 	z: number  // bias
 	decide(v: Vertex_OnScreen): number {
 		return this.xy.innerProduct(v.xy) - this.z * v.z
 	}
 
-	toCanvas(ctx: CanvasRenderingContext2D) {
-		ctx.strokeStyle = "#00F";
+	// import {Portal} from "./pyramid.js"
+	// import { Vec, Vec2, Vec3 } from "./clipping.js"
+
+	toCanvas(ctx: CanvasRenderingContext2D, pi?: Array<Vec2> /*ref*/) {
+		ctx.strokeStyle = "#00F"
+		const back = ctx.lineWidth
+		ctx.lineWidth = 4
 		ctx.beginPath()
 
-		let r: [number, number], last = 0, current = last, l = 0
-		for (let corner = 0; corner <= 4; corner++) {
+		let r: [number, number], last = 0, current = last, l = 0, last_v: Vec2
+		const count = 2
+		let portal = new Array<Array<Vec2>>(count) // We split the parent polygon into two -1 ==0 and +1= 1
+		for (let i = 0; i < count; i++) portal[i] = Array<Vec2>()
+
+		for (let corner = 0, count = pi == null ? 4 : pi.length; corner <= count; corner++) {  // todo: polyon aka portal code
 			const gray_xy = corner ^ ((corner & 2) >> 1)  // check code in screen clipping for single polygon
 			// cycle => xy   00 01 ! 10 11 ! 00
 			//               00 01   11 10   00
-			const cxy = BSPnode.screen.map((s, i) => ((gray_xy >> i) & 1) == 0 ? 0 : s);			
-			current = this.xy.innerProduct(new Vec2([cxy])) - this.z
-			console.log("cc",corner,current,Math.abs( Math.sign(last) - Math.sign(current) ))
-			if (Math.abs( Math.sign(last) - Math.sign(current) ) >1) {
-				const from_last = (corner ^ 1) & 1;
-				let from_corner = current / this.xy.v[from_last]
-				cxy[from_last]-=from_corner
-				let co:[number,number]=[cxy[0],cxy[1]]				
+			const v = pi == null ? new Vec2([BSPnode.screen.map((s, i) => ((gray_xy >> i) & 1) == 0 ? 0 : s)]) : pi[corner % pi.length]; // one goal was to use explicit code to show the edge cases and allow logs and break points. So this code will stay and be amended by polygon (portal) code. 
+			// This is not the inner loop. If I want to remove branches, I need to optimize the compiler to unroll loops and implement those lag by one iteration variables
+			//const v = new Vec2([cxy])
+			current = this.xy.innerProduct(v) - this.z
+			if (Math.abs(Math.sign(last) - Math.sign(current)) > 1) {
+
+
+				if (pi == null) {
+					let cxy = v.v.slice()
+					const from_last = (corner ^ 1) & 1;
+					let from_corner = current / this.xy.v[from_last]
+					cxy[from_last] -= from_corner
+					var co: [number, number] = [cxy[0], cxy[1]]
+					var cut = new Vec2([co]);
+
+				} else {
+					const edge = last_v.subtract01(v);
+					let from_corner = current / edge.innerProduct(this.xy)
+					var cut = v.subtract(edge.scalarProduct(from_corner))
+					co = [cut.v[0], cut.v[1]]
+
+				}
+				for (let i = 0; i < 2; i++) {
+					portal[i].push(cut)
+				}
+
 				if (l++ == 0) ctx.moveTo(...co)
-					else ctx.lineTo(...co)
+				else ctx.lineTo(...co)
+				// It looks like there is no way around data oriented code as the portal is cut from the borders
+				// placeholders seem to bloat code. Do not use in 2d. Perhaps merge with 
 			}
-			last=current
+			if (corner < count) {
+				portal[(Math.sign(current) + 1) / 2].push(v)
+			}  // decide on which side of split the old corner ends up it
+			last = current
+			last_v = v
 		}
-		if (l!=2) {
-			console.warn("there should only be 2 crossings for Horizon. l ",l)
-		}		
+		if (l != 2) {
+			console.warn("there should only be 2 crossings for Horizon. l ", l)
+		}
 		ctx.stroke()
+		ctx.lineWidth = 1 //back
+		return portal
 	}
 
-verts:[Vertex_OnScreen, Vertex_OnScreen]	
+	verts: [Vertex_OnScreen, Vertex_OnScreen]
 }
 
 // So this is like Horizon_Edge , while the partition is like the Edge_between_vertices
 class BSPnode extends CanvasObject {
-	children:(BSPnode | Leaf)[] =new Array<BSPnode>() // 0,1   
+	children: (BSPnode | Leaf)[] = new Array<BSPnode>() // 0,1   
 	edge: BSPnode_edge
 
 	// local in a mesh : local variables hold Vertice  see Edge_on_Screen
@@ -201,36 +239,36 @@ class BSPnode extends CanvasObject {
 	ref_count: number;
 
 
-	decide_edge( e:BSPnode_edge){//:BSPnode_childref { 
-		const explicit_mesh=e.verts.map(v=> this.edge.verts.indexOf(v))
-		const sides=explicit_mesh.map((f,i)=>{
-			if (f>=0) return 0
+	decide_edge(e: BSPnode_edge) {//:BSPnode_childref { 
+		const explicit_mesh = e.verts.map(v => this.edge.verts.indexOf(v))
+		const sides = explicit_mesh.map((f, i) => {
+			if (f >= 0) return 0
 			return Math.sign(this.edge.decide(e.verts[i]))
 		})
 		//if (Math.abs(sides[1]-sides[0])>1) // split ausrechnen
-		for(let s=0;s<2;s++){
-			if (Math.min(...sides)==(2*s)-1) {
-				let c=this.children[s]
-				if (c==null || (c instanceof Leaf) ){
-					const n=new BSPnode()
-					n.edge=e
-					this.children[s]=n  // I don't want too many instanceOf in my code.
-				}else{
+		for (let s = 0; s < 2; s++) {
+			if (sides.map(si => si == (2 * s) - 1).reduce((p, c) => p || c, false)) {
+				let c = this.children[s]
+				if (c == null || (c instanceof Leaf)) {
+					const n = new BSPnode()
+					n.edge = e
+					this.children[s] = n  // I don't want too many instanceOf in my code.
+				} else {
 					return c.decide_edge(e)
 				}
 			}
 		}
 	}
 
-	toCanvas(ctx: CanvasRenderingContext2D) {
-		this.edge.toCanvas(ctx)
+	toCanvas(ctx: CanvasRenderingContext2D, pi?: Array<Vec2> /*ref*/) {
+		return this.edge.toCanvas(ctx, pi)
 	}
 
 
 	// This only should live while inserting a mesh
 	// In JS Objects can aquire and lose properties during their lifetime.
 	// On Jaguar I would probably live with nullable. Or I use references. Shrinking objects are a memory allocation nightmare
-	 
+
 
 
 	// For the test bench: Still: Don't haluzinate the existance of vertices withing in the tree
@@ -289,35 +327,35 @@ class Leaf {
 export class BSPtree implements CanvasObject {
 	// constructor  
 	root: BSPnode // I come to the conclusion that basically a tree with zero nodes is valid, for example after culling
-	insertPolygon(p:Polygon_in_cameraSpace) {
-		if (this.root==null){ // I imply the screen borders to be match my clipping code
-			const s=p.edges.map(e=> {
-				const vecs=e.vs.map(v=> new Vec2( [ v.normalize() ]  ) )  // vertices start with v. I should rename to point to differentiate from vector -- but what about Transformation?
-				const delta=vecs[0].subtract01(vecs[1])  
-				const r:[number,Edge_on_Screen]=
-				[delta.innerProduct(delta),e]   //  ref type
+	insertPolygon(p: Polygon_in_cameraSpace) {
+		if (this.root == null) { // I imply the screen borders to be match my clipping code
+			const s = p.edges.map(e => {
+				const vecs = e.vs.map(v => new Vec2([v.normalize()]))  // vertices start with v. I should rename to point to differentiate from vector -- but what about Transformation?
+				const delta = vecs[0].subtract01(vecs[1])
+				const r: [number, Edge_on_Screen] =
+					[delta.innerProduct(delta), e]   //  ref type
 				return r
-			} )
-			s.sort((a,b)=> a[0] - b[0] )
-			for(let i=s.length-1;i>=0;i--){
+			})
+			s.sort((a, b) => a[0] - b[0])
+			for (let i = s.length - 1; i >= 0; i--) {
 				const n = new BSPnode_edge()
-				const verts=(s[i][1] ).vs    //new Vec2( [ lv[1].normalize() ]  ) )
+				const verts = (s[i][1]).vs    //new Vec2( [ lv[1].normalize() ]  ) )
 
-				const delta=verts[0].xy.scalarProduct(verts[1].z).subtract01(verts[1].xy.scalarProduct(verts[0].z)).v  // calculation with fractions. No division. Looks random. Should this the duty of the compiler?
-				n.xy=new Vec2([[ delta[1], -delta[0] ]])  // wedge
-				n.z=+verts[0].xy.innerProduct(n.xy) / verts[0].z // be obvious how the implicit function would be 0 on a vertex => no wedge here and not "source of truth" ref to verts
+				const delta = verts[0].xy.scalarProduct(verts[1].z).subtract01(verts[1].xy.scalarProduct(verts[0].z)).v  // calculation with fractions. No division. Looks random. Should this the duty of the compiler?
+				n.xy = new Vec2([[delta[1], -delta[0]]])  // wedge
+				n.z = +verts[0].xy.innerProduct(n.xy) / verts[0].z // be obvious how the implicit function would be 0 on a vertex => no wedge here and not "source of truth" ref to verts
 				// see:  this.xy.innerProduct(v.xy) - this.z * v.z              this=edge=n  = function    apply to ->  <- parameter  v= vertex =verts[], not normalized
 				// first the * v.z is compensated by / v.z , then the - does not need to be compensated here. Is it weird that I compensate at application?
 
 				// mesh insertion needs references to vertices
-				n.verts=verts
+				n.verts = verts
 
-				if (this.root==null){
-					const b=new BSPnode()
-					b.edge=n
-					this.root=b					
+				if (this.root == null) {
+					const b = new BSPnode()
+					b.edge = n
+					this.root = b
 				}
-				else{					
+				else {
 					this.root.decide_edge(n) // insert edge
 
 					// this.root.insertPolygon(s.slice(0,i)) // to work for all sides 
@@ -325,9 +363,9 @@ export class BSPtree implements CanvasObject {
 					// parent.children[(Math.sign(midpoint_w)+1)/2]=n
 
 				}
-				
+
 			}
-			
+
 
 		}
 		// run the vertices down the tree . So, like clipping to screen borders. Vertice, edges , planes? Ah, plane check is the same for the whole screen.
@@ -354,7 +392,7 @@ export class BSPtree implements CanvasObject {
 		for (let i = 0; i < 2; i++) { // lines in front of faces
 			ne.face_or_edge = i == 1
 			const stack = new Array<BSPnode>
-			ne.DFS(n)
+			ne.DFS(n, null)  // null means: No portal, yet. Use screen borders . Their size is injected as static/singleton upfront (before the frame)
 			//stack.push(n) // well, a manual stack is combersome and error prone
 
 			//let sn=new BSPnode_ExtensiononStack()

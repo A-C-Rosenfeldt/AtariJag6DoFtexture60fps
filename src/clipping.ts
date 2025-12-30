@@ -125,8 +125,17 @@ export class Vec{ // looks like I need 2 and 3 dimensions to show off this (adap
 }
 
 export class Vec2 extends Vec{
-
-	
+	// override? covariant?
+	subtract(other: Vec2): Vec2 {
+		return new Vec2([this.v, other.v])
+	}
+	subtract01(other: Vec2): Vec2 {
+		return new Vec2([ other.v,this.v])
+	}	
+	scalarProduct(f:number){
+		let v= this.v.map( comp=> comp*f)
+		return new Vec2([v])
+	}	
 	wedgeProduct(o:Vec2):number{
 		return this.v[0]*o.v[1]-this.v[1]*o.v[0]
 	}

@@ -30,14 +30,16 @@ function drawCanvasGame() {
 
 		
 		const vs=[]
-		v=new Vertex_OnScreen();v.xy=new Vec2([[20,80]]);vs.push(v)
-		v=new Vertex_OnScreen();v.xy=new Vec2([[120,30]]);vs.push(v)
-		v=new Vertex_OnScreen();v.xy=new Vec2([[80,70]]);vs.push(v)
+		v=new Vertex_OnScreen();v.xy=new Vec2([[40,160]]);vs.push(v)
+		v=new Vertex_OnScreen();v.xy=new Vec2([[240,60]]);vs.push(v)
+		v=new Vertex_OnScreen();v.xy=new Vec2([[160,140]]);vs.push(v)
 		const p=new Polygon_in_cameraSpace(vs)
-		p.toCanvas(ctx)
+	
 		const t=new BSPtree()
 		t.insertPolygon(p)
 		t.toCanvas(ctx)
+
+		p.toCanvas(ctx)
 	}
 }
 
