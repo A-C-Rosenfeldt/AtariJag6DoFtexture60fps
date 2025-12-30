@@ -48,9 +48,10 @@ export class Polygon_in_cameraSpace implements CanvasObject {
 
 		this.edges.forEach(e => e.toCanvas(ctx))
 		ctx.fillStyle = "#911"
-		this.vertices.forEach(v => v.toCanvas(ctx))
-
+		this.selected %= this.vertices.length
+		this.vertices.forEach((v, i) => v.toCanvas(ctx, i == this.selected))
 	}
+	selected = -1
 	constructor(vs?: Array<Vertex_OnScreen>) {
 		if (vs === undefined) return
 		this.vertices = vs
@@ -86,8 +87,10 @@ export class Vertex_OnScreen implements CanvasObject {
 	constructor() {
 		this.z = 1
 	}
-	toCanvas(ctx: CanvasRenderingContext2D): void {
-		ctx.fillRect(...this.normalize(1), 3, 3)
+	toCanvas(ctx: CanvasRenderingContext2D, selected = false): void {
+		const size = selected ? 3 : 1
+		const full = 1 + 2 * size
+		ctx.fillRect(...this.normalize(size), full, full)
 	}
 	xy: Vec2 // co-ordinate
 	z: number
