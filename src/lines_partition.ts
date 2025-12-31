@@ -16,6 +16,20 @@ window.document.getElementById("backward").addEventListener("click",
 	}
 )
 
+window.document.getElementById("p0").addEventListener("click",
+	(event) => {
+		pse = 0
+		selPoly();
+	}
+)
+
+window.document.getElementById("p1").addEventListener("click",
+	(event) => {
+		pse = 1
+		selPoly();
+	}
+)
+
 window.document.getElementById("up").addEventListener("click", touch_button(0, -1))
 window.document.getElementById("down").addEventListener("click", touch_button(0, +1))
 window.document.getElementById("left").addEventListener("click", touch_button(-1, 0))
@@ -30,19 +44,28 @@ function touch_button(a: number, b: number) {
 	}
 }
 
-const p = (function initSample() {
+const ps = (function initSample() {
 	let v: Vertex_OnScreen
 	// v.xy=new Vec2([[90,50]])
 	// ctx.fillRect(100, 40, 3, 3);
 
 
-	const vs = []
+	let vs = []
 	v = new Vertex_OnScreen(); v.xy = new Vec2([[40, 160]]); vs.push(v)
 	v = new Vertex_OnScreen(); v.xy = new Vec2([[240, 60]]); vs.push(v)
 	v = new Vertex_OnScreen(); v.xy = new Vec2([[160, 140]]); vs.push(v)
 	const p = new Polygon_in_cameraSpace(vs)
-	return p
+	vs = []
+	v = new Vertex_OnScreen(); v.xy = new Vec2([[140, 265]]); vs.push(v)
+	v = new Vertex_OnScreen(); v.xy = new Vec2([[340, 125]]); vs.push(v)
+	v = new Vertex_OnScreen(); v.xy = new Vec2([[260, 247]]); vs.push(v)
+	const q = new Polygon_in_cameraSpace(vs, "#07C")
+	return [p, q]
 })()
+
+let pse = 0
+let p = ps[pse]
+p.selected = 0
 
 function drawCanvasGame() {
 	const canvas = document.getElementById("Canvas2d") as HTMLCanvasElement;
@@ -62,10 +85,10 @@ function drawCanvasGame() {
 		// ctx.fillStyle = "#911";
 
 		const t = new BSPtree()
-		t.insertPolygon(p)
+		ps.forEach(p => t.insertPolygon(p))
 		t.toCanvas(ctx)
 
-		p.toCanvas(ctx)
+		ps.forEach(p => p.toCanvas(ctx))
 	}
 }
 
@@ -120,7 +143,14 @@ document.addEventListener(
 				p.selected++
 				drawCanvasGame()
 				break
-
+			case "0":
+				pse = 0
+				selPoly();
+				break
+			case "1":
+				pse = 1
+				selPoly();
+				break
 			default: return
 		}
 
@@ -128,3 +158,10 @@ document.addEventListener(
 	},
 	false,
 );
+
+function selPoly() {
+	p.selected = -1;
+	p = ps[pse];
+	p.selected = 0;
+	drawCanvasGame();
+}

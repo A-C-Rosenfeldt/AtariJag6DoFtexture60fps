@@ -21,6 +21,7 @@ I kinda got rid of the idea that there is synergy between perspective correction
 I do BSP before portals because portals are boring and BSP only needs two triangles ( and for portal: one portal and one triangle is quite artificial).
 */
 
+import { assert } from "chai";
 import { Vec, Vec2, Vec3 } from "./clipping.js"
 //import { Vertex_OnScreen } from "./Item"
 
@@ -35,11 +36,12 @@ class Vertex_in_cameraSpace {
 	onScreen: Vertex_OnScreen  //nullable
 }
 export class Polygon_in_cameraSpace implements CanvasObject {
+	fillStyle: string;
 	// I feel like this will the method for all polygons not matter if clipped
 	// Clipped edges behave special on projection, but actually clipping and projection happen shortly after each other
 	// We persist screen coordinates ( ah, well, z does not exist for clipped edges ) . Just integers for scanlines
 	toCanvas(ctx: CanvasRenderingContext2D): void {
-		ctx.fillStyle = "green";
+		ctx.fillStyle = this.fillStyle
 		ctx.beginPath()
 		ctx.moveTo(...this.vertices[0].normalize())
 		this.vertices.forEach(v => ctx.lineTo(...v.normalize()))
@@ -52,7 +54,7 @@ export class Polygon_in_cameraSpace implements CanvasObject {
 		this.vertices.forEach((v, i) => v.toCanvas(ctx, i == this.selected))
 	}
 	selected = -1
-	constructor(vs?: Array<Vertex_OnScreen>) {
+	constructor(vs?: Array<Vertex_OnScreen>, fillStyle = "#080") {
 		if (vs === undefined) return
 		this.vertices = vs
 		let lv = vs[vs.length - 1]
@@ -62,6 +64,7 @@ export class Polygon_in_cameraSpace implements CanvasObject {
 			return e
 		}
 		)
+		this.fillStyle = fillStyle
 	}
 	vertices: Array<Vertex_OnScreen>
 	edges: Array<Edge_on_Screen> // double link: edges point to vertices, and may later point to faces in a mesh
@@ -212,14 +215,27 @@ class BSPnode_edge {
 				// It looks like there is no way around data oriented code as the portal is cut from the borders
 				// placeholders seem to bloat code. Do not use in 2d. Perhaps merge with 
 			}
-			if (corner < count) {
-				portal[(Math.sign(current) + 1) / 2].push(v)
+			if (corner < count) { // no dupe on close
+
+				if (current == 0) { 
+					for(let i=0;i<portal.length;i++) portal[i].push(v)
+				} else {
+					const i = (Math.sign(current) + 1) / 2
+					if (i != 0 && i != 1) { console.warn("only two sides of a coin", i) }
+
+					try {
+						portal[i].push(v)
+					} catch {
+						console.log("portal", portal, i)
+						const dummy = i
+					}
+				}
 			}  // decide on which side of split the old corner ends up it
 			last = current
 			last_v = v
 		}
 		if (l != 2) {
-			console.warn("there should only be 2 crossings for Horizon. l ", l)
+			console.warn("Todo: ToCanvas: detect -1 0 +1 crossings for Horizon! l= ", l)
 		}
 		ctx.stroke()
 		ctx.lineWidth = 1 //back
@@ -248,6 +264,7 @@ class BSPnode extends CanvasObject {
 			if (f >= 0) return 0
 			return Math.sign(this.edge.decide(e.verts[i]))
 		})
+		if (Math.abs(sides[0]-sides[1])>1) console.log("decide edge", sides)
 		//if (Math.abs(sides[1]-sides[0])>1) // split ausrechnen
 		for (let s = 0; s < 2; s++) {
 			if (sides.map(si => si == (2 * s) - 1).reduce((p, c) => p || c, false)) {
@@ -331,7 +348,8 @@ export class BSPtree implements CanvasObject {
 	// constructor  
 	root: BSPnode // I come to the conclusion that basically a tree with zero nodes is valid, for example after culling
 	insertPolygon(p: Polygon_in_cameraSpace) {
-		if (this.root == null) { // I imply the screen borders to be match my clipping code
+		//console.log("insertPolygon", p.fillStyle)
+		{//if (this.root == null) { // I imply the screen borders to be match my clipping code
 			const s = p.edges.map(e => {
 				const vecs = e.vs.map(v => new Vec2([v.normalize()]))  // vertices start with v. I should rename to point to differentiate from vector -- but what about Transformation?
 				const delta = vecs[0].subtract01(vecs[1])
@@ -372,8 +390,8 @@ export class BSPtree implements CanvasObject {
 
 		}
 		// run the vertices down the tree . So, like clipping to screen borders. Vertice, edges , planes? Ah, plane check is the same for the whole screen.
-		const b = new BSPnode   // on common parent
-		b.insertPolygon()  // todo: still happens on a node
+		// const b = new BSPnode   // on common parent
+		// b.insertPolygon()  // todo: still happens on a node
 	}
 	// this algorithm can queue in a compact data structure to draw trapezoids deferred if I wanna try vsync tricks
 	floodfill() {
