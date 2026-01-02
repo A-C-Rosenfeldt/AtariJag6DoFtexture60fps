@@ -43,8 +43,8 @@ export class Polygon_in_cameraSpace implements CanvasObject {
 	toCanvas(ctx: CanvasRenderingContext2D): void {
 		ctx.fillStyle = this.fillStyle
 		ctx.beginPath()
-		ctx.moveTo(...this.vertices[0].normalize())
-		this.vertices.forEach(v => ctx.lineTo(...v.normalize()))
+		ctx.moveTo(...this.vertices[0].normalize(-debugshift))
+		this.vertices.forEach(v => ctx.lineTo(...v.normalize(-debugshift)))
 		ctx.closePath()
 		ctx.fill()  // stroke()
 
@@ -54,7 +54,7 @@ export class Polygon_in_cameraSpace implements CanvasObject {
 		this.vertices.forEach((v, i) => v.toCanvas(ctx, i == this.selected))
 	}
 	selected = -1
-	constructor(vs?: Array<Vertex_OnScreen>, fillStyle = "#080") {
+	constructor(vs?: Array<Vertex_OnScreen>, fillStyle = "rgba(0, 136, 0, 0.2)") {
 		if (vs === undefined) return
 		this.vertices = vs
 		let lv = vs[vs.length - 1]
@@ -93,7 +93,7 @@ export class Vertex_OnScreen implements CanvasObject {
 	toCanvas(ctx: CanvasRenderingContext2D, selected = false): void {
 		const size = selected ? 3 : 1
 		const full = 1 + 2 * size
-		ctx.fillRect(...this.normalize(size), full, full)
+		ctx.fillRect(...this.normalize(size-debugshift), full, full)
 	}
 	xy: Vec2 // co-ordinate
 	z: number
@@ -115,13 +115,16 @@ export class Vertex_OnScreen implements CanvasObject {
 // full Draw method for polygon. I call it "ToCanvas" to mark it as debug function. I could also call the debug view wireframe
 // For the solid shading, the polygons don't have their own draw method, but are edge walkers called by the face => completely different interface. Also other state: uh, at one point I gotta include clipping on view frustum
 // So this is like Edge_between_vertices, while the partition is like the Horizon_Edge 
+
+const debugshift=8
+
 export class Edge_on_Screen implements CanvasObject {
 	vs: [Vertex_OnScreen, Vertex_OnScreen]
 	toCanvas(ctx: CanvasRenderingContext2D): void {
 		ctx.strokeStyle = '#bbb'
 		ctx.beginPath(); // Start a new path
-		ctx.moveTo(...(this.vs[0].normalize())); // Move the pen to (30, 50)
-		ctx.lineTo(...(this.vs[1].normalize())); // Draw a line to (150, 100)
+		ctx.moveTo(...(this.vs[0].normalize(-debugshift))); // Move the pen to (30, 50)
+		ctx.lineTo(...(this.vs[1].normalize(-debugshift))); // Draw a line to (150, 100)
 		ctx.stroke(); // Render the path
 
 		// Might be need if caller is BSPtree this.vs.forEach(v=>v.toCanvas(ctx))
@@ -133,15 +136,15 @@ class BSPnode_ExtensiononStack extends Polygon_in_cameraSpace {
 	toCanvas(ctx: CanvasRenderingContext2D): void { // dupe
 		ctx.fillStyle = "green";
 		ctx.beginPath()
-		ctx.moveTo(...this.vertices[0].normalize())
-		this.vertices.forEach(v => ctx.lineTo(...v.normalize()))
+		ctx.moveTo(...this.vertices[0].normalize(-debugshift))
+		this.vertices.forEach(v => ctx.lineTo(...v.normalize(-debugshift)))
 		ctx.closePath()
 		ctx.fill()  // stroke()
 		throw new Error("Method not implemented.");
 	}
 	//convex_polygon: Array<Vertex_OnScreen>[]   // cuts and perspective correction both want a z value ( homogenous coordinates : w ). Z-buffer z lives in clipspace and is different. I don't care for z-buffer (because it is so cumbersome to use on Jaguar).
 	face_or_edge: boolean
-	DFS(n: BSPnode | Leaf, pi?: Array<Vec2> /*ref*/) {
+	DFS(n: BSPnode | Leaf, pi?: Array<Vec2> /*ref*/):number {
 		let portal = [pi]
 		if (!this.face_or_edge) { if (n instanceof Leaf) this.toCanvas(this.ctx) }
 		if (this.face_or_edge) {
@@ -149,14 +152,20 @@ class BSPnode_ExtensiononStack extends Polygon_in_cameraSpace {
 				portal = n.toCanvas(this.ctx, pi)
 			}
 		}
+
+		if (portal.length==0) return 0
 		if (n instanceof BSPnode) {
 			n.children.forEach((c, i) => {
-				this.DFS(c, portal[i])
+				const l=this.DFS(c, portal[i])
+				// It is possible to hide the bug one level. Looks like ToCanvas is correct, but insertEdge is not . if (l==0) this.DFS(c, portal[1-i])  // debugging. There has to be a better way?
 			})
 		}
+		return 1
 		//constructor()
 	}
 }
+
+var variance = 0
 
 // to harmonize splitting with lazy precision
 class BSPnode_edge {
@@ -170,76 +179,113 @@ class BSPnode_edge {
 	// import { Vec, Vec2, Vec3 } from "./clipping.js"
 
 	toCanvas(ctx: CanvasRenderingContext2D, pi?: Array<Vec2> /*ref*/) {
-		ctx.strokeStyle = "#00F"
+		ctx.strokeStyle = "#0" + variance.toString() + "F"; variance = (variance + 1) % 10
 		const back = ctx.lineWidth
-		ctx.lineWidth = 4
+		ctx.lineWidth = 5
 		ctx.beginPath()
 
 		let r: [number, number], last = 0, current = last, l = 0, last_v: Vec2
-		const count = 2
-		let portal = new Array<Array<Vec2>>(count) // We split the parent polygon into two -1 ==0 and +1= 1
-		for (let i = 0; i < count; i++) portal[i] = Array<Vec2>()
+		const count_splits = 2
+		let portal = new Array<Array<Vec2>>(count_splits) // We split the parent polygon into two -1 ==0 and +1= 1
+		for (let i = 0; i < count_splits; i++) portal[i] = Array<Vec2>()
 
-		for (let corner = 0, count = pi == null ? 4 : pi.length; corner <= count; corner++) {  // todo: polyon aka portal code
-			const gray_xy = corner ^ ((corner & 2) >> 1)  // check code in screen clipping for single polygon
-			// cycle => xy   00 01 ! 10 11 ! 00
-			//               00 01   11 10   00
-			const v = pi == null ? new Vec2([BSPnode.screen.map((s, i) => ((gray_xy >> i) & 1) == 0 ? 0 : s)]) : pi[corner % pi.length]; // one goal was to use explicit code to show the edge cases and allow logs and break points. So this code will stay and be amended by polygon (portal) code. 
+		let JRSICbitfield32 = 0
+
+		const pi_eq_null = pi == null;
+		if (pi_eq_null) {
+			const count = 4
+			var pi = new Array<Vec2>(count)
+			for (let corner = 0; corner < count; corner++) {
+				const gray_xy = corner ^ ((corner & 2) >> 1)  // check code in screen clipping for single polygon
+				// cycle => xy   00 01 ! 10 11 ! 00
+				//               00 01   11 10   00
+				pi[corner] = new Vec2([BSPnode.screen.map((s, i) => (((gray_xy >> i) & 1) == 0 ? 0 : s))]) // one goal was to use explicit code to show the edge cases and allow logs and break points. So this code will stay and be amended by polygon (portal) code. 
+			}
+		}
+
+
+		const cache = new Array<number>(length);// cache lazy infinite precision values
+		for (let corner = 0; corner < pi.length; corner++) {
+			var v = pi[corner]; // one goal was to use explicit code to show the edge cases and allow logs and break points. So this code will stay and be amended by polygon (portal) code. 
 			// This is not the inner loop. If I want to remove branches, I need to optimize the compiler to unroll loops and implement those lag by one iteration variables
 			//const v = new Vec2([cxy])
-			current = this.xy.innerProduct(v) - this.z
+
+
+			current = this.xy.innerProduct(v) - this.z;
+			// let sign = 0
+			// // Make JRISC behaves like this! Signed int2
+			if (current < 0) { last = current; last_v = v }
+			if (current > 0) { last = current; last_v = v }
+			cache[corner] = current //JRSICbitfield32 |= sign << (corner * 2)   // *2 becomes <<1 in JRISC
+
+		}
+
+
+		for (let corner = 0; corner < pi.length; corner++) {  // todo: polyon aka portal code
+
+			v = pi[corner]
+			current = cache[corner] //(JRSICbitfield32 >> (corner*2)) & 3
+			//if (current == 2) current = -1 // 2-complement, aka Shift Arithmethic Right in JRISC and some high level languages
 			if (Math.abs(Math.sign(last) - Math.sign(current)) > 1) {
-
-
-				if (pi == null) {
+				if (pi_eq_null) {
+					// todo: reactivate this fast path. Perhaps bring back typed vertices
 					let cxy = v.v.slice()
 					const from_last = (corner ^ 1) & 1;
 					let from_corner = current / this.xy.v[from_last]
 					cxy[from_last] -= from_corner
-					var co: [number, number] = [cxy[0], cxy[1]]
-					var cut = new Vec2([co]);
-
+					var co: [number, number] = [cxy[0]+debugshift, cxy[1]+debugshift]
+					var cut = new Vec2([cxy]);
+					//console.log("cut",cut.v)
 				} else {
 					const edge = last_v.subtract01(v);
 					let from_corner = current / edge.innerProduct(this.xy)
 					var cut = v.subtract(edge.scalarProduct(from_corner))
-					co = [cut.v[0], cut.v[1]]
+					co = [cut.v[0]+debugshift, cut.v[1]+debugshift]
 
 				}
 				for (let i = 0; i < 2; i++) {
+					if (typeof cut === undefined) console.warn("undef split")
 					portal[i].push(cut)
 				}
 
 				if (l++ == 0) ctx.moveTo(...co)
-				else ctx.lineTo(...co)
+				else {
+					ctx.lineTo(...co)
+					ctx.stroke()
+				}
+				// console.log("check for splits",co,last_v.v)
+				const dummy = 0
 				// It looks like there is no way around data oriented code as the portal is cut from the borders
 				// placeholders seem to bloat code. Do not use in 2d. Perhaps merge with 
 			}
-			if (corner < count) { // no dupe on close
 
-				if (current == 0) { 
-					for(let i=0;i<portal.length;i++) portal[i].push(v)
-				} else {
-					const i = (Math.sign(current) + 1) / 2
-					if (i != 0 && i != 1) { console.warn("only two sides of a coin", i) }
 
-					try {
-						portal[i].push(v)
-					} catch {
-						console.log("portal", portal, i)
-						const dummy = i
-					}
+			if (typeof v === undefined) console.warn("undef passthrough")
+			if (current == 0) {
+				for (let i = 0; i < portal.length; i++) portal[i].push(v)
+			} else {
+				const i = (Math.sign(current) + 1) / 2
+				if (i != 0 && i != 1) { console.warn("only two sides of a coin", i) }
+
+				try {
+					portal[i].push(v)
+				} catch {
+					console.log("portal", portal, i)
+					const dummy = i
 				}
-			}  // decide on which side of split the old corner ends up it
-			last = current
-			last_v = v
+
+				last = current; last_v = v // Hysteresis				
+			}
+
 		}
-		if (l != 2) {
-			console.warn("Todo: ToCanvas: detect -1 0 +1 crossings for Horizon! l= ", l)
+		if (l > 2) {
+			console.warn(" 2 < l== ", l, pi_eq_null)  // 0 happens pretty ofte !?
 		}
-		ctx.stroke()
+
 		ctx.lineWidth = 1 //back
 		return portal
+
+
 	}
 
 	verts: [Vertex_OnScreen, Vertex_OnScreen]
@@ -258,13 +304,13 @@ class BSPnode extends CanvasObject {
 	ref_count: number;
 
 
-	decide_edge(e: BSPnode_edge) {//:BSPnode_childref { 
+	decide_edge(e: BSPnode_edge):void {//:BSPnode_childref { 
 		const explicit_mesh = e.verts.map(v => this.edge.verts.indexOf(v))
 		const sides = explicit_mesh.map((f, i) => {
-			if (f >= 0) return 0
+			if (f >= 0) return //0
 			return Math.sign(this.edge.decide(e.verts[i]))
 		})
-		if (Math.abs(sides[0]-sides[1])>1) console.log("decide edge", sides)
+		//if (Math.abs(sides[0]-sides[1])>1) console.log("decide edge", sides)
 		//if (Math.abs(sides[1]-sides[0])>1) // split ausrechnen
 		for (let s = 0; s < 2; s++) {
 			if (sides.map(si => si == (2 * s) - 1).reduce((p, c) => p || c, false)) {
@@ -274,7 +320,8 @@ class BSPnode extends CanvasObject {
 					n.edge = e
 					this.children[s] = n  // I don't want too many instanceOf in my code.
 				} else {
-					return c.decide_edge(e)
+					//return 
+					c.decide_edge(e)
 				}
 			}
 		}

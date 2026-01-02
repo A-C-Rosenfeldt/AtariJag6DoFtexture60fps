@@ -29,6 +29,12 @@ window.document.getElementById("p1").addEventListener("click",
 		selPoly();
 	}
 )
+window.document.getElementById("p2").addEventListener("click",
+	(event) => {
+		pse = 2
+		selPoly();
+	}
+)
 
 window.document.getElementById("up").addEventListener("click", touch_button(0, -1))
 window.document.getElementById("down").addEventListener("click", touch_button(0, +1))
@@ -58,9 +64,15 @@ const ps = (function initSample() {
 	vs = []
 	v = new Vertex_OnScreen(); v.xy = new Vec2([[140, 265]]); vs.push(v)
 	v = new Vertex_OnScreen(); v.xy = new Vec2([[340, 125]]); vs.push(v)
-	v = new Vertex_OnScreen(); v.xy = new Vec2([[260, 247]]); vs.push(v)
-	const q = new Polygon_in_cameraSpace(vs, "#07C")
-	return [p, q]
+	v = new Vertex_OnScreen(); v.xy = new Vec2([[340, 247]]); vs.push(v)
+	v = new Vertex_OnScreen(); v.xy = new Vec2([[320, 377]]); vs.push(v)
+	const q = new Polygon_in_cameraSpace(vs, "rgba(170, 0, 204, 0.16)")
+		vs = []
+	v = new Vertex_OnScreen(); v.xy = new Vec2([[440, 360]]); vs.push(v)
+	v = new Vertex_OnScreen(); v.xy = new Vec2([[540, 260]]); vs.push(v)
+	v = new Vertex_OnScreen(); v.xy = new Vec2([[500, 240]]); vs.push(v)
+	const t = new Polygon_in_cameraSpace(vs, "rgba(173, 204, 0, 0.16)")
+	return [p, q,t]
 })()
 
 let pse = 0
@@ -151,6 +163,10 @@ document.addEventListener(
 				pse = 1
 				selPoly();
 				break
+			case "2":
+				pse = 2
+				selPoly();
+				break				
 			default: return
 		}
 
