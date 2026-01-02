@@ -20,12 +20,12 @@ I kinda got rid of the idea that there is synergy between perspective correction
 
 I do BSP before portals because portals are boring and BSP only needs two triangles ( and for portal: one portal and one triangle is quite artificial).
 */
-import { Vec, Vec2 } from "./clipping.js";
+import { Vec2 } from "./clipping.js";
 //import { Vertex_OnScreen } from "./Item"
 class CanvasObject {
     toCanvas(ctx) { } // virtual  todo Placeholder
 }
-CanvasObject.screen = [320, 200];
+CanvasObject.screen = [640, 400];
 // OOD of polygon shader got a bit messy in rasterizer.ts. Clean version 2025-12-05
 // clearly the normalized data looks like this
 class Vertex_in_cameraSpace {
@@ -35,17 +35,19 @@ export class Polygon_in_cameraSpace {
     // Clipped edges behave special on projection, but actually clipping and projection happen shortly after each other
     // We persist screen coordinates ( ah, well, z does not exist for clipped edges ) . Just integers for scanlines
     toCanvas(ctx) {
-        ctx.fillStyle = "green";
+        ctx.fillStyle = this.fillStyle;
         ctx.beginPath();
-        ctx.moveTo(...this.vertices[0].normalize());
-        this.vertices.forEach(v => ctx.lineTo(...v.normalize()));
+        ctx.moveTo(...this.vertices[0].normalize(-debugshift));
+        this.vertices.forEach(v => ctx.lineTo(...v.normalize(-debugshift)));
         ctx.closePath();
         ctx.fill(); // stroke()
         this.edges.forEach(e => e.toCanvas(ctx));
         ctx.fillStyle = "#911";
-        this.vertices.forEach(v => v.toCanvas(ctx));
+        this.selected %= this.vertices.length;
+        this.vertices.forEach((v, i) => v.toCanvas(ctx, i == this.selected));
     }
-    constructor(vs) {
+    constructor(vs, fillStyle = "rgba(0, 136, 0, 0.2)") {
+        this.selected = -1;
         if (vs === undefined)
             return;
         this.vertices = vs;
@@ -56,6 +58,7 @@ export class Polygon_in_cameraSpace {
             lv = v;
             return e;
         });
+        this.fillStyle = fillStyle;
     }
 }
 /* // // nodes seem to be edges
@@ -76,13 +79,15 @@ export class Vertex_OnScreen {
     constructor() {
         this.z = 1;
     }
-    toCanvas(ctx) {
-        ctx.fillRect(...this.normalize(1), 3, 3);
+    toCanvas(ctx, selected = false) {
+        const size = selected ? 3 : 1;
+        const full = 1 + 2 * size;
+        ctx.fillRect(...this.normalize(size - debugshift), full, full);
     }
     //const coordinates = (id: number) => [id, id] as const;
     // const coordinates: (id: number) => [number, number]
     normalize(offset = 0) {
-        const v = this.xy.scalarProduct(1 / this.z).subtract(new Vec([[offset, offset]])).v;
+        const v = this.xy.scalarProduct(1 / this.z).subtract(new Vec2([[offset, offset]])).v;
         // does not work if (v.length==2) return v ;// typeGuard 
         return [v[0], v[1]]; // okay for only 2
     }
@@ -94,12 +99,13 @@ export class Vertex_OnScreen {
 // full Draw method for polygon. I call it "ToCanvas" to mark it as debug function. I could also call the debug view wireframe
 // For the solid shading, the polygons don't have their own draw method, but are edge walkers called by the face => completely different interface. Also other state: uh, at one point I gotta include clipping on view frustum
 // So this is like Edge_between_vertices, while the partition is like the Horizon_Edge 
+const debugshift = 8;
 export class Edge_on_Screen {
     toCanvas(ctx) {
-        ctx.strokeStyle = '#FFF';
+        ctx.strokeStyle = '#bbb';
         ctx.beginPath(); // Start a new path
-        ctx.moveTo(...(this.vs[0].normalize())); // Move the pen to (30, 50)
-        ctx.lineTo(...(this.vs[1].normalize())); // Draw a line to (150, 100)
+        ctx.moveTo(...(this.vs[0].normalize(-debugshift))); // Move the pen to (30, 50)
+        ctx.lineTo(...(this.vs[1].normalize(-debugshift))); // Draw a line to (150, 100)
         ctx.stroke(); // Render the path
         // Might be need if caller is BSPtree this.vs.forEach(v=>v.toCanvas(ctx))
     }
@@ -108,50 +114,186 @@ class BSPnode_ExtensiononStack extends Polygon_in_cameraSpace {
     toCanvas(ctx) {
         ctx.fillStyle = "green";
         ctx.beginPath();
-        ctx.moveTo(...this.vertices[0].normalize());
-        this.vertices.forEach(v => ctx.lineTo(...v.normalize()));
+        ctx.moveTo(...this.vertices[0].normalize(-debugshift));
+        this.vertices.forEach(v => ctx.lineTo(...v.normalize(-debugshift)));
         ctx.closePath();
         ctx.fill(); // stroke()
         throw new Error("Method not implemented.");
     }
-    DFS(n) {
+    DFS(n, pi /*ref*/) {
+        let portal = [pi];
         if (!this.face_or_edge) {
             if (n instanceof Leaf)
                 this.toCanvas(this.ctx);
         }
         if (this.face_or_edge) {
             if (n instanceof BSPnode) {
-                n.children.forEach(c => {
-                    this.DFS(c);
-                });
-                n.toCanvas(this.ctx);
+                portal = n.toCanvas(this.ctx, pi);
             }
         }
+        if (portal.length == 0)
+            return 0;
+        if (n instanceof BSPnode) {
+            n.children.forEach((c, i) => {
+                const l = this.DFS(c, portal[i]);
+                // It is possible to hide the bug one level. Looks like ToCanvas is correct, but insertEdge is not . if (l==0) this.DFS(c, portal[1-i])  // debugging. There has to be a better way?
+            });
+        }
+        return 1;
+        //constructor()
+    }
+}
+var variance = 0;
+// to harmonize splitting with lazy precision
+class BSPnode_edge {
+    decide(v) {
+        return this.xy.innerProduct(v.xy) - this.z * v.z;
+    }
+    // import {Portal} from "./pyramid.js"
+    // import { Vec, Vec2, Vec3 } from "./clipping.js"
+    toCanvas(ctx, pi /*ref*/) {
+        ctx.strokeStyle = "#0" + variance.toString() + "F";
+        variance = (variance + 1) % 10;
+        const back = ctx.lineWidth;
+        ctx.lineWidth = 5;
+        ctx.beginPath();
+        let r, last = 0, current = last, l = 0, last_v;
+        const count_splits = 2;
+        let portal = new Array(count_splits); // We split the parent polygon into two -1 ==0 and +1= 1
+        for (let i = 0; i < count_splits; i++)
+            portal[i] = Array();
+        let JRSICbitfield32 = 0;
+        const pi_eq_null = pi == null;
+        if (pi_eq_null) {
+            const count = 4;
+            var pi = new Array(count);
+            for (let corner = 0; corner < count; corner++) {
+                const gray_xy = corner ^ ((corner & 2) >> 1); // check code in screen clipping for single polygon
+                // cycle => xy   00 01 ! 10 11 ! 00
+                //               00 01   11 10   00
+                pi[corner] = new Vec2([BSPnode.screen.map((s, i) => (((gray_xy >> i) & 1) == 0 ? 0 : s))]); // one goal was to use explicit code to show the edge cases and allow logs and break points. So this code will stay and be amended by polygon (portal) code. 
+            }
+        }
+        const cache = new Array(length); // cache lazy infinite precision values
+        for (let corner = 0; corner < pi.length; corner++) {
+            var v = pi[corner]; // one goal was to use explicit code to show the edge cases and allow logs and break points. So this code will stay and be amended by polygon (portal) code. 
+            // This is not the inner loop. If I want to remove branches, I need to optimize the compiler to unroll loops and implement those lag by one iteration variables
+            //const v = new Vec2([cxy])
+            current = this.xy.innerProduct(v) - this.z;
+            // let sign = 0
+            // // Make JRISC behaves like this! Signed int2
+            if (current < 0) {
+                last = current;
+                last_v = v;
+            }
+            if (current > 0) {
+                last = current;
+                last_v = v;
+            }
+            cache[corner] = current; //JRSICbitfield32 |= sign << (corner * 2)   // *2 becomes <<1 in JRISC
+        }
+        for (let corner = 0; corner < pi.length; corner++) { // todo: polyon aka portal code
+            v = pi[corner];
+            current = cache[corner]; //(JRSICbitfield32 >> (corner*2)) & 3
+            //if (current == 2) current = -1 // 2-complement, aka Shift Arithmethic Right in JRISC and some high level languages
+            if (Math.abs(Math.sign(last) - Math.sign(current)) > 1) {
+                if (pi_eq_null) {
+                    // todo: reactivate this fast path. Perhaps bring back typed vertices
+                    let cxy = v.v.slice();
+                    const from_last = (corner ^ 1) & 1;
+                    let from_corner = current / this.xy.v[from_last];
+                    cxy[from_last] -= from_corner;
+                    var co = [cxy[0] + debugshift, cxy[1] + debugshift];
+                    var cut = new Vec2([cxy]);
+                    //console.log("cut",cut.v)
+                }
+                else {
+                    const edge = last_v.subtract01(v);
+                    let from_corner = current / edge.innerProduct(this.xy);
+                    var cut = v.subtract(edge.scalarProduct(from_corner));
+                    co = [cut.v[0] + debugshift, cut.v[1] + debugshift];
+                }
+                for (let i = 0; i < 2; i++) {
+                    if (typeof cut === undefined)
+                        console.warn("undef split");
+                    portal[i].push(cut);
+                }
+                if (l++ == 0)
+                    ctx.moveTo(...co);
+                else {
+                    ctx.lineTo(...co);
+                    ctx.stroke();
+                }
+                // console.log("check for splits",co,last_v.v)
+                const dummy = 0;
+                // It looks like there is no way around data oriented code as the portal is cut from the borders
+                // placeholders seem to bloat code. Do not use in 2d. Perhaps merge with 
+            }
+            if (typeof v === undefined)
+                console.warn("undef passthrough");
+            if (current == 0) {
+                for (let i = 0; i < portal.length; i++)
+                    portal[i].push(v);
+            }
+            else {
+                const i = (Math.sign(current) + 1) / 2;
+                if (i != 0 && i != 1) {
+                    console.warn("only two sides of a coin", i);
+                }
+                try {
+                    portal[i].push(v);
+                }
+                catch (_a) {
+                    console.log("portal", portal, i);
+                    const dummy = i;
+                }
+                last = current;
+                last_v = v; // Hysteresis				
+            }
+        }
+        if (l > 2) {
+            console.warn(" 2 < l== ", l, pi_eq_null); // 0 happens pretty ofte !?
+        }
+        ctx.lineWidth = 1; //back
+        return portal;
     }
 }
 // So this is like Horizon_Edge , while the partition is like the Edge_between_vertices
 class BSPnode extends CanvasObject {
-    decide(v) {
-        return this.xy.innerProduct(v.xy) - this.z * v.z;
+    constructor() {
+        super(...arguments);
+        this.children = new Array(); // 0,1   
     }
-    decide_edge(cp) { }
-    toCanvas(ctx) {
-        let r, last = 0, current = last, l = 0;
-        for (let corner = 0; corner <= 4; corner++) {
-            const gray_xy = corner ^ ((corner & 2) >> 1); // check code in screen clipping for single polygon
-            // cycle => xy   00 01 ! 10 11 ! 00
-            //               00 01   11 01   00
-            current = this.xy.innerProduct(new Vec2([BSPnode.screen.map((s, i) => s * r[i])])) - this.z;
-            if (Math.sign(current) != Math.sign(last)) {
-                const from_corner = current / this.xy.v[corner & 1];
-                let co;
-                co[corner & 1] = from_corner;
-                co[(corner ^ 1) & 1] = BSPnode.screen[(corner ^ 1) & 1];
-                if (l++ == 0)
-                    ctx.moveTo(...co);
+    decide_edge(e) {
+        const explicit_mesh = e.verts.map(v => this.edge.verts.indexOf(v));
+        const sides = explicit_mesh.map((f, i) => {
+            if (f >= 0)
+                return; //0
+            return Math.sign(this.edge.decide(e.verts[i]));
+        });
+        //if (Math.abs(sides[0]-sides[1])>1) console.log("decide edge", sides)
+        //if (Math.abs(sides[1]-sides[0])>1) // split ausrechnen
+        for (let s = 0; s < 2; s++) {
+            if (sides.map(si => si == (2 * s) - 1).reduce((p, c) => p || c, false)) {
+                let c = this.children[s];
+                if (c == null || (c instanceof Leaf)) {
+                    const n = new BSPnode();
+                    n.edge = e;
+                    this.children[s] = n; // I don't want too many instanceOf in my code.
+                }
+                else {
+                    //return 
+                    c.decide_edge(e);
+                }
             }
         }
     }
+    toCanvas(ctx, pi /*ref*/) {
+        return this.edge.toCanvas(ctx, pi);
+    }
+    // This only should live while inserting a mesh
+    // In JS Objects can aquire and lose properties during their lifetime.
+    // On Jaguar I would probably live with nullable. Or I use references. Shrinking objects are a memory allocation nightmare
     // For the test bench: Still: Don't haluzinate the existance of vertices withing in the tree
     // ViewVector.InnerProduct(beam)
     // 2d vectors are used in my renderers to postpone DIVs . After BSP unit tests Do: Import the correct type with precision
@@ -196,10 +338,42 @@ class BSPnode extends CanvasObject {
 class Leaf {
 } // InfinitePlane  -- z info and shader
 export class BSPtree {
-    insertPolygon() {
+    insertPolygon(p) {
+        //console.log("insertPolygon", p.fillStyle)
+        { //if (this.root == null) { // I imply the screen borders to be match my clipping code
+            const s = p.edges.map(e => {
+                const vecs = e.vs.map(v => new Vec2([v.normalize()])); // vertices start with v. I should rename to point to differentiate from vector -- but what about Transformation?
+                const delta = vecs[0].subtract01(vecs[1]);
+                const r = [delta.innerProduct(delta), e]; //  ref type
+                return r;
+            });
+            s.sort((a, b) => a[0] - b[0]);
+            for (let i = s.length - 1; i >= 0; i--) {
+                const n = new BSPnode_edge();
+                const verts = (s[i][1]).vs; //new Vec2( [ lv[1].normalize() ]  ) )
+                const delta = verts[0].xy.scalarProduct(verts[1].z).subtract01(verts[1].xy.scalarProduct(verts[0].z)).v; // calculation with fractions. No division. Looks random. Should this the duty of the compiler?
+                n.xy = new Vec2([[delta[1], -delta[0]]]); // wedge
+                n.z = +verts[0].xy.innerProduct(n.xy) / verts[0].z; // be obvious how the implicit function would be 0 on a vertex => no wedge here and not "source of truth" ref to verts
+                // see:  this.xy.innerProduct(v.xy) - this.z * v.z              this=edge=n  = function    apply to ->  <- parameter  v= vertex =verts[], not normalized
+                // first the * v.z is compensated by / v.z , then the - does not need to be compensated here. Is it weird that I compensate at application?
+                // mesh insertion needs references to vertices
+                n.verts = verts;
+                if (this.root == null) {
+                    const b = new BSPnode();
+                    b.edge = n;
+                    this.root = b;
+                }
+                else {
+                    this.root.decide_edge(n); // insert edge
+                    // this.root.insertPolygon(s.slice(0,i)) // to work for all sides 
+                    // const midpoint_w=verts.map(v=>parent.decide(v)).reduce((p,c)=>p+c)  // fractions // Does this need an epsilon, or check vertex indices or infinite precision?
+                    // parent.children[(Math.sign(midpoint_w)+1)/2]=n
+                }
+            }
+        }
         // run the vertices down the tree . So, like clipping to screen borders. Vertice, edges , planes? Ah, plane check is the same for the whole screen.
-        const b = new BSPnode; // on common parent
-        b.insertPolygon(); // todo: still happens on a node
+        // const b = new BSPnode   // on common parent
+        // b.insertPolygon()  // todo: still happens on a node
     }
     // this algorithm can queue in a compact data structure to draw trapezoids deferred if I wanna try vsync tricks
     floodfill() {
@@ -219,13 +393,11 @@ export class BSPtree {
         for (let i = 0; i < 2; i++) { // lines in front of faces
             ne.face_or_edge = i == 1;
             const stack = new Array;
-            ne.DFS(n);
+            ne.DFS(n, null); // null means: No portal, yet. Use screen borders . Their size is injected as static/singleton upfront (before the frame)
             //stack.push(n) // well, a manual stack is combersome and error prone
             //let sn=new BSPnode_ExtensiononStack()
             //stack.pop()
         }
-        const p = new Polygon_in_cameraSpace();
-        p.toCanvas(ctx);
     }
 }
 class PartialFilled extends BSPnode {

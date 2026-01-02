@@ -95,6 +95,9 @@ export class Vec {
     subtract(other) {
         return new Vec([this.v, other.v]);
     }
+    subtract01(other) {
+        return new Vec([other.v, this.v]);
+    }
     add(other, weight) {
         for (let i = 0; i < this.v.length; i++) {
             this.v[i] += other.v[i] * (weight || 1);
@@ -109,6 +112,17 @@ export class Vec {
     }
 }
 export class Vec2 extends Vec {
+    // override? covariant?
+    subtract(other) {
+        return new Vec2([this.v, other.v]);
+    }
+    subtract01(other) {
+        return new Vec2([other.v, this.v]);
+    }
+    scalarProduct(f) {
+        let v = this.v.map(comp => comp * f);
+        return new Vec2([v]);
+    }
     wedgeProduct(o) {
         return this.v[0] * o.v[1] - this.v[1] * o.v[0];
     }
