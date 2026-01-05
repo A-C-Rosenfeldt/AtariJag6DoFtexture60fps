@@ -173,7 +173,7 @@ class BSPnode_edge {
 	xy: Vec2  //normal
 	z: number  // bias
 	decide(v: Vertex_OnScreen): number {
-		return this.xy.innerProduct(v.xy) - this.z * v.z  // todo: change sign of z to make this a 3d inner product as mandated by a beam tree
+		return this.xy.innerProduct(v.xy) + this.z * v.z  // I changed sign of z to make this a 3d inner product as mandated by a beam tree
 	}
 
 	// import {Portal} from "./pyramid.js"
@@ -215,7 +215,7 @@ class BSPnode_edge {
 
 			}
 
-			current = this.xy.innerProduct(v) - this.z;
+			current = this.xy.innerProduct(v) + this.z  // todo: * v.z . inner product when corners are assumed to be vertices at a distance
 			// let sign = 0
 			// // Make JRISC behaves like this! Signed int2
 			if (current < 0) { last = current; last_v = v }
@@ -427,7 +427,7 @@ export class BSPtree implements CanvasObject {
 
 				const delta = verts[0].xy.scalarProduct(verts[1].z).subtract01(verts[1].xy.scalarProduct(verts[0].z)).v  // calculation with fractions. No division. Looks random. Should this the duty of the compiler?
 				n.xy = new Vec2([[delta[1], -delta[0]]])  // wedge
-				n.z = +verts[0].xy.innerProduct(n.xy) / verts[0].z // be obvious how the implicit function would be 0 on a vertex => no wedge here and not "source of truth" ref to verts
+				n.z = -verts[0].xy.innerProduct(n.xy) / verts[0].z // be obvious how the implicit function would be 0 on a vertex => no wedge here and not "source of truth" ref to verts
 				// see:  this.xy.innerProduct(v.xy) - this.z * v.z              this=edge=n  = function    apply to ->  <- parameter  v= vertex =verts[], not normalized
 				// first the * v.z is compensated by / v.z , then the - does not need to be compensated here. Is it weird that I compensate at application?
 
