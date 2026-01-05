@@ -18,7 +18,7 @@ window.document.getElementById("backward").addEventListener("click",
 
 window.document.getElementById("p0").addEventListener("click",
 	(event) => {
-		pse = 0
+		if (sequence >= 0) pse--; else pse = 0;
 		selPoly();
 	}
 )
@@ -31,10 +31,58 @@ window.document.getElementById("p1").addEventListener("click",
 )
 window.document.getElementById("p2").addEventListener("click",
 	(event) => {
-		pse = 2
+		if (sequence >= 0) pse++; else pse = 2;
 		selPoly();
 	}
 )
+
+// Indices: [0=self=none. 1 = previous => [vertex on poly] , implicit the whole edge], >1 single vertex to let me choose orientation
+const fileFormat = [
+	[[0, 40, 160], [0, 240, 60], [0, 160, 140]],
+	[[0, 6, 260], [1, 0], [1, 2]],
+	[[0, 106, 260], [1, 0], [1, 2]],
+	[[0, 140, 265], [0, 340, 125], [0, 340, 247], [0, 320, 377]],
+	[[0, 100, 350], [1, 0], [1, 3]],
+	[[0, 440, 360], [0, 540, 260], [0, 500, 240]],
+	[[0, 400, 260], [1, 0], [1, 2]],
+	[[0, 380, 380], [1, 0], [1, 1]],
+	[[0, 500, 380], [1, 0], [1, 2]],
+	[[4, 1], [1, 0], [1, 2]]
+]
+
+var sequence = -1
+const add_poly_sequen = (event: Event): void => {
+	if (sequence == -1 || sequence >= fileFormat.length) {
+		sequence = 0;
+		while (ps.length > 0) {
+			ps.pop();
+		}
+	}
+	pse = sequence;
+	let poly = fileFormat[sequence++];
+	let vs = poly.map(vertex => {
+		if (vertex[0] == 0) {
+			const v = new Vertex_OnScreen();
+			v.xy = new Vec2([vertex.slice(1)]);
+			return v;
+		}
+		//console.log("undeg",sequence-1-vertex[0],vertex[1],sequence,vertex)
+		return ps[sequence - 1 - vertex[0]].vertices[vertex[1]];
+	});
+	// let vs = []
+	// let	v = new Vertex_OnScreen(); v.xy = new Vec2([[40, 160]]); vs.push(v)
+	// 	v = new Vertex_OnScreen(); v.xy = new Vec2([[240, 60]]); vs.push(v)
+	// 	v = new Vertex_OnScreen(); v.xy = new Vec2([[160, 140]]); vs.push(v)
+	let cst = "";
+	for (let i = 0; i < 3; i++) cst += (Math.random() * 255).toFixed(0) + " ";
+	const p = new Polygon_in_cameraSpace(vs, "rgb(" + cst + " / 20%)");
+	ps.push(p);
+	//let pse = 0
+	//let p = ps[pse]
+	p.selected = 0;
+	selPoly();
+};
+window.document.getElementById("sequence").addEventListener("click", add_poly_sequen)
 
 window.document.getElementById("up").addEventListener("click", touch_button(0, -1))
 window.document.getElementById("down").addEventListener("click", touch_button(0, +1))
@@ -67,12 +115,12 @@ const ps = (function initSample() {
 	v = new Vertex_OnScreen(); v.xy = new Vec2([[340, 247]]); vs.push(v)
 	v = new Vertex_OnScreen(); v.xy = new Vec2([[320, 377]]); vs.push(v)
 	const q = new Polygon_in_cameraSpace(vs, "rgba(170, 0, 204, 0.16)")
-		vs = []
+	vs = []
 	v = new Vertex_OnScreen(); v.xy = new Vec2([[440, 360]]); vs.push(v)
 	v = new Vertex_OnScreen(); v.xy = new Vec2([[540, 260]]); vs.push(v)
 	v = new Vertex_OnScreen(); v.xy = new Vec2([[500, 240]]); vs.push(v)
 	const t = new Polygon_in_cameraSpace(vs, "rgba(173, 204, 0, 0.16)")
-	return [p, q,t]
+	return [p, q, t]
 })()
 
 let pse = 0
@@ -81,7 +129,7 @@ p.selected = 0
 
 function drawCanvasGame() {
 	const canvas = document.getElementById("Canvas2d") as HTMLCanvasElement;
-	canvas.style.background = '#111'; // Set background color
+	canvas.style.background = '#000'; // Set background color
 	const ctx = canvas.getContext("2d");
 	if (ctx) {
 		ctx.clearRect(0, 0, canvas.width, canvas.height);
@@ -166,7 +214,10 @@ document.addEventListener(
 			case "2":
 				pse = 2
 				selPoly();
-				break				
+				break
+			case "s":
+				add_poly_sequen(event)
+				break;
 			default: return
 		}
 
@@ -177,7 +228,9 @@ document.addEventListener(
 
 function selPoly() {
 	p.selected = -1;
-	p = ps[pse];
+	if (pse < 0) pse = ps.length - 1
+	if (pse >= ps.length) pse = 0
+	p = ps[pse] //;console.log(pse)
 	p.selected = 0;
 	drawCanvasGame();
 }
