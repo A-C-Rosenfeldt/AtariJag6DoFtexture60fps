@@ -1,3 +1,4 @@
+// Todo: Add a mesh. Strips may or not may make sense. Backface culling. Global edge length sort. advance over longest edge with face on other side
 /*
 The arbitraryness of the BSP is hard to discuss away. With lazy precision it is worth more to recombine split polygons.
 The biggest motivation are roughe splits needed for spatial subdivision of the scene.
@@ -147,22 +148,17 @@ var variance = 0;
 // to harmonize splitting with lazy precision
 class BSPnode_edge {
     decide(v) {
-        return this.xy.innerProduct(v.xy) - this.z * v.z;
+        return this.xy.innerProduct(v.xy) + this.z * v.z; // I changed sign of z to make this a 3d inner product as mandated by a beam tree
     }
     // import {Portal} from "./pyramid.js"
     // import { Vec, Vec2, Vec3 } from "./clipping.js"
     toCanvas(ctx, pi /*ref*/) {
-        ctx.strokeStyle = "#0" + variance.toString() + "F";
-        variance = (variance + 1) % 10;
-        const back = ctx.lineWidth;
-        ctx.lineWidth = 5;
-        ctx.beginPath();
         let r, last = 0, current = last, l = 0, last_v;
         const count_splits = 2;
         let portal = new Array(count_splits); // We split the parent polygon into two -1 ==0 and +1= 1
         for (let i = 0; i < count_splits; i++)
             portal[i] = Array();
-        let JRSICbitfield32 = 0;
+        // let JRSICbitfield32 = 0
         const pi_eq_null = pi == null;
         if (pi_eq_null) {
             const count = 4;
@@ -174,12 +170,20 @@ class BSPnode_edge {
                 pi[corner] = new Vec2([BSPnode.screen.map((s, i) => (((gray_xy >> i) & 1) == 0 ? 0 : s))]); // one goal was to use explicit code to show the edge cases and allow logs and break points. So this code will stay and be amended by polygon (portal) code. 
             }
         }
+        ctx.strokeStyle = "#FF01";
+        ctx.beginPath();
         const cache = new Array(length); // cache lazy infinite precision values
         for (let corner = 0; corner < pi.length; corner++) {
             var v = pi[corner]; // one goal was to use explicit code to show the edge cases and allow logs and break points. So this code will stay and be amended by polygon (portal) code. 
             // This is not the inner loop. If I want to remove branches, I need to optimize the compiler to unroll loops and implement those lag by one iteration variables
             //const v = new Vec2([cxy])
-            current = this.xy.innerProduct(v) - this.z;
+            co = [v.v[0] + debugshift, v.v[1] + debugshift]; //;console.log("v",co[0],co[1])
+            if (l++ == 0)
+                ctx.moveTo(...co);
+            else {
+                ctx.lineTo(...co);
+            }
+            current = this.xy.innerProduct(v) + this.z; // todo: * v.z . inner product when corners are assumed to be vertices at a distance
             // let sign = 0
             // // Make JRISC behaves like this! Signed int2
             if (current < 0) {
@@ -192,11 +196,19 @@ class BSPnode_edge {
             }
             cache[corner] = current; //JRSICbitfield32 |= sign << (corner * 2)   // *2 becomes <<1 in JRISC
         }
+        ctx.closePath();
+        ctx.stroke();
+        l = 0;
+        const back = ctx.lineWidth;
+        ctx.lineWidth = 5;
+        ctx.strokeStyle = "#0" + variance.toString() + "F";
+        variance = (variance + 1) % 10;
+        ctx.beginPath();
         for (let corner = 0; corner < pi.length; corner++) { // todo: polyon aka portal code
             v = pi[corner];
             current = cache[corner]; //(JRSICbitfield32 >> (corner*2)) & 3
             //if (current == 2) current = -1 // 2-complement, aka Shift Arithmethic Right in JRISC and some high level languages
-            if (Math.abs(Math.sign(last) - Math.sign(current)) > 1) {
+            if (Math.abs(Math.sign(last) - Math.sign(current)) > 1) { // todo: bug does not work 
                 if (pi_eq_null) {
                     // todo: reactivate this fast path. Perhaps bring back typed vertices
                     let cxy = v.v.slice();
@@ -204,6 +216,8 @@ class BSPnode_edge {
                     let from_corner = current / this.xy.v[from_last];
                     cxy[from_last] -= from_corner;
                     var co = [cxy[0] + debugshift, cxy[1] + debugshift];
+                    ctx.fillStyle = "#F80";
+                    ctx.fillRect(co[0], co[1], 1, 1);
                     var cut = new Vec2([cxy]);
                     //console.log("cut",cut.v)
                 }
@@ -212,6 +226,8 @@ class BSPnode_edge {
                     let from_corner = current / edge.innerProduct(this.xy);
                     var cut = v.subtract(edge.scalarProduct(from_corner));
                     co = [cut.v[0] + debugshift, cut.v[1] + debugshift];
+                    ctx.fillStyle = "#288";
+                    ctx.fillRect(co[0], co[1], 1, 1);
                 }
                 for (let i = 0; i < 2; i++) {
                     if (typeof cut === undefined)
@@ -247,9 +263,9 @@ class BSPnode_edge {
                     console.log("portal", portal, i);
                     const dummy = i;
                 }
-                last = current;
-                last_v = v; // Hysteresis				
+                last = current; // Hysteresis				
             }
+            last_v = v;
         }
         if (l > 2) {
             console.warn(" 2 < l== ", l, pi_eq_null); // 0 happens pretty ofte !?
@@ -267,8 +283,9 @@ class BSPnode extends CanvasObject {
     decide_edge(e) {
         const explicit_mesh = e.verts.map(v => this.edge.verts.indexOf(v));
         const sides = explicit_mesh.map((f, i) => {
-            if (f >= 0)
-                return; //0
+            if (f >= 0) { //console.log("vertex eq by index");
+                return 0;
+            }
             return Math.sign(this.edge.decide(e.verts[i]));
         });
         //if (Math.abs(sides[0]-sides[1])>1) console.log("decide edge", sides)
@@ -351,13 +368,17 @@ export class BSPtree {
             for (let i = s.length - 1; i >= 0; i--) {
                 const n = new BSPnode_edge();
                 const verts = (s[i][1]).vs; //new Vec2( [ lv[1].normalize() ]  ) )
+                // cross product of the beam tree. Trying to optimize, but still 6 multiplications = 2+2+2
                 const delta = verts[0].xy.scalarProduct(verts[1].z).subtract01(verts[1].xy.scalarProduct(verts[0].z)).v; // calculation with fractions. No division. Looks random. Should this the duty of the compiler?
-                n.xy = new Vec2([[delta[1], -delta[0]]]); // wedge
-                n.z = +verts[0].xy.innerProduct(n.xy) / verts[0].z; // be obvious how the implicit function would be 0 on a vertex => no wedge here and not "source of truth" ref to verts
+                // n.xy = new Vec2([[delta[1], -delta[0]]])  // wedge
+                // n.z = -verts[0].xy.innerProduct(n.xy) / verts[0].z // be obvious how the implicit function would be 0 on a vertex => no wedge here and not "source of truth" ref to verts
+                n.xy = new Vec2([[delta[1], -delta[0]]]); //.scalarProduct( verts[0].z) // cross
+                n.z = -verts[0].xy.innerProduct(n.xy); // be obvious how the implicit function would be 0 on a vertex => no wedge here and not "source of truth" ref to verts
+                //n.xy = n.xy.scalarProduct( verts[0].z) // cross
                 // see:  this.xy.innerProduct(v.xy) - this.z * v.z              this=edge=n  = function    apply to ->  <- parameter  v= vertex =verts[], not normalized
                 // first the * v.z is compensated by / v.z , then the - does not need to be compensated here. Is it weird that I compensate at application?
                 // mesh insertion needs references to vertices
-                n.verts = verts;
+                n.verts = verts; // Todo: check that this is readonly ! 
                 if (this.root == null) {
                     const b = new BSPnode();
                     b.edge = n;

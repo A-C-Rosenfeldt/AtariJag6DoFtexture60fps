@@ -425,9 +425,15 @@ export class BSPtree implements CanvasObject {
 				const n = new BSPnode_edge()
 				const verts = (s[i][1]).vs    //new Vec2( [ lv[1].normalize() ]  ) )
 
+				// cross product of the beam tree. Trying to optimize, but still 6 multiplications = 2+2+2
 				const delta = verts[0].xy.scalarProduct(verts[1].z).subtract01(verts[1].xy.scalarProduct(verts[0].z)).v  // calculation with fractions. No division. Looks random. Should this the duty of the compiler?
-				n.xy = new Vec2([[delta[1], -delta[0]]])  // wedge
-				n.z = -verts[0].xy.innerProduct(n.xy) / verts[0].z // be obvious how the implicit function would be 0 on a vertex => no wedge here and not "source of truth" ref to verts
+				// n.xy = new Vec2([[delta[1], -delta[0]]])  // wedge
+				// n.z = -verts[0].xy.innerProduct(n.xy) / verts[0].z // be obvious how the implicit function would be 0 on a vertex => no wedge here and not "source of truth" ref to verts
+
+				n.xy = new Vec2([[delta[1], -delta[0]]])//.scalarProduct( verts[0].z) // cross
+				n.z = -verts[0].xy.innerProduct(n.xy)  // be obvious how the implicit function would be 0 on a vertex => no wedge here and not "source of truth" ref to verts
+				//n.xy = n.xy.scalarProduct( verts[0].z) // cross
+
 				// see:  this.xy.innerProduct(v.xy) - this.z * v.z              this=edge=n  = function    apply to ->  <- parameter  v= vertex =verts[], not normalized
 				// first the * v.z is compensated by / v.z , then the - does not need to be compensated here. Is it weird that I compensate at application?
 
