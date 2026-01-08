@@ -42,13 +42,15 @@ export class Polygon_in_cameraSpace implements CanvasObject {
 	// Clipped edges behave special on projection, but actually clipping and projection happen shortly after each other
 	// We persist screen coordinates ( ah, well, z does not exist for clipped edges ) . Just integers for scanlines
 	toCanvas(ctx: CanvasRenderingContext2D): void {
-		ctx.fillStyle = this.fillStyle
-		ctx.beginPath()
-		ctx.moveTo(...this.vertices[0].normalize(-debugshift))
-		this.vertices.forEach(v => ctx.lineTo(...v.normalize(-debugshift)))
-		ctx.closePath()
-		ctx.fill()  // stroke()
-
+		// leaf (debug) ToCanvas needs the area to fill
+		if (false) {
+			ctx.fillStyle = this.fillStyle
+			ctx.beginPath()
+			ctx.moveTo(...this.vertices[0].normalize(-debugshift))
+			this.vertices.forEach(v => ctx.lineTo(...v.normalize(-debugshift)))
+			ctx.closePath()
+			ctx.fill()  // stroke()
+		}
 		this.edges.forEach(e => e.toCanvas(ctx))
 		ctx.fillStyle = "#911"
 		this.selected %= this.vertices.length
@@ -147,16 +149,25 @@ class BSPnode_ExtensiononStack extends Polygon_in_cameraSpace {
 	face_or_edge: boolean
 	DFS(n: BSPnode | Leaf, pi?: Array<Vec2> /*ref*/): number {
 		let portal = [pi]
-		if (!this.face_or_edge) { if (n instanceof Leaf) this.toCanvas(this.ctx) }
+
 		if (this.face_or_edge) {
 			if (n instanceof BSPnode) {
 				portal = n.toCanvas(this.ctx, pi)
+			} else {
+				if (n instanceof Leaf) {
+					console.log("Leaf.ToCanvas")
+					if (pi == null) {
+						console.warn("Polygon covers whole screen")
+					}
+					n.toCanvas(this.ctx, pi)
+				}
 			}
 		}
 
 		if (portal.length == 0) return 0
 		if (n instanceof BSPnode) {
 			n.children.forEach((c, i) => {
+				console.log("child ", typeof c == "object" ? c.constructor.name : "u")
 				const l = this.DFS(c, portal[i])
 				// It is possible to hide the bug one level. Looks like ToCanvas is correct, but insertEdge is not . if (l==0) this.DFS(c, portal[1-i])  // debugging. There has to be a better way?
 			})
@@ -318,7 +329,7 @@ class BSPnode extends CanvasObject {
 	ref_count: number;
 
 
-	decide_edge(e: BSPnode_edge): void {//:BSPnode_childref { 
+	decide_edge(e: BSPnode_edge, fillStyle: string,last_edge_of_polygon=false): void {//:BSPnode_childref { 
 		const explicit_mesh = e.verts.map(v => this.edge.verts.indexOf(v))
 		const sides = explicit_mesh.map((f, i) => {
 			if (f >= 0) {//console.log("vertex eq by index");
@@ -335,9 +346,31 @@ class BSPnode extends CanvasObject {
 					const n = new BSPnode()
 					n.edge = e
 					this.children[s] = n  // I don't want too many instanceOf in my code.
+
+					if (c != null) {					// todo : Check for z
+						if (c instanceof Leaf) {
+							// reuse Leaf to avoid garbage
+							c.fillStyle.push(fillStyle)
+							n.children[0] = c
+
+							// Leaf is going to hold flood fill data because it lives outside the stack
+							// so: keep it a tree!
+							const l = new Leaf();
+							l.fillStyle = c.fillStyle
+							n.children[1] = l
+
+						}
+					} else {
+						if (last_edge_of_polygon) {
+							const l = new Leaf();
+							l.fillStyle = [fillStyle]
+							n.children[0] = l  // 0 should be inside . front faces go around the clock. clean uo 2d resr data
+							console.log("new leaf")
+						}
+					}
 				} else {
 					//return 
-					c.decide_edge(e)
+					c.decide_edge(e, fillStyle,last_edge_of_polygon) // todo: so at least one child should be filled, but right now I see none
 				}
 			}
 		}
@@ -403,8 +436,25 @@ class BSPnode extends CanvasObject {
 }
 
 class Leaf {
+	fillStyle: string[]  // InfinitePlane  -- z info and shader
+	toCanvas(ctx: CanvasRenderingContext2D, pi?: Array<Vec2>): void {
 
-}  // InfinitePlane  -- z info and shader
+		const items: number[][] = this.fillStyle.map(s => s.match(/[0-9a-z]{2}/gi).map(t => parseInt(t, 16)));
+		const sum = items.reduce((p, c) => p.map((q, i) => q + c[i], [0, 0, 0]));
+		const avg = sum.map(s => (s / sum.length).toString(16)).join()
+		ctx.fillStyle = avg  // todo: sort by z  (find cut, decide edge, choose fillStyle)
+		ctx.beginPath()
+		const v = pi[0] //.normalize(-debugshift);  v should be xyz (Vec3) because either it is a projected vertex, or some cross product
+		//const co = [v.v[0] + debugshift, v.v[1] + debugshift]
+		ctx.moveTo(v.v[0] + debugshift, v.v[1] + debugshift)
+		pi.forEach(v => {
+			ctx.lineTo(v.v[0] + debugshift, v.v[1] + debugshift)
+		})
+		ctx.closePath()
+		ctx.fill()  // stroke()
+
+	}
+}
 
 
 export class BSPtree implements CanvasObject {
@@ -446,7 +496,7 @@ export class BSPtree implements CanvasObject {
 					this.root = b
 				}
 				else {
-					this.root.decide_edge(n) // insert edge
+					this.root.decide_edge(n, p.fillStyle,i==0) // insert edge
 
 					// this.root.insertPolygon(s.slice(0,i)) // to work for all sides 
 					// const midpoint_w=verts.map(v=>parent.decide(v)).reduce((p,c)=>p+c)  // fractions // Does this need an epsilon, or check vertex indices or infinite precision?

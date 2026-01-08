@@ -38,8 +38,8 @@ window.document.getElementById("p2").addEventListener("click",
 
 // Indices: [0=self=none. 1 = previous => [vertex on poly] , implicit the whole edge], >1 single vertex to let me choose orientation
 const fileFormat = [
-	[[0, 40, 160], [0, 240, 60], [0, 160, 140]],
-	[[0, 6, 260], [1, 0], [1, 2]],
+	[[0, 160, 140], [0, 240, 60], [0, 40, 160]],
+	[[0, 6, 260], [1, 2], [1,0 ]],
 	[[0, 106, 260], [1, 0], [1, 2]],
 	[[0, 140, 265], [0, 340, 125], [0, 340, 247], [0, 320, 377]],
 	[[0, 100, 350], [1, 0], [1, 3]],
@@ -74,8 +74,8 @@ const add_poly_sequen = (event: Event): void => {
 	// 	v = new Vertex_OnScreen(); v.xy = new Vec2([[240, 60]]); vs.push(v)
 	// 	v = new Vertex_OnScreen(); v.xy = new Vec2([[160, 140]]); vs.push(v)
 	let cst = "";
-	for (let i = 0; i < 3; i++) cst += (Math.random() * 255).toFixed(0) + " ";
-	const p = new Polygon_in_cameraSpace(vs, "rgb(" + cst + " / 20%)");
+	for (let i = 0; i < 3; i++) cst += Math.round((Math.random() * 255)).toString(16)   //   .toFixed(0) + " ";
+	const p = new Polygon_in_cameraSpace(vs, "#" + cst + "2") // "rgb(" + cst + " / 20%)");
 	ps.push(p);
 	//let pse = 0
 	//let p = ps[pse]
@@ -217,6 +217,27 @@ document.addEventListener(
 				break
 			case "s":
 				add_poly_sequen(event)
+				break;
+			case "z":
+			case "t":
+
+				let d = 0 //new Vec2([[0, 0]])
+				//const v = d.v
+				switch (keyName) {
+					case "t":
+						d = -1
+						break;
+					case "z":
+						d = +1
+						break;
+					default: return
+				}
+
+				if (d != 0) {
+					p.vertices[p.selected].z += (d)
+					drawCanvasGame()
+					event.preventDefault(); // Prevent the default action to avoid scrolling when pressing arrow keys
+				}
 				break;
 			default: return
 		}
