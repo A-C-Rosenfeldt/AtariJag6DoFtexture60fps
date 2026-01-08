@@ -151,6 +151,11 @@ export class Vec3 extends Vec{
 		}
 		return v
 	}
+
+	subtract01(other: Vec3): Vec3 {
+		return new Vec3([ other.v,this.v])
+	}
+
 }
 
 export class Vec2_den extends Vec2{

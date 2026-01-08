@@ -329,7 +329,7 @@ class BSPnode extends CanvasObject {
 	ref_count: number;
 
 
-	decide_edge(e: BSPnode_edge, fillStyle: string,last_edge_of_polygon=false): void {//:BSPnode_childref { 
+	decide_edge(e: BSPnode_edge, fillStyle: string, last_edge_of_polygon = false): void {//:BSPnode_childref { 
 		const explicit_mesh = e.verts.map(v => this.edge.verts.indexOf(v))
 		const sides = explicit_mesh.map((f, i) => {
 			if (f >= 0) {//console.log("vertex eq by index");
@@ -365,12 +365,12 @@ class BSPnode extends CanvasObject {
 							const l = new Leaf();
 							l.fillStyle = [fillStyle]
 							n.children[0] = l  // 0 should be inside . front faces go around the clock. clean uo 2d resr data
-							console.log("new leaf")
+							console.log("new leaf", n.children[0].fillStyle)
 						}
 					}
 				} else {
 					//return 
-					c.decide_edge(e, fillStyle,last_edge_of_polygon) // todo: so at least one child should be filled, but right now I see none
+					c.decide_edge(e, fillStyle, last_edge_of_polygon) // todo: so at least one child should be filled, but right now I see none
 				}
 			}
 		}
@@ -439,11 +439,18 @@ class Leaf {
 	fillStyle: string[]  // InfinitePlane  -- z info and shader
 	toCanvas(ctx: CanvasRenderingContext2D, pi?: Array<Vec2>): void {
 
-		const items: number[][] = this.fillStyle.map(s => s.match(/[0-9a-z]{2}/gi).map(t => parseInt(t, 16)));
-		const sum = items.reduce((p, c) => p.map((q, i) => q + c[i], [0, 0, 0]));
-		const avg = sum.map(s => (s / sum.length).toString(16)).join()
-		ctx.fillStyle = avg  // todo: sort by z  (find cut, decide edge, choose fillStyle)
+
+
+		var sum = this.JavaScriptCSS_bloat( this.fillStyle[0] )
+		
+		const i2=[0]
+		//const sum = i2.reduce((p, c) => p.map((q, i) => q + c[i], [0, 0, 0]));
+		const avg = sum.map(s => (s / i2.length).toString()).join() // //.toString(16)).join()
+		ctx.fillStyle = "rgba("+avg+")" // this.fillStyle[0] //avg  // todo: sort by z  (find cut, decide edge, choose fillStyle)
+		console.log("ToCanvas ", ctx.fillStyle, avg)
 		ctx.beginPath()
+		console.log(pi)
+		if (pi.length<3) return
 		const v = pi[0] //.normalize(-debugshift);  v should be xyz (Vec3) because either it is a projected vertex, or some cross product
 		//const co = [v.v[0] + debugshift, v.v[1] + debugshift]
 		ctx.moveTo(v.v[0] + debugshift, v.v[1] + debugshift)
@@ -454,6 +461,27 @@ class Leaf {
 		ctx.fill()  // stroke()
 
 	}
+
+	private JavaScriptCSS_bloat(layer : String) {
+		// Source - https://stackoverflow.com/a
+		// Posted by Niet the Dark Absol, modified by community. See post 'Timeline' for change history
+		// Retrieved 2026-01-08, License - CC BY-SA 3.0
+		// Source - https://stackoverflow.com/a
+		// Posted by Paul
+		// Retrieved 2026-01-08, License - CC BY-SA 3.0
+		//		/^[+-]?\d+(\.\d+)?$/		
+		const m = layer.match(/^rgba\s*\(\s*(\d+)\s*,\s*(\d+)\s*,\s*(\d+)\s*,\s*[+-]?\d+(\.\d+)?\s*\)$/i);
+		if (m) {
+			sum = m.slice(1).map(t => parseFloat(t));
+		} // End stack overflow
+
+		else {
+			var items = this.fillStyle[0].match(/[0-9a-z]{2}/gi);
+			//.map(s => s.match(/[0-9a-z]{2}/gi).map(t => parseInt(t, 16)))
+			var sum = items.map(t => parseInt(t, 16));
+		}
+		return sum;
+	}
 }
 
 
@@ -463,9 +491,21 @@ export class BSPtree implements CanvasObject {
 	insertPolygon(p: Polygon_in_cameraSpace) {
 		//console.log("insertPolygon", p.fillStyle)
 		{//if (this.root == null) { // I imply the screen borders to be match my clipping code
+			const v3=p.vertices.slice(0,3).map(v=>new Vec3([v.xy.v.concat(v.z)]))  // backface culling in 3d. One of the perks of subpixel correction. // By my definition, the first two edges span up the plane (default s,t and basis for u,v mapping). The level editor needs to make sure that the rest align ( kinda like in Doom space ). I may add a scene graph just to allow to rotate Doomspace objects with infinite precision.
+			const edge:Vec3[]=[]
+			for(let i=0;i<2;i++){ // somehow array functions do not work for this. Todo: Move behind edge code
+				edge.push( v3[i].subtract01(v3[1+1]) )
+			}
+			
+			const normal=edge[0].crossProduct(edge[1])  // Todo: Cross product optional parameter for z only? I don't want to leak the internal sign convention here
+			if (normal.v[2]<0){
+				// p.vertices.reverse(); console.log("reverse")  // This disturbs the parser. Todo: Prepass! On level load: Polygon -> binary. Then fix order. Per frame: backface culling / mark for debug
+			}
+
 			const s = p.edges.map(e => {
 				const vecs = e.vs.map(v => new Vec2([v.normalize()]))  // vertices start with v. I should rename to point to differentiate from vector -- but what about Transformation?
-				const delta = vecs[0].subtract01(vecs[1])
+				const delta = vecs[0].subtract01(vecs[1]) 
+				if (normal.v[2] >= 0) e.vs.reverse()  ;// Do I want to support back faces? With a decoupled loader, this can move out of here
 				const r: [number, Edge_on_Screen] =
 					[delta.innerProduct(delta), e]   //  ref type
 				return r
@@ -496,7 +536,7 @@ export class BSPtree implements CanvasObject {
 					this.root = b
 				}
 				else {
-					this.root.decide_edge(n, p.fillStyle,i==0) // insert edge
+					this.root.decide_edge(n, p.fillStyle, i == 0) // insert edge
 
 					// this.root.insertPolygon(s.slice(0,i)) // to work for all sides 
 					// const midpoint_w=verts.map(v=>parent.decide(v)).reduce((p,c)=>p+c)  // fractions // Does this need an epsilon, or check vertex indices or infinite precision?

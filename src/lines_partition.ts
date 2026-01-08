@@ -74,7 +74,7 @@ const add_poly_sequen = (event: Event): void => {
 	// 	v = new Vertex_OnScreen(); v.xy = new Vec2([[240, 60]]); vs.push(v)
 	// 	v = new Vertex_OnScreen(); v.xy = new Vec2([[160, 140]]); vs.push(v)
 	let cst = "";
-	for (let i = 0; i < 3; i++) cst += Math.round((Math.random() * 255)).toString(16)   //   .toFixed(0) + " ";
+	for (let i = 0; i < 3; i++) cst += Math.round((Math.random() * 255)).toFixed(0) + " "   //   toFixed(0) + " ";   // toString(16)
 	const p = new Polygon_in_cameraSpace(vs, "#" + cst + "2") // "rgb(" + cst + " / 20%)");
 	ps.push(p);
 	//let pse = 0
