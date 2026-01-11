@@ -135,6 +135,9 @@ export class Vec3 extends Vec {
         }
         return v;
     }
+    subtract01(other) {
+        return new Vec3([other.v, this.v]);
+    }
 }
 export class Vec2_den extends Vec2 {
     constructor(v, den) {

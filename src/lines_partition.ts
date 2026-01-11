@@ -39,18 +39,20 @@ window.document.getElementById("p2").addEventListener("click",
 // Indices: [0=self=none. 1 = previous => [vertex on poly] , implicit the whole edge], >1 single vertex to let me choose orientation
 const fileFormat = [
 	[[0, 160, 140], [0, 240, 60], [0, 40, 160]],
-	[[0, 6, 260], [1, 2], [1,0 ]],
-	[[0, 106, 260], [1, 0], [1, 2]],
+	[[0, 6, 260], [1,0 ], [1, 2]],
+	[[0, 106, 260], [1, 1], [1, 0]],
 	[[0, 140, 265], [0, 340, 125], [0, 340, 247], [0, 320, 377]],
 	[[0, 100, 350], [1, 0], [1, 3]],
 	[[0, 440, 360], [0, 540, 260], [0, 500, 240]],
 	[[0, 400, 260], [1, 0], [1, 2]],
 	[[0, 380, 380], [1, 0], [1, 1]],
 	[[0, 500, 380], [1, 0], [1, 2]],
-	[[4, 1], [1, 0], [1, 2]]
+	[[4, 1], [1, 2], [1, 0]]
 ]
 
+
 var sequence = -1
+const parserDic:Vertex_OnScreen[][]=[]  // same as ps
 const add_poly_sequen = (event: Event): void => {
 	if (sequence == -1 || sequence >= fileFormat.length) {
 		sequence = 0;
@@ -58,6 +60,7 @@ const add_poly_sequen = (event: Event): void => {
 			ps.pop();
 		}
 	}
+	
 	pse = sequence;
 	let poly = fileFormat[sequence++];
 	let vs = poly.map(vertex => {
@@ -67,15 +70,18 @@ const add_poly_sequen = (event: Event): void => {
 			return v;
 		}
 		//console.log("undeg",sequence-1-vertex[0],vertex[1],sequence,vertex)
-		return ps[sequence - 1 - vertex[0]].vertices[vertex[1]];
+		return parserDic[sequence - 1 - vertex[0]][vertex[1]];
 	});
+	let parser_vs=vs.slice(0) // to be able to turn back faces to front without messing up the indices
+	// Constructor bad: let p = new Polygon_in_cameraSpace(parser_vs) // "rgb(" + cst + " / 20%)");
+	parserDic.push(parser_vs);	
 	// let vs = []
 	// let	v = new Vertex_OnScreen(); v.xy = new Vec2([[40, 160]]); vs.push(v)
 	// 	v = new Vertex_OnScreen(); v.xy = new Vec2([[240, 60]]); vs.push(v)
 	// 	v = new Vertex_OnScreen(); v.xy = new Vec2([[160, 140]]); vs.push(v)
 	let cst = "";
-	for (let i = 0; i < 3; i++) cst += Math.round((Math.random() * 255)).toFixed(0) + " "   //   toFixed(0) + " ";   // toString(16)
-	const p = new Polygon_in_cameraSpace(vs, "#" + cst + "2") // "rgb(" + cst + " / 20%)");
+	for (let i = 0; i < 3; i++) cst += (Math.round((Math.random() * 200))+55).toFixed(0) + " "   //   toFixed(0) + " ";   // toString(16)
+	p = new Polygon_in_cameraSpace(vs, "#" + cst + "2") // "rgb(" + cst + " / 20%)");
 	ps.push(p);
 	//let pse = 0
 	//let p = ps[pse]

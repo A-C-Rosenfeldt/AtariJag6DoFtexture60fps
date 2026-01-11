@@ -21,7 +21,7 @@ I kinda got rid of the idea that there is synergy between perspective correction
 
 I do BSP before portals because portals are boring and BSP only needs two triangles ( and for portal: one portal and one triangle is quite artificial).
 */
-import { Vec2 } from "./clipping.js";
+import { Vec2, Vec3 } from "./clipping.js";
 //import { Vertex_OnScreen } from "./Item"
 class CanvasObject {
     toCanvas(ctx) { } // virtual  todo Placeholder
@@ -36,12 +36,15 @@ export class Polygon_in_cameraSpace {
     // Clipped edges behave special on projection, but actually clipping and projection happen shortly after each other
     // We persist screen coordinates ( ah, well, z does not exist for clipped edges ) . Just integers for scanlines
     toCanvas(ctx) {
-        ctx.fillStyle = this.fillStyle;
-        ctx.beginPath();
-        ctx.moveTo(...this.vertices[0].normalize(-debugshift));
-        this.vertices.forEach(v => ctx.lineTo(...v.normalize(-debugshift)));
-        ctx.closePath();
-        ctx.fill(); // stroke()
+        // leaf (debug) ToCanvas needs the area to fill
+        if (false) {
+            ctx.fillStyle = this.fillStyle;
+            ctx.beginPath();
+            ctx.moveTo(...this.vertices[0].normalize(-debugshift));
+            this.vertices.forEach(v => ctx.lineTo(...v.normalize(-debugshift)));
+            ctx.closePath();
+            ctx.fill(); // stroke()
+        }
         this.edges.forEach(e => e.toCanvas(ctx));
         ctx.fillStyle = "#911";
         this.selected %= this.vertices.length;
@@ -51,6 +54,17 @@ export class Polygon_in_cameraSpace {
         this.selected = -1;
         if (vs === undefined)
             return;
+        // turn back faces to front. Todo: not do on
+        const v3 = vs.slice(0, 3).map(v => new Vec3([v.xy.v.concat(v.z)])); // backface culling in 3d. One of the perks of subpixel correction. // By my definition, the first two edges span up the plane (default s,t and basis for u,v mapping). The level editor needs to make sure that the rest align ( kinda like in Doom space ). I may add a scene graph just to allow to rotate Doomspace objects with infinite precision.			
+        const edge = [];
+        for (let i = 0; i < 2; i++) { // somehow array functions do not work for this. Todo: Move behind edge code
+            edge.push(v3[i].subtract01(v3[1 + 1]));
+        }
+        const normal = edge[0].crossProduct(edge[1]); // Todo: Cross product optional parameter for z only? I don't want to leak the internal sign convention here
+        if (normal.v[2] > 0) {
+            vs.reverse();
+            console.log("reverse Cstr"); // inplace // This disturbed the parser, but I added an Array.slice
+        }
         this.vertices = vs;
         let lv = vs[vs.length - 1];
         this.edges = vs.map(v => {
@@ -123,19 +137,26 @@ class BSPnode_ExtensiononStack extends Polygon_in_cameraSpace {
     }
     DFS(n, pi /*ref*/) {
         let portal = [pi];
-        if (!this.face_or_edge) {
-            if (n instanceof Leaf)
-                this.toCanvas(this.ctx);
-        }
         if (this.face_or_edge) {
             if (n instanceof BSPnode) {
                 portal = n.toCanvas(this.ctx, pi);
+            }
+            else {
+                if (n instanceof Leaf) {
+                    //console.log("Leaf.ToCanvas")
+                    if (pi == null) {
+                        console.warn("Polygon covers whole screen");
+                    }
+                    n.toCanvas(this.ctx, pi);
+                    // toDo: on the way to the root, check the siblings if they are also covered by the polygon
+                }
             }
         }
         if (portal.length == 0)
             return 0;
         if (n instanceof BSPnode) {
             n.children.forEach((c, i) => {
+                //console.log("child ", typeof c == "object" ? c.constructor.name : "u")
                 const l = this.DFS(c, portal[i]);
                 // It is possible to hide the bug one level. Looks like ToCanvas is correct, but insertEdge is not . if (l==0) this.DFS(c, portal[1-i])  // debugging. There has to be a better way?
             });
@@ -280,7 +301,7 @@ class BSPnode extends CanvasObject {
         super(...arguments);
         this.children = new Array(); // 0,1   
     }
-    decide_edge(e) {
+    decide_edge(e, fillStyle, last_edge_of_polygon = false) {
         const explicit_mesh = e.verts.map(v => this.edge.verts.indexOf(v));
         const sides = explicit_mesh.map((f, i) => {
             if (f >= 0) { //console.log("vertex eq by index");
@@ -297,10 +318,30 @@ class BSPnode extends CanvasObject {
                     const n = new BSPnode();
                     n.edge = e;
                     this.children[s] = n; // I don't want too many instanceOf in my code.
+                    if (c != null) { // todo : Check for z
+                        if (c instanceof Leaf) {
+                            // reuse Leaf to avoid garbage
+                            c.fillStyle.push(fillStyle);
+                            n.children[0] = c;
+                            // Leaf is going to hold flood fill data because it lives outside the stack
+                            // so: keep it a tree!
+                            const l = new Leaf();
+                            l.fillStyle = c.fillStyle;
+                            n.children[1] = l;
+                        }
+                    }
+                    else {
+                        if (last_edge_of_polygon) {
+                            const l = new Leaf();
+                            l.fillStyle = [fillStyle];
+                            n.children[0] = l; // 0 should be inside . front faces go around the clock. clean uo 2d resr data
+                            //console.log("new leaf", n.children[0].fillStyle)
+                        }
+                    }
                 }
                 else {
                     //return 
-                    c.decide_edge(e);
+                    c.decide_edge(e, fillStyle, last_edge_of_polygon); // todo: so at least one child should be filled, but right now I see none
                 }
             }
         }
@@ -353,14 +394,63 @@ class BSPnode extends CanvasObject {
     resolve_occlusion_order(split_from_3d_cut, grandchildren) { }
 }
 class Leaf {
-} // InfinitePlane  -- z info and shader
+    toCanvas(ctx, pi) {
+        var sum = this.JavaScriptCSS_bloat(this.fillStyle[0]);
+        const i2 = [0];
+        //const sum = i2.reduce((p, c) => p.map((q, i) => q + c[i], [0, 0, 0]));
+        const avg = sum.map(s => (s / i2.length).toString()).join(); // //.toString(16)).join()
+        ctx.fillStyle = "rgba(" + avg + ")"; // this.fillStyle[0] //avg  // todo: sort by z  (find cut, decide edge, choose fillStyle)
+        //console.log("ToCanvas ", ctx.fillStyle, avg)
+        ctx.beginPath();
+        //console.log(pi)
+        if (pi.length < 3)
+            return;
+        const v = pi[0]; //.normalize(-debugshift);  v should be xyz (Vec3) because either it is a projected vertex, or some cross product
+        //const co = [v.v[0] + debugshift, v.v[1] + debugshift]
+        ctx.moveTo(v.v[0] + debugshift, v.v[1] + debugshift);
+        pi.forEach(v => {
+            ctx.lineTo(v.v[0] + debugshift, v.v[1] + debugshift);
+        });
+        ctx.closePath();
+        ctx.fill(); // stroke()
+    }
+    JavaScriptCSS_bloat(layer) {
+        // Source - https://stackoverflow.com/a
+        // Posted by Niet the Dark Absol, modified by community. See post 'Timeline' for change history
+        // Retrieved 2026-01-08, License - CC BY-SA 3.0
+        // Source - https://stackoverflow.com/a
+        // Posted by Paul
+        // Retrieved 2026-01-08, License - CC BY-SA 3.0
+        //		/^[+-]?\d+(\.\d+)?$/		
+        const m = layer.match(/^rgba\s*\(\s*(\d+)\s*,\s*(\d+)\s*,\s*(\d+)\s*,\s*[+-]?\d+(\.\d+)?\s*\)$/i);
+        if (m) {
+            sum = m.slice(1).map(t => parseFloat(t));
+        } // End stack overflow
+        else {
+            var items = this.fillStyle[0].match(/[0-9a-z]{2}/gi);
+            //.map(s => s.match(/[0-9a-z]{2}/gi).map(t => parseInt(t, 16)))
+            var sum = items.map(t => parseInt(t, 16));
+        }
+        return sum;
+    }
+}
 export class BSPtree {
     insertPolygon(p) {
         //console.log("insertPolygon", p.fillStyle)
         { //if (this.root == null) { // I imply the screen borders to be match my clipping code
+            const v3 = p.vertices.slice(0, 3).map(v => new Vec3([v.xy.v.concat(v.z)])); // backface culling in 3d. One of the perks of subpixel correction. // By my definition, the first two edges span up the plane (default s,t and basis for u,v mapping). The level editor needs to make sure that the rest align ( kinda like in Doom space ). I may add a scene graph just to allow to rotate Doomspace objects with infinite precision.			
+            // const edge: Vec3[] = []
+            // for (let i = 0; i < 2; i++) { // somehow array functions do not work for this. Todo: Move behind edge code
+            // 	edge.push(v3[i].subtract01(v3[1 + 1]))
+            // }
+            // const normal = edge[0].crossProduct(edge[1])  // Todo: Cross product optional parameter for z only? I don't want to leak the internal sign convention here
+            // if (normal.v[2] < 0) {
+            // 	p.vertices.reverse(); console.log("reverse Insert") // ToDo: this rips meshes apart and confuses ToCanvas // This disturbed the parser, but I added an Array.slice
+            // }
             const s = p.edges.map(e => {
                 const vecs = e.vs.map(v => new Vec2([v.normalize()])); // vertices start with v. I should rename to point to differentiate from vector -- but what about Transformation?
                 const delta = vecs[0].subtract01(vecs[1]);
+                //if (normal.v[2] >= 0) e.vs.reverse()  // uh too much cognitive load. Pehaps there is a way to figure out backfaces within a BSP, but not for me
                 const r = [delta.innerProduct(delta), e]; //  ref type
                 return r;
             });
@@ -385,7 +475,7 @@ export class BSPtree {
                     this.root = b;
                 }
                 else {
-                    this.root.decide_edge(n); // insert edge
+                    this.root.decide_edge(n, p.fillStyle, i == 0); // insert edge
                     // this.root.insertPolygon(s.slice(0,i)) // to work for all sides 
                     // const midpoint_w=verts.map(v=>parent.decide(v)).reduce((p,c)=>p+c)  // fractions // Does this need an epsilon, or check vertex indices or infinite precision?
                     // parent.children[(Math.sign(midpoint_w)+1)/2]=n

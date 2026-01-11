@@ -59,7 +59,20 @@ export class Polygon_in_cameraSpace implements CanvasObject {
 	selected = -1
 	constructor(vs?: Array<Vertex_OnScreen>, fillStyle = "rgba(0, 136, 0, 0.2)") {
 		if (vs === undefined) return
+
+		// turn back faces to front. Todo: not do on
+		const v3 = vs.slice(0, 3).map(v => new Vec3([v.xy.v.concat(v.z)]))  // backface culling in 3d. One of the perks of subpixel correction. // By my definition, the first two edges span up the plane (default s,t and basis for u,v mapping). The level editor needs to make sure that the rest align ( kinda like in Doom space ). I may add a scene graph just to allow to rotate Doomspace objects with infinite precision.			
+		const edge: Vec3[] = []
+		for (let i = 0; i < 2; i++) { // somehow array functions do not work for this. Todo: Move behind edge code
+			edge.push(v3[i].subtract01(v3[1 + 1]))
+		}
+		const normal = edge[0].crossProduct(edge[1])  // Todo: Cross product optional parameter for z only? I don't want to leak the internal sign convention here
+		if (normal.v[2] > 0) {
+			vs.reverse(); console.log("reverse Cstr")  // inplace // This disturbed the parser, but I added an Array.slice
+		}
+
 		this.vertices = vs
+
 		let lv = vs[vs.length - 1]
 		this.edges = vs.map(v => {
 			const e = new Edge_on_Screen()
@@ -155,11 +168,12 @@ class BSPnode_ExtensiononStack extends Polygon_in_cameraSpace {
 				portal = n.toCanvas(this.ctx, pi)
 			} else {
 				if (n instanceof Leaf) {
-					console.log("Leaf.ToCanvas")
+					//console.log("Leaf.ToCanvas")
 					if (pi == null) {
 						console.warn("Polygon covers whole screen")
 					}
 					n.toCanvas(this.ctx, pi)
+					// toDo: on the way to the root, check the siblings if they are also covered by the polygon
 				}
 			}
 		}
@@ -167,7 +181,7 @@ class BSPnode_ExtensiononStack extends Polygon_in_cameraSpace {
 		if (portal.length == 0) return 0
 		if (n instanceof BSPnode) {
 			n.children.forEach((c, i) => {
-				console.log("child ", typeof c == "object" ? c.constructor.name : "u")
+				//console.log("child ", typeof c == "object" ? c.constructor.name : "u")
 				const l = this.DFS(c, portal[i])
 				// It is possible to hide the bug one level. Looks like ToCanvas is correct, but insertEdge is not . if (l==0) this.DFS(c, portal[1-i])  // debugging. There has to be a better way?
 			})
@@ -365,7 +379,7 @@ class BSPnode extends CanvasObject {
 							const l = new Leaf();
 							l.fillStyle = [fillStyle]
 							n.children[0] = l  // 0 should be inside . front faces go around the clock. clean uo 2d resr data
-							console.log("new leaf", n.children[0].fillStyle)
+							//console.log("new leaf", n.children[0].fillStyle)
 						}
 					}
 				} else {
@@ -441,16 +455,16 @@ class Leaf {
 
 
 
-		var sum = this.JavaScriptCSS_bloat( this.fillStyle[0] )
-		
-		const i2=[0]
+		var sum = this.JavaScriptCSS_bloat(this.fillStyle[0])
+
+		const i2 = [0]
 		//const sum = i2.reduce((p, c) => p.map((q, i) => q + c[i], [0, 0, 0]));
 		const avg = sum.map(s => (s / i2.length).toString()).join() // //.toString(16)).join()
-		ctx.fillStyle = "rgba("+avg+")" // this.fillStyle[0] //avg  // todo: sort by z  (find cut, decide edge, choose fillStyle)
-		console.log("ToCanvas ", ctx.fillStyle, avg)
+		ctx.fillStyle = "rgba(" + avg + ")" // this.fillStyle[0] //avg  // todo: sort by z  (find cut, decide edge, choose fillStyle)
+		//console.log("ToCanvas ", ctx.fillStyle, avg)
 		ctx.beginPath()
-		console.log(pi)
-		if (pi.length<3) return
+		//console.log(pi)
+		if (pi.length < 3) return
 		const v = pi[0] //.normalize(-debugshift);  v should be xyz (Vec3) because either it is a projected vertex, or some cross product
 		//const co = [v.v[0] + debugshift, v.v[1] + debugshift]
 		ctx.moveTo(v.v[0] + debugshift, v.v[1] + debugshift)
@@ -462,7 +476,7 @@ class Leaf {
 
 	}
 
-	private JavaScriptCSS_bloat(layer : String) {
+	private JavaScriptCSS_bloat(layer: String) {
 		// Source - https://stackoverflow.com/a
 		// Posted by Niet the Dark Absol, modified by community. See post 'Timeline' for change history
 		// Retrieved 2026-01-08, License - CC BY-SA 3.0
@@ -491,21 +505,20 @@ export class BSPtree implements CanvasObject {
 	insertPolygon(p: Polygon_in_cameraSpace) {
 		//console.log("insertPolygon", p.fillStyle)
 		{//if (this.root == null) { // I imply the screen borders to be match my clipping code
-			const v3=p.vertices.slice(0,3).map(v=>new Vec3([v.xy.v.concat(v.z)]))  // backface culling in 3d. One of the perks of subpixel correction. // By my definition, the first two edges span up the plane (default s,t and basis for u,v mapping). The level editor needs to make sure that the rest align ( kinda like in Doom space ). I may add a scene graph just to allow to rotate Doomspace objects with infinite precision.
-			const edge:Vec3[]=[]
-			for(let i=0;i<2;i++){ // somehow array functions do not work for this. Todo: Move behind edge code
-				edge.push( v3[i].subtract01(v3[1+1]) )
-			}
-			
-			const normal=edge[0].crossProduct(edge[1])  // Todo: Cross product optional parameter for z only? I don't want to leak the internal sign convention here
-			if (normal.v[2]<0){
-				// p.vertices.reverse(); console.log("reverse")  // This disturbs the parser. Todo: Prepass! On level load: Polygon -> binary. Then fix order. Per frame: backface culling / mark for debug
-			}
+			const v3 = p.vertices.slice(0, 3).map(v => new Vec3([v.xy.v.concat(v.z)]))  // backface culling in 3d. One of the perks of subpixel correction. // By my definition, the first two edges span up the plane (default s,t and basis for u,v mapping). The level editor needs to make sure that the rest align ( kinda like in Doom space ). I may add a scene graph just to allow to rotate Doomspace objects with infinite precision.			
+			// const edge: Vec3[] = []
+			// for (let i = 0; i < 2; i++) { // somehow array functions do not work for this. Todo: Move behind edge code
+			// 	edge.push(v3[i].subtract01(v3[1 + 1]))
+			// }
+			// const normal = edge[0].crossProduct(edge[1])  // Todo: Cross product optional parameter for z only? I don't want to leak the internal sign convention here
+			// if (normal.v[2] < 0) {
+			// 	p.vertices.reverse(); console.log("reverse Insert") // ToDo: this rips meshes apart and confuses ToCanvas // This disturbed the parser, but I added an Array.slice
+			// }
 
 			const s = p.edges.map(e => {
 				const vecs = e.vs.map(v => new Vec2([v.normalize()]))  // vertices start with v. I should rename to point to differentiate from vector -- but what about Transformation?
-				const delta = vecs[0].subtract01(vecs[1]) 
-				if (normal.v[2] >= 0) e.vs.reverse()  ;// Do I want to support back faces? With a decoupled loader, this can move out of here
+				const delta = vecs[0].subtract01(vecs[1])
+				//if (normal.v[2] >= 0) e.vs.reverse()  // uh too much cognitive load. Pehaps there is a way to figure out backfaces within a BSP, but not for me
 				const r: [number, Edge_on_Screen] =
 					[delta.innerProduct(delta), e]   //  ref type
 				return r
