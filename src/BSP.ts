@@ -38,6 +38,7 @@ class Vertex_in_cameraSpace {
 }
 export class Polygon_in_cameraSpace implements CanvasObject {
 	fillStyle: string;
+
 	// I feel like this will the method for all polygons not matter if clipped
 	// Clipped edges behave special on projection, but actually clipping and projection happen shortly after each other
 	// We persist screen coordinates ( ah, well, z does not exist for clipped edges ) . Just integers for scanlines
@@ -84,6 +85,7 @@ export class Polygon_in_cameraSpace implements CanvasObject {
 	}
 	vertices: Array<Vertex_OnScreen>
 	edges: Array<Edge_on_Screen> // double link: edges point to vertices, and may later point to faces in a mesh
+	edges_in_BSP: BSPnode_edge[] = []
 }
 
 /* // // nodes seem to be edges
@@ -122,6 +124,9 @@ export class Vertex_OnScreen implements CanvasObject {
 		// does not work if (v.length==2) return v ;// typeGuard 
 		return [v[0], v[1]]  // okay for only 2
 	}
+
+	// for insert face
+	index_in_polygon = -1  // JRISC has no undefined. C and JRISC like to use 0 as index. Though, not sure about JRISC, loadQ 1 is as fast. I could tell the compiler to back correct all pointers to arrays
 }
 
 // So he BSP is a construct hovering over the actual polygons. Like an index in the database
@@ -155,8 +160,7 @@ class BSPnode_ExtensiononStack extends Polygon_in_cameraSpace {
 		ctx.moveTo(...this.vertices[0].normalize(-debugshift))
 		this.vertices.forEach(v => ctx.lineTo(...v.normalize(-debugshift)))
 		ctx.closePath()
-		ctx.fill()  // stroke()
-		throw new Error("Method not implemented.");
+		ctx.fill()  // stroke()		
 	}
 	//convex_polygon: Array<Vertex_OnScreen>[]   // cuts and perspective correction both want a z value ( homogenous coordinates : w ). Z-buffer z lives in clipspace and is different. I don't care for z-buffer (because it is so cumbersome to use on Jaguar).
 	face_or_edge: boolean
@@ -197,6 +201,8 @@ var variance = 0
 class BSPnode_edge {
 	xy: Vec2  //normal
 	z: number  // bias
+	cuts: [BSPnode, Vertex_OnScreen][] = []  //todo: derived class for inserts
+	index = -1
 	decide(v: Vertex_OnScreen): number {
 		return this.xy.innerProduct(v.xy) + this.z * v.z  // I changed sign of z to make this a 3d inner product as mandated by a beam tree
 	}
@@ -341,7 +347,59 @@ class BSPnode extends CanvasObject {
 	// I flatten the structure her. Node is not fat enough for more structure. Vec3 is misleading
 
 	ref_count: number;
+	//cut: Vertex_OnScreen;
 
+	decide_face(p: Polygon_in_cameraSpace, vsp?: Vertex_OnScreen[]) {
+		const vs = typeof vsp == 'undefined' ? p.vertices : vsp
+		// code copied from this.decide_edge
+		const explicit_mesh = vs.map(v => this.edge.verts.indexOf(v))
+		const sides = explicit_mesh.map((f, i) => {
+			if (f >= 0) {//console.log("vertex eq by index");
+				return 0
+			}
+			return Math.sign(this.edge.decide(vs[i]))
+		})
+
+		// const children=new Polygon_in_cameraSpace() // new for the vertices
+		// // old for the refs for the polygon
+
+		// find cuts. I have done this before
+		const children: Vertex_OnScreen[][] = []
+		for (let i = 0; i < 2; i++) {
+			children[i] = []
+		}
+		let last = sides[sides.length - 1], cut_counter = 0
+		for (let i = 0; i < sides.length; i++) {
+			let c = sides[i]
+			const j_pre = vsp[i].index_in_polygon
+			const j = j_pre >= 0 ? j_pre : i
+			if (Math.abs(c - last) > 1) { // find cut of edge
+				cut_counter++
+
+				var cut = p.edges_in_BSP[j].cuts.filter(c => c[0] == this).map(c => c[1])[0] // dict
+				// todo: unify insertion and ToCanvas code to share debugging
+				// the following code looks just like ToCanvas for face?
+				const vsi = new Vertex_OnScreen()
+				vsi.xy = cut.xy
+				vsi.z = cut.z
+				for (let c = 0; c < 2; c++) {
+					children[last > c ? 1 - c : c].push(vsi)
+					vsi.index_in_polygon = j  // for the old polyline, the cut is still in order. This is for debugging and profiling. Some might want to enforce a valid state by setting index eagerly.
+				}
+			}
+			last = c
+			if (cut_counter == 0) {
+				children[c].push(vs[i])
+			} else {
+				const vsi = new Vertex_OnScreen()
+				vsi.index_in_polygon = j
+				vsi.xy = vs[i].xy
+				vsi.z = vs[i].z
+				children[c].push(vsi)
+			}
+		}
+
+	}
 
 	decide_edge(e: BSPnode_edge, fillStyle: string, last_edge_of_polygon = false): void {//:BSPnode_childref { 
 		const explicit_mesh = e.verts.map(v => this.edge.verts.indexOf(v))
@@ -352,13 +410,22 @@ class BSPnode extends CanvasObject {
 			return Math.sign(this.edge.decide(e.verts[i]))
 		})
 		//if (Math.abs(sides[0]-sides[1])>1) console.log("decide edge", sides)
-		//if (Math.abs(sides[1]-sides[0])>1) // split ausrechnen
+		if (Math.abs(sides[1] - sides[0]) > 1) { // calculate cut. I already added the code to "ToCanvas", but I need it here while inserting ( and while instering the face ). I thought, BSP is pure. Weird that I don't need to keep the cut after insertion
+			// beam tree
+			const e_to_insert = new Vec3([e.xy.v.concat(e.z)])
+			const e_in_BSP = new Vec3([this.edge.xy.v.concat(this.edge.z)])
+			const cut3d = e_to_insert.crossProduct(e_in_BSP)
+			var cut = new Vertex_OnScreen()
+			cut.xy = new Vec2([cut3d.v.slice(2)])
+			cut.z = cut3d.v[2]
+		}
 		for (let s = 0; s < 2; s++) {
 			if (sides.map(si => si == (2 * s) - 1).reduce((p, c) => p || c, false)) {
 				let c = this.children[s]
 				if (c == null || (c instanceof Leaf)) {
 					const n = new BSPnode()
-					n.edge = e
+					n.edge = e  // why no cut at this point? The "sides" code depends on it. The face wants to reuse it
+					e.cuts.push([this, cut])
 					this.children[s] = n  // I don't want too many instanceOf in my code.
 
 					if (c != null) {					// todo : Check for z
@@ -375,6 +442,13 @@ class BSPnode extends CanvasObject {
 
 						}
 					} else {
+						// This seems to be backwards. Rather I should use all poylgon vertices and find the root node of the polygon (the last one where all vertices aggree on the side of the edge)
+						// save the root and go from there for all edges and the finally face ?
+						// Go with the edges as long they don't get split.
+						// How do I compare polygon against portal? Looks likes nested loops. I could join / merge them by angle?: (ToDo)
+						// this vertex inside portal. Border goes more to the outside than edge => next vertex stays inside till next corner
+						// Angle comparison still means cross product, but less
+						// Equivalent: Insert all edges and find top common node to start for face. Still, every vertex will have been compared twice ( this hurts due to (lazy ) precision )
 						if (last_edge_of_polygon) {
 							const l = new Leaf();
 							l.fillStyle = [fillStyle]
@@ -515,17 +589,19 @@ export class BSPtree implements CanvasObject {
 			// 	p.vertices.reverse(); console.log("reverse Insert") // ToDo: this rips meshes apart and confuses ToCanvas // This disturbed the parser, but I added an Array.slice
 			// }
 
-			const s = p.edges.map(e => {
+			const s = p.edges.map((e, i) => {
 				const vecs = e.vs.map(v => new Vec2([v.normalize()]))  // vertices start with v. I should rename to point to differentiate from vector -- but what about Transformation?
 				const delta = vecs[0].subtract01(vecs[1])
 				//if (normal.v[2] >= 0) e.vs.reverse()  // uh too much cognitive load. Pehaps there is a way to figure out backfaces within a BSP, but not for me
-				const r: [number, Edge_on_Screen] =
-					[delta.innerProduct(delta), e]   //  ref type
+				const r: [number, Edge_on_Screen, number] =
+					[delta.innerProduct(delta), e, i]   //  ref type
 				return r
 			})
 			s.sort((a, b) => a[0] - b[0])
 			for (let i = s.length - 1; i >= 0; i--) {
 				const n = new BSPnode_edge()
+				n.index = s[i][2]
+				p.edges_in_BSP.push(n) // for the cuts
 				const verts = (s[i][1]).vs    //new Vec2( [ lv[1].normalize() ]  ) )
 
 				// cross product of the beam tree. Trying to optimize, but still 6 multiplications = 2+2+2
