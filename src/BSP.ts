@@ -201,7 +201,7 @@ var variance = 0
 class BSPnode_edge {
 	xy: Vec2  //normal
 	z: number  // bias
-	cuts: [BSPnode, Vertex_OnScreen][] = []  //todo: derived class for inserts
+
 	index = -1
 	decide(v: Vertex_OnScreen): number {
 		return this.xy.innerProduct(v.xy) + this.z * v.z  // I changed sign of z to make this a 3d inner product as mandated by a beam tree
@@ -339,7 +339,8 @@ class BSPnode_edge {
 // So this is like Horizon_Edge , while the partition is like the Edge_between_vertices
 class BSPnode extends CanvasObject {
 	children: (BSPnode | Leaf)[] = new Array<BSPnode>() // 0,1   
-	edge: BSPnode_edge
+	edge: BSPnode_edge   // real vertices to match mesh and shorten float calc
+	cuts: Vertex_OnScreen[] = []  // temporary vertices while inserting an edge into a BSP. Oh wait, keep for face
 
 	// local in a mesh : local variables hold Vertice  see Edge_on_Screen
 	// elsewhere : the math likes this
@@ -373,35 +374,43 @@ class BSPnode extends CanvasObject {
 			let c = sides[i]
 			const j_pre = vsp[i].index_in_polygon
 			const j = j_pre >= 0 ? j_pre : i
-			if (Math.abs(c - last) > 1) { // find cut of edge
+			if (Math.abs(c - last) > 0) { // ensure cut
 				cut_counter++
+				if (Math.abs(c - last) > 1) { // find cut of edge  . Cut as a verb
 
-				var cut = p.edges_in_BSP[j].cuts.filter(c => c[0] == this).map(c => c[1])[0] // dict
-				// todo: unify insertion and ToCanvas code to share debugging
-				// the following code looks just like ToCanvas for face?
-				const vsi = new Vertex_OnScreen()
-				vsi.xy = cut.xy
-				vsi.z = cut.z
+					var cut = this.cuts[(c + 1) / 2] // cuts must have been (over-)written when we inserted one of the edges.
+					// todo: unify insertion and ToCanvas code to share debugging
+					// the following code looks just like ToCanvas for face?
+					var vsi = new Vertex_OnScreen()
+					vsi.xy = cut.xy
+					vsi.z = cut.z
+				} else {
+					// cut was already in vsp, . Todo: correct the toCanvas()
+					vsi = vsp[i]
+				}
 				for (let c = 0; c < 2; c++) {
 					children[last > c ? 1 - c : c].push(vsi)
-					vsi.index_in_polygon = j  // for the old polyline, the cut is still in order. This is for debugging and profiling. Some might want to enforce a valid state by setting index eagerly.
+					vsi.index_in_polygon = j  // todo: struct (value type) to make this have an effect  .for the old polyline, the cut is still in order. This is for debugging and profiling. Some might want to enforce a valid state by setting index eagerly.
+				}
+			} else {
+				if (cut_counter == 0) {
+					children[c].push(vs[i])
+				} else {
+					const vsi = new Vertex_OnScreen()
+					vsi.index_in_polygon = j
+					vsi.xy = vs[i].xy
+					vsi.z = vs[i].z
+					children[c].push(vsi)
 				}
 			}
+
 			last = c
-			if (cut_counter == 0) {
-				children[c].push(vs[i])
-			} else {
-				const vsi = new Vertex_OnScreen()
-				vsi.index_in_polygon = j
-				vsi.xy = vs[i].xy
-				vsi.z = vs[i].z
-				children[c].push(vsi)
-			}
 		}
 
 	}
 
-	decide_edge(e: BSPnode_edge, fillStyle: string, last_edge_of_polygon = false): void {//:BSPnode_childref { 
+	decide_edge(node: BSPnode, fillStyle: string, last_edge_of_polygon = false): void {//:BSPnode_childref { 
+		const e = node.edge
 		const explicit_mesh = e.verts.map(v => this.edge.verts.indexOf(v))
 		const sides = explicit_mesh.map((f, i) => {
 			if (f >= 0) {//console.log("vertex eq by index");
@@ -418,14 +427,20 @@ class BSPnode extends CanvasObject {
 			var cut = new Vertex_OnScreen()
 			cut.xy = new Vec2([cut3d.v.slice(2)])
 			cut.z = cut3d.v[2]
+
+			// var inverse = [-1, -1];
+			// for (let i = 0; i < 2; i++) inverse[sides[i]] = i  // since there are only two, there are only two cases. I could probably remove this code?
 		}
 		for (let s = 0; s < 2; s++) {
-			if (sides.map(si => si == (2 * s) - 1).reduce((p, c) => p || c, false)) {
+			if (sides.map(si => si == (2 * s) - 1).reduce((p, c) => p || c, false)) { // any points to insert on this side of tree
 				let c = this.children[s]
 				if (c == null || (c instanceof Leaf)) {
 					const n = new BSPnode()
 					n.edge = e  // why no cut at this point? The "sides" code depends on it. The face wants to reuse it
-					e.cuts.push([this, cut])
+					n.cuts = node.cuts.slice() // temporarly for insert
+					if (typeof cut != 'undefined') {
+						node.cuts[s] = cut   // the other end of the line is replaced
+					}
 					this.children[s] = n  // I don't want too many instanceOf in my code.
 
 					if (c != null) {					// todo : Check for z
@@ -458,7 +473,7 @@ class BSPnode extends CanvasObject {
 					}
 				} else {
 					//return 
-					c.decide_edge(e, fillStyle, last_edge_of_polygon) // todo: so at least one child should be filled, but right now I see none
+					c.decide_edge(node, fillStyle, last_edge_of_polygon) // todo: so at least one child should be filled, but right now I see none
 				}
 			}
 		}
@@ -618,14 +633,13 @@ export class BSPtree implements CanvasObject {
 
 				// mesh insertion needs references to vertices
 				n.verts = verts  // Todo: check that this is readonly ! 
-
+				const b = new BSPnode()
+				b.edge = n
 				if (this.root == null) {
-					const b = new BSPnode()
-					b.edge = n
 					this.root = b
 				}
 				else {
-					this.root.decide_edge(n, p.fillStyle, i == 0) // insert edge
+					this.root.decide_edge(b, p.fillStyle, i == 0) // insert edge
 
 					// this.root.insertPolygon(s.slice(0,i)) // to work for all sides 
 					// const midpoint_w=verts.map(v=>parent.decide(v)).reduce((p,c)=>p+c)  // fractions // Does this need an epsilon, or check vertex indices or infinite precision?
