@@ -97,8 +97,8 @@ const ps = (function initSample() {
     // ctx.fillRect(100, 40, 3, 3);
     let vs = [];
     v = new Vertex_OnScreen();
-    v.xy = new Vec2([[40, 160]]);
-    vs.push(v);
+    v.xy = new Vec2([[195, 212,]]);
+    vs.push(v); //[40, 160]]); vs.push(v)
     v = new Vertex_OnScreen();
     v.xy = new Vec2([[240, 60]]);
     vs.push(v);

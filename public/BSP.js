@@ -66,6 +66,9 @@ export class Polygon_in_cameraSpace {
             vs.reverse();
             console.log("reverse Cstr"); // inplace // This disturbed the parser, but I added an Array.slice
         }
+        else {
+            console.log("in order");
+        }
         this.vertices = vs;
         let lv = vs[vs.length - 1];
         this.edges = vs.map(v => {
@@ -309,7 +312,7 @@ class BSPnode extends CanvasObject {
     }
     //cut: Vertex_OnScreen;
     decide_face(p, vsp) {
-        console.log("this has cuts", this.cuts);
+        //console.log("this has cuts",this.cuts)
         if (typeof vsp != 'undefined') {
             var vs = vsp;
         }
@@ -348,22 +351,28 @@ class BSPnode extends CanvasObject {
                     var cut = this.cuts[(-c + 1) / 2]; // cuts must have been (over-)written when we inserted one of the edges.
                     // todo: unify insertion and ToCanvas code to share debugging
                     // the following code looks just like ToCanvas for face?
-                    var vsi = new Vertex_OnScreen();
-                    vsi.xy = cut.xy;
-                    vsi.z = cut.z;
-                    for (let c = 0; c < 2; c++) {
-                        children[last > c ? 1 - c : c].push(vsi);
-                        console.log("dupes ", last > c ? 1 - c : c, "<-", vsi.index_in_polygon);
-                        vsi.index_in_polygon = j; // todo: struct (value type) to make this have an effect  .for the old polyline, the cut is still in order. This is for debugging and profiling. Some might want to enforce a valid state by setting index eagerly.
+                    if (typeof cut != 'undefined') {
+                        var vsi = new Vertex_OnScreen();
+                        try {
+                            vsi.xy = cut.xy;
+                        }
+                        catch (_a) {
+                            console.log("this.cuts", this.cuts);
+                        }
+                        vsi.z = cut.z;
+                        for (let c = 0; c < 2; c++) {
+                            children[last > c ? 1 - c : c].push(vsi); // console.log("dupes ", last > c ? 1 - c : c, "<-", vsi.index_in_polygon)
+                            vsi.index_in_polygon = j; // todo: struct (value type) to make this have an effect  .for the old polyline, the cut is still in order. This is for debugging and profiling. Some might want to enforce a valid state by setting index eagerly.
+                        }
                     }
                 }
                 else {
-                    vsi = vs[vertex_i];
-                    // c = 1  // I kinda feel that I did this, even though for consistency inside should be 0. Inside is smaller than outside (todo)
-                    if (explicit_mesh[vertex_i] < 0)
-                        console.warn("polygon vertex on border(aka portal edge), but no corner (aka portal vertex) reference matches");
-                    // c = (c + 1) / 2
-                    children[1].push(vs[vertex_i]);
+                    // vsi = vs[vertex_i]
+                    // // c = 1  // I kinda feel that I did this, even though for consistency inside should be 0. Inside is smaller than outside (todo)
+                    // if (explicit_mesh[vertex_i] < 0)
+                    // 	console.warn("polygon vertex on border(aka portal edge), but no corner (aka portal vertex) reference matches") // last was on edge. We are leaving
+                    // // c = (c + 1) / 2
+                    children[0].push(vs[vertex_i]);
                     // no duplicate if no real crossing! Check: ToCanvas: 0 0 -1 is no cut!
                     // IMHO, the only way for the face to know this border is when it is actually one of its own edges
                     // todo: Can this happen? // cut was already in vsp, . Todo: correct the toCanvas()
@@ -377,31 +386,38 @@ class BSPnode extends CanvasObject {
                     if (explicit_mesh[vertex_i] < 0)
                         console.warn("polygon vertex on border(aka portal edge), but no corner (aka portal vertex) reference matches");
                 }
-                const ci = c == 0 ? 1 : (c + 1) / 2;
-                if (cut_counter == 0) {
-                    //todo ask inserting edge for side
-                    children[ci].push(vs[vertex_i]);
-                }
-                else {
-                    const vsi = new Vertex_OnScreen();
-                    vsi.index_in_polygon = j;
-                    vsi.xy = vs[vertex_i].xy;
-                    vsi.z = vs[vertex_i].z;
-                    children[ci].push(vsi);
-                }
+                const ci = c == 0 ? 0 : (c + 1) / 2;
+                // if (cut_counter == 0) {
+                //todo ask inserting edge for side
+                children[ci].push(vs[vertex_i]);
+                // } else {
+                // 	// Why would I modify a Vertex object after creation? (like not here but later on)
+                // 	const vsi = new Vertex_OnScreen()
+                // 	vsi.index_in_polygon = j
+                // 	vsi.xy = vs[vertex_i].xy
+                // 	vsi.z = vs[vertex_i].z
+                // 	children[ci].push(vsi)
+                // }
             }
-            console.log("beforeSplit:", vertex_i, " c0: ", children[0].length, " c1: ", children[1].length);
+            //console.log("beforeSplit:", vertex_i, " c0: ", children[0].length, " c1: ", children[1].length,"c",c,"last",last)
             last = c;
         }
         for (let side = 0; side < 2; side++) {
             if (children[side].length > 0) {
-                const child = this.children[side];
-                if (child instanceof BSPnode) {
-                    child.decide_face(p, children[side]);
+                let child = this.children[side];
+                if (typeof child == 'undefined') { // once again I don't understand why null is not enough. Objects?
+                    child = new Leaf();
+                    child.fillStyle = [p.fillStyle];
+                    this.children[side] = child;
                 }
                 else {
-                    if (child instanceof Leaf) { // child undefined
-                        child.fillStyle.push(p.fillStyle);
+                    if (child instanceof BSPnode) {
+                        child.decide_face(p, children[side]);
+                    }
+                    else {
+                        if (child instanceof Leaf) { // child undefined
+                            child.fillStyle.push(p.fillStyle);
+                        }
                     }
                 }
             }
@@ -426,7 +442,7 @@ class BSPnode extends CanvasObject {
             cut.xy = new Vec2([cut3d.v.slice(0, 2)]);
             cut.z = cut3d.v[2];
             this.cuts[cut.z > 0 ? 1 : 0] = cut; //  z>0 ? aparently not a good idea // I feel like cuts should be sorted by direction of border, not by length of edge
-            console.log("inserted cuts", this.cuts); // Todo PolygonIndex
+            //console.log("inserted cuts",this.cuts) // Todo PolygonIndex
             // var inverse = [-1, -1];
             // for (let i = 0; i < 2; i++) inverse[sides[i]] = i  // since there are only two, there are only two cases. I could probably remove this code?
         }
@@ -568,7 +584,8 @@ export class BSPtree {
     insertPolygon(p) {
         //console.log("insertPolygon", p.fillStyle)
         { //if (this.root == null) { // I imply the screen borders to be match my clipping code
-            const v3 = p.vertices.slice(0, 3).map(v => new Vec3([v.xy.v.concat(v.z)])); // backface culling in 3d. One of the perks of subpixel correction. // By my definition, the first two edges span up the plane (default s,t and basis for u,v mapping). The level editor needs to make sure that the rest align ( kinda like in Doom space ). I may add a scene graph just to allow to rotate Doomspace objects with infinite precision.			
+            //moved to polygon consructor
+            //const v3 = p.vertices.slice(0, 3).map(v => new Vec3([v.xy.v.concat(v.z)]))  // backface culling in 3d. One of the perks of subpixel correction. // By my definition, the first two edges span up the plane (default s,t and basis for u,v mapping). The level editor needs to make sure that the rest align ( kinda like in Doom space ). I may add a scene graph just to allow to rotate Doomspace objects with infinite precision.			
             // const edge: Vec3[] = []
             // for (let i = 0; i < 2; i++) { // somehow array functions do not work for this. Todo: Move behind edge code
             // 	edge.push(v3[i].subtract01(v3[1 + 1]))
@@ -607,7 +624,7 @@ export class BSPtree {
                     this.root = b;
                 }
                 else {
-                    this.root.decide_edge(b, p.fillStyle, i == 0); // insert edge
+                    this.root.decide_edge(b, p.fillStyle, false); // I could not find synergy going bottom up. There is some top down ratched thing when inserting the first edge and it does not get split.  i == 0) // insert edge
                     // this.root.insertPolygon(s.slice(0,i)) // to work for all sides 
                     // const midpoint_w=verts.map(v=>parent.decide(v)).reduce((p,c)=>p+c)  // fractions // Does this need an epsilon, or check vertex indices or infinite precision?
                     // parent.children[(Math.sign(midpoint_w)+1)/2]=n
