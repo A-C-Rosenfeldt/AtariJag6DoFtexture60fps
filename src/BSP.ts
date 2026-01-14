@@ -350,8 +350,20 @@ class BSPnode extends CanvasObject {
 	ref_count: number;
 	//cut: Vertex_OnScreen;
 
-	decide_face(p: Polygon_in_cameraSpace, vsp?: Vertex_OnScreen[]) {
-		const vs = typeof vsp == 'undefined' ? p.vertices : vsp
+	decide_face(p: Polygon_in_cameraSpace, vsp?: Vertex_OnScreen[]) { // todo: use edges to pull the vsp==undefined case out of this function
+		console.log("this has cuts",this.cuts)
+		if (typeof vsp != 'undefined') {
+			var vs = vsp
+		} else {
+			vs = p.vertices
+			// ¿Perhaps cut the reference
+			vs.forEach((v, i) => { v.index_in_polygon = i })
+		}
+		if (vs.length < 3) {
+			console.warn("vs.length=", vs.length)
+			return
+		}
+
 		// code copied from this.decide_edge
 		const explicit_mesh = vs.map(v => this.edge.verts.indexOf(v))
 		const sides = explicit_mesh.map((f, i) => {
@@ -366,47 +378,75 @@ class BSPnode extends CanvasObject {
 
 		// find cuts. I have done this before
 		const children: Vertex_OnScreen[][] = []
-		for (let i = 0; i < 2; i++) {
-			children[i] = []
+		for (let side = 0; side < 2; side++) {
+			children[side] = []
 		}
 		let last = sides[sides.length - 1], cut_counter = 0
-		for (let i = 0; i < sides.length; i++) {
-			let c = sides[i]
-			const j_pre = vsp[i].index_in_polygon
-			const j = j_pre >= 0 ? j_pre : i
+		for (let vertex_i = 0; vertex_i < sides.length; vertex_i++) {
+			let c = sides[vertex_i]
+			const j_pre = vs[vertex_i].index_in_polygon
+			const j = j_pre >= 0 ? j_pre : vertex_i
 			if (Math.abs(c - last) > 0) { // ensure cut
 				cut_counter++
 				if (Math.abs(c - last) > 1) { // find cut of edge  . Cut as a verb
 
-					var cut = this.cuts[(c + 1) / 2] // cuts must have been (over-)written when we inserted one of the edges.
+					var cut = this.cuts[(-c + 1) / 2] // cuts must have been (over-)written when we inserted one of the edges.
 					// todo: unify insertion and ToCanvas code to share debugging
 					// the following code looks just like ToCanvas for face?
 					var vsi = new Vertex_OnScreen()
 					vsi.xy = cut.xy
 					vsi.z = cut.z
+					for (let c = 0; c < 2; c++) {
+						children[last > c ? 1 - c : c].push(vsi); console.log("dupes ", last > c ? 1 - c : c, "<-", vsi.index_in_polygon)
+						vsi.index_in_polygon = j  // todo: struct (value type) to make this have an effect  .for the old polyline, the cut is still in order. This is for debugging and profiling. Some might want to enforce a valid state by setting index eagerly.
+					}
 				} else {
-					// cut was already in vsp, . Todo: correct the toCanvas()
-					vsi = vsp[i]
-				}
-				for (let c = 0; c < 2; c++) {
-					children[last > c ? 1 - c : c].push(vsi)
-					vsi.index_in_polygon = j  // todo: struct (value type) to make this have an effect  .for the old polyline, the cut is still in order. This is for debugging and profiling. Some might want to enforce a valid state by setting index eagerly.
+					vsi = vs[vertex_i]
+					// c = 1  // I kinda feel that I did this, even though for consistency inside should be 0. Inside is smaller than outside (todo)
+					if (explicit_mesh[vertex_i] < 0)
+						console.warn("polygon vertex on border(aka portal edge), but no corner (aka portal vertex) reference matches")
+					// c = (c + 1) / 2
+					children[1].push(vs[vertex_i])
+					// no duplicate if no real crossing! Check: ToCanvas: 0 0 -1 is no cut!
+					// IMHO, the only way for the face to know this border is when it is actually one of its own edges
+					// todo: Can this happen? // cut was already in vsp, . Todo: correct the toCanvas()
 				}
 			} else {
+				// the second vertex on the border
+				if (c == 0) { // always counter clockwise. Edges don't loose this property on insertions
+					// I could check the results of the other vertices. So, I would need two passes like in ToCanvas? Perhaps it was wrong there, too?
+					//c = 1  // I kinda feel that I did this, even though for consistency inside should be 0. Inside is smaller than outside (todo)
+					if (explicit_mesh[vertex_i] < 0)
+						console.warn("polygon vertex on border(aka portal edge), but no corner (aka portal vertex) reference matches")
+				}
+				const ci = c == 0? 1: (c + 1) / 2
 				if (cut_counter == 0) {
-					children[c].push(vs[i])
+					//todo ask inserting edge for side
+					children[ci].push(vs[vertex_i])
 				} else {
 					const vsi = new Vertex_OnScreen()
 					vsi.index_in_polygon = j
-					vsi.xy = vs[i].xy
-					vsi.z = vs[i].z
-					children[c].push(vsi)
+					vsi.xy = vs[vertex_i].xy
+					vsi.z = vs[vertex_i].z
+					children[ci].push(vsi)
 				}
 			}
-
+			console.log("beforeSplit:", vertex_i, " c0: ", children[0].length, " c1: ", children[1].length)
 			last = c
 		}
 
+		for (let side = 0; side < 2; side++) {
+			if (children[side].length > 0) { 
+				const child = this.children[side];
+				if ( child instanceof BSPnode){
+					child.decide_face(p, children[side]) 
+				}else{
+					if ( child instanceof Leaf){ // child undefined
+						child.fillStyle.push(p.fillStyle)
+					}
+				}
+			}
+		}
 	}
 
 	decide_edge(node: BSPnode, fillStyle: string, last_edge_of_polygon = false): void {//:BSPnode_childref { 
@@ -425,9 +465,11 @@ class BSPnode extends CanvasObject {
 			const e_in_BSP = new Vec3([this.edge.xy.v.concat(this.edge.z)])
 			const cut3d = e_to_insert.crossProduct(e_in_BSP)
 			var cut = new Vertex_OnScreen()
-			cut.xy = new Vec2([cut3d.v.slice(2)])
+			cut.xy = new Vec2([cut3d.v.slice(0, 2)])
 			cut.z = cut3d.v[2]
 
+			this.cuts[ cut.z>0 ? 1:0  ]=cut  //  z>0 ? aparently not a good idea // I feel like cuts should be sorted by direction of border, not by length of edge
+			console.log("inserted cuts",this.cuts) // Todo PolygonIndex
 			// var inverse = [-1, -1];
 			// for (let i = 0; i < 2; i++) inverse[sides[i]] = i  // since there are only two, there are only two cases. I could probably remove this code?
 		}
@@ -437,7 +479,8 @@ class BSPnode extends CanvasObject {
 				if (c == null || (c instanceof Leaf)) {
 					const n = new BSPnode()
 					n.edge = e  // why no cut at this point? The "sides" code depends on it. The face wants to reuse it
-					n.cuts = node.cuts.slice() // temporarly for insert
+					//n.cuts = node.cuts.slice() // temporarly for insert
+					
 					if (typeof cut != 'undefined') {
 						node.cuts[s] = cut   // the other end of the line is replaced
 					}
@@ -649,7 +692,7 @@ export class BSPtree implements CanvasObject {
 
 			}
 
-
+			this.root.decide_face(p)  // todo: obviously we could check under which node the edges did end up. I do not know if the current way of recognizing pointer is a fast way to deal with our "own" edges as inserted in the tree. Less code is top priority. I see the 4kB limit slipping.
 		}
 		// run the vertices down the tree . So, like clipping to screen borders. Vertice, edges , planes? Ah, plane check is the same for the whole screen.
 		// const b = new BSPnode   // on common parent
