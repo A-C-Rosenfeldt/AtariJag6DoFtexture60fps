@@ -120,7 +120,7 @@ const ps = (function initSample() {
 	v = new Vertex_OnScreen(); v.xy = new Vec2([[340, 125]]); vs.push(v)
 	v = new Vertex_OnScreen(); v.xy = new Vec2([[340, 247]]); vs.push(v)
 	v = new Vertex_OnScreen(); v.xy = new Vec2([[320, 377]]); vs.push(v)
-	const q = new Polygon_in_cameraSpace(vs, "rgba(170, 0, 204, 0.16)")
+	const q = new Polygon_in_cameraSpace(vs, "rgba(170, 0, 204, 0.37)")
 	vs = []
 	v = new Vertex_OnScreen(); v.xy = new Vec2([[440, 360]]); vs.push(v)
 	v = new Vertex_OnScreen(); v.xy = new Vec2([[540, 260]]); vs.push(v)

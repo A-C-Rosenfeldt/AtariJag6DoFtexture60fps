@@ -206,9 +206,10 @@ class BSPnode_edge {
 
 	index = -1
 	decide(v: Vertex_OnScreen): number {
-		
-		const side = this.xy.innerProduct(v.xy) + this.z * v.z;
-		console.log("decide vertex",v.normalize(),"edge xy",this.xy.v,"z",this.z,"side",side,this.xy.innerProduct(v.xy) , this.z * v.z) // todo: make sure that cuts point towards bigger z
+
+		let side = this.xy.innerProduct(v.xy) + this.z * v.z;
+		if (v.z<0) side=-side  // sorry to mutate local variables, but I need it for debug and JRISC does it all the time
+		console.log("decide vertex", v.normalize(), "edge xy", this.xy.v, "z", this.z, "side", side, this.xy.innerProduct(v.xy), this.z * v.z) // todo: make sure that cuts point towards bigger z
 		return side  // I changed sign of z to make this a 3d inner product as mandated by a beam tree
 	}
 
@@ -344,9 +345,9 @@ class BSPnode_edge {
 // So this is like Horizon_Edge , while the partition is like the Edge_between_vertices
 class BSPnode extends CanvasObject {
 	debugy: number;
-	constructor(p:number){
+	constructor(p: number) {
 		super()
-		this.debugy=p //.vertices.length
+		this.debugy = p //.vertices.length
 	}
 
 	children: (BSPnode | Leaf)[] = new Array<BSPnode>() // 0,1   
@@ -362,10 +363,10 @@ class BSPnode extends CanvasObject {
 	//cut: Vertex_OnScreen;
 
 	decide_face(p: Polygon_in_cameraSpace, vsp?: Vertex_OnScreen[]) { // todo: use edges to pull the vsp==undefined case out of this function
-		console.log("deciding face : this has cuts",this.cuts)
+		console.log("deciding face : this has cuts", this.cuts)
 		if (typeof vsp != 'undefined') {
 			var vs = vsp
-			console.log("vsp",vsp.map(v=> v.normalize()))
+			console.log("vsp", vsp.map(v => v.normalize()))
 		} else {
 			vs = p.vertices
 			// ¿Perhaps cut the reference
@@ -377,9 +378,12 @@ class BSPnode extends CanvasObject {
 		}
 
 		// code copied from this.decide_edge
-		const explicit_mesh = vs.map(v => this.edge.verts.indexOf(v))
+		const explicit_mesh = vs.map(v => [this.edge.verts.indexOf(v),this.cuts.indexOf(v)])
 		const sides = explicit_mesh.map((f, i) => {
-			if (f >= 0) {//console.log("vertex eq by index");
+			if (f[0] >= 0) {//console.log("vertex eq by index");
+				return 0
+			}
+			if (f[1] >= 0) {//console.log("vertex eq by index");
 				return 0
 			}
 			return Math.sign(this.edge.decide(vs[i]))
@@ -404,7 +408,7 @@ class BSPnode extends CanvasObject {
 					if (Math.abs(c - last) > 1) { // find cut of edge  . Cut as a verb . Clean cut
 
 						var cut = this.cuts[(-c + 1) / 2] // cuts must have been (over-)written when we inserted one of the edges.
-						if (retry>0) console.log("cut", cut, this.debugy, this.edge.verts.map(v=>v.index_in_polygon))
+						if (retry > 0) console.log("cut", cut, this.debugy, this.edge.verts.map(v => v.index_in_polygon))
 						// todo: unify insertion and ToCanvas code to share debugging
 						// the following code looks just like ToCanvas for face?
 						if (typeof cut != 'undefined') {
@@ -435,7 +439,10 @@ class BSPnode extends CanvasObject {
 						// if (explicit_mesh[vertex_i] < 0)
 						// 	console.warn("polygon vertex on border(aka portal edge), but no corner (aka portal vertex) reference matches") // last was on edge. We are leaving
 						// // c = (c + 1) / 2
-						children[0].push(vs[vertex_i])
+						let index=0  // JRISC: i=1  cmp last jump cmp c jump i=0 label: store . Hopefully 2-complement bit is faster. 11 00 01 . copy shift xor. 10 00 01 . Or 10 01 . 10-x . 0 1. Or rather: add 1: 00 01 10. or 01 10. sub . 0 1
+						if (last==1) index=1
+						if (c==1) index=1
+						children[index].push(vs[vertex_i])  
 						// no duplicate if no real crossing! Check: ToCanvas: 0 0 -1 is no cut!
 						// IMHO, the only way for the face to know this border is when it is actually one of its own edges
 						// todo: Can this happen? // cut was already in vsp, . Todo: correct the toCanvas()
@@ -445,7 +452,7 @@ class BSPnode extends CanvasObject {
 					if (c == 0) { // always counter clockwise. Edges don't loose this property on insertions
 						// I could check the results of the other vertices. So, I would need two passes like in ToCanvas? Perhaps it was wrong there, too?
 						//c = 1  // I kinda feel that I did this, even though for consistency inside should be 0. Inside is smaller than outside (todo)
-						if (explicit_mesh[vertex_i] < 0)
+						if (Math.max(...explicit_mesh[vertex_i]) < 0 )
 							console.warn("polygon vertex on border(aka portal edge), but no corner (aka portal vertex) reference matches")
 					}
 					const ci = c == 0 ? 0 : (c + 1) / 2
@@ -503,7 +510,7 @@ class BSPnode extends CanvasObject {
 			if (f >= 0) {//console.log("vertex eq by index");
 				return 0
 			}
-			const v = node.cuts[i]?? e.verts[i]; console.log("ncuts ", node.cuts[i])
+			const v = node.cuts[i] ?? e.verts[i]; console.log("ncuts ", node.cuts[i])
 			return Math.sign(this.edge.decide(v))
 		})
 		//if (Math.abs(sides[0]-sides[1])>1) console.log("decide edge", sides)
@@ -512,14 +519,18 @@ class BSPnode extends CanvasObject {
 			const e_to_insert = new Vec3([e.xy.v.concat(e.z)])
 			const e_in_BSP = new Vec3([this.edge.xy.v.concat(this.edge.z)])
 			const cut3d = e_to_insert.crossProduct(e_in_BSP)
-			const cut3d_forward=cut3d.scalarProduct(Math.sign(cut3d.v[2]))
+			//allocation problem for cached cuts  const cut3d_forward = cut3d.scalarProduct(Math.sign(cut3d.v[2]))
 			var cut = new Vertex_OnScreen()
-			cut.xy = new Vec2([cut3d_forward.v.slice(0, 2)])
+			cut.xy = new Vec2([cut3d.v.slice(0, 2)])
 			cut.z = cut3d.v[2]
+			if (cut.z < 0) {
+				console.warn("z<0")
+				const dummy = 0
+			}
 
 			this.cuts[cut.z > 0 ? 1 : 0] = cut  //  z>0 ? aparently not a good idea // I feel like cuts should be sorted by direction of border, not by length of edge
-			console.log("me",this.debugy,this.edge.verts.map(v=>v.index_in_polygon),"inserted cuts",this.cuts,"@",cut.z > 0 ? 1 : 0) // Todo PolygonIndex
-			const dummy=0
+			console.log("me", this.debugy, this.edge.verts.map(v => v.index_in_polygon), "inserted cuts", this.cuts, "@", cut.z > 0 ? 1 : 0) // Todo PolygonIndex
+			const dummy = 0
 			// var inverse = [-1, -1];
 			// for (let i = 0; i < 2; i++) inverse[sides[i]] = i  // since there are only two, there are only two cases. I could probably remove this code?
 		}
@@ -533,7 +544,7 @@ class BSPnode extends CanvasObject {
 
 					if (typeof cut != 'undefined') {  // My explicit way of doing things will add "exception" branches into JRISC. So usually they only cost one cycle, +1 if I cannot fill the slot before with some copy
 						n.cuts[s] = cut   // the other end of the line is replaced
-						console.log("cuts on inserted and split edge",n.debugy,n.cuts)
+						console.log("cuts on inserted and split edge", n.debugy, n.cuts)
 					}
 					this.children[s] = n  // I don't want too many instanceOf in my code.
 
@@ -686,7 +697,7 @@ export class BSPtree implements CanvasObject {
 	// constructor  
 	root: BSPnode // I come to the conclusion that basically a tree with zero nodes is valid, for example after culling
 	insertPolygon(p: Polygon_in_cameraSpace) {
-		console.log("insertPolygon", p.vertices.length , p.fillStyle)
+		console.log("insertPolygon", p.vertices.length, p.fillStyle)
 		{//if (this.root == null) { // I imply the screen borders to be match my clipping code
 			//moved to polygon consructor
 			//const v3 = p.vertices.slice(0, 3).map(v => new Vec3([v.xy.v.concat(v.z)]))  // backface culling in 3d. One of the perks of subpixel correction. // By my definition, the first two edges span up the plane (default s,t and basis for u,v mapping). The level editor needs to make sure that the rest align ( kinda like in Doom space ). I may add a scene graph just to allow to rotate Doomspace objects with infinite precision.			

@@ -177,7 +177,9 @@ class BSPnode_edge {
         this.index = -1;
     }
     decide(v) {
-        const side = this.xy.innerProduct(v.xy) + this.z * v.z;
+        let side = this.xy.innerProduct(v.xy) + this.z * v.z;
+        if (v.z < 0)
+            side = -side; // sorry to mutate local variables, but I need it for debug and JRISC does it all the time
         console.log("decide vertex", v.normalize(), "edge xy", this.xy.v, "z", this.z, "side", side, this.xy.innerProduct(v.xy), this.z * v.z); // todo: make sure that cuts point towards bigger z
         return side; // I changed sign of z to make this a 3d inner product as mandated by a beam tree
     }
@@ -330,9 +332,12 @@ class BSPnode extends CanvasObject {
             return;
         }
         // code copied from this.decide_edge
-        const explicit_mesh = vs.map(v => this.edge.verts.indexOf(v));
+        const explicit_mesh = vs.map(v => [this.edge.verts.indexOf(v), this.cuts.indexOf(v)]);
         const sides = explicit_mesh.map((f, i) => {
-            if (f >= 0) { //console.log("vertex eq by index");
+            if (f[0] >= 0) { //console.log("vertex eq by index");
+                return 0;
+            }
+            if (f[1] >= 0) { //console.log("vertex eq by index");
                 return 0;
             }
             return Math.sign(this.edge.decide(vs[i]));
@@ -385,7 +390,12 @@ class BSPnode extends CanvasObject {
                         // if (explicit_mesh[vertex_i] < 0)
                         // 	console.warn("polygon vertex on border(aka portal edge), but no corner (aka portal vertex) reference matches") // last was on edge. We are leaving
                         // // c = (c + 1) / 2
-                        children[0].push(vs[vertex_i]);
+                        let index = 0; // JRISC: i=1  cmp last jump cmp c jump i=0 label: store . Hopefully 2-complement bit is faster. 11 00 01 . copy shift xor. 10 00 01 . Or 10 01 . 10-x . 0 1. Or rather: add 1: 00 01 10. or 01 10. sub . 0 1
+                        if (last == 1)
+                            index = 1;
+                        if (c == 1)
+                            index = 1;
+                        children[index].push(vs[vertex_i]);
                         // no duplicate if no real crossing! Check: ToCanvas: 0 0 -1 is no cut!
                         // IMHO, the only way for the face to know this border is when it is actually one of its own edges
                         // todo: Can this happen? // cut was already in vsp, . Todo: correct the toCanvas()
@@ -396,7 +406,7 @@ class BSPnode extends CanvasObject {
                     if (c == 0) { // always counter clockwise. Edges don't loose this property on insertions
                         // I could check the results of the other vertices. So, I would need two passes like in ToCanvas? Perhaps it was wrong there, too?
                         //c = 1  // I kinda feel that I did this, even though for consistency inside should be 0. Inside is smaller than outside (todo)
-                        if (explicit_mesh[vertex_i] < 0)
+                        if (Math.max(...explicit_mesh[vertex_i]) < 0)
                             console.warn("polygon vertex on border(aka portal edge), but no corner (aka portal vertex) reference matches");
                     }
                     const ci = c == 0 ? 0 : (c + 1) / 2;
@@ -464,10 +474,14 @@ class BSPnode extends CanvasObject {
             const e_to_insert = new Vec3([e.xy.v.concat(e.z)]);
             const e_in_BSP = new Vec3([this.edge.xy.v.concat(this.edge.z)]);
             const cut3d = e_to_insert.crossProduct(e_in_BSP);
-            const cut3d_forward = cut3d.scalarProduct(Math.sign(cut3d.v[2]));
+            //allocation problem for cached cuts  const cut3d_forward = cut3d.scalarProduct(Math.sign(cut3d.v[2]))
             var cut = new Vertex_OnScreen();
-            cut.xy = new Vec2([cut3d_forward.v.slice(0, 2)]);
+            cut.xy = new Vec2([cut3d.v.slice(0, 2)]);
             cut.z = cut3d.v[2];
+            if (cut.z < 0) {
+                console.warn("z<0");
+                const dummy = 0;
+            }
             this.cuts[cut.z > 0 ? 1 : 0] = cut; //  z>0 ? aparently not a good idea // I feel like cuts should be sorted by direction of border, not by length of edge
             console.log("me", this.debugy, this.edge.verts.map(v => v.index_in_polygon), "inserted cuts", this.cuts, "@", cut.z > 0 ? 1 : 0); // Todo PolygonIndex
             const dummy = 0;
