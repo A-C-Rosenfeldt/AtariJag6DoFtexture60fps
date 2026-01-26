@@ -115,6 +115,7 @@ class Vertex_decision {
 export class Vertex_OnScreen implements CanvasObject {
 	cache_edge_decide: Vertex_decision[] = []
 	cache_read_pointer = 0
+	cache_ed: BSPnode_edge = null  // undefined would crash the if. is null implicit?
 	constructor() {
 		this.z = 1
 	}
@@ -213,6 +214,7 @@ class BSPnode_edge {
 	z: number  // bias
 
 	index = -1
+	cache_face: Polygon_in_cameraSpace;
 	decide(v: Vertex_OnScreen): number {
 
 		let side = this.xy.innerProduct(v.xy) + this.z * v.z;
@@ -361,10 +363,10 @@ class Edge_cut {
 	c: Vertex_OnScreen
 }
 
-class Cut {
-	v: Vertex_OnScreen
-	e: BSPnode_edge
-}
+// class Edge_cut {
+// 	c: Vertex_OnScreen
+// 	e: BSPnode_edge
+// }
 
 // So this is like Horizon_Edge , while the partition is like the Edge_between_vertices
 class BSPnode extends CanvasObject {
@@ -377,7 +379,7 @@ class BSPnode extends CanvasObject {
 
 	children: (BSPnode | Leaf)[] = new Array<BSPnode>() // 0,1   
 	edge: BSPnode_edge   // real vertices to match mesh and shorten float calc
-	cuts: Cut[] = []
+	cuts: Edge_cut[] = []
 	getEnds() {
 		return this.cuts.map((c, i) => c ?? this.edge.verts[i])
 	}
@@ -396,27 +398,30 @@ class BSPnode extends CanvasObject {
 	// chronologically this belongs before decide_face. todo: refactor
 	decide_edge(node: BSPnode, fillStyle: string, last_edge_of_polygon = false): void {//:BSPnode_childref { 
 		const e = node.edge
-		console.log("ncuts ", node.cuts.map(c => c.normalize()).toString(), "this cuts", this.cuts.map(c => c.normalize()).toString())
+		console.log("ncuts ", node.cuts.map(c => c.c.normalize()).toString(), "this cuts", this.cuts.map(c => c.c.normalize()).toString())
 		const node_merged = e.verts.map((v, i) => node.cuts[i] ?? v) // Certainly the Doom level editor just used floats and epsilon. But I am on Jaguar
 		const this_merged = this.edge.verts.map((v, i) => this.cuts[i] ?? v) // Certainly the Doom level editor just used floats and epsilon. But I am on Jaguar
 		const explicit_mesh = node_merged.map(v => this_merged.indexOf(v))
 		console.log("sides{",)
-		const sides = explicit_mesh.map((f, i) => {
-			if (f >= 0) {//console.log("vertex eq by index");
-				return 0
-			}
-			const v = node.cuts[i] ?? e.verts[i]
-			return Math.sign(this.edge.decide(v))
-		})
+		const sides = this.decide_vertices(node.cuts)
+
+		// explicit_mesh.map((f, i) => {
+		// 	if (f >= 0) {//console.log("vertex eq by index");
+		// 		return 0
+		// 	}
+		// 	const v = node.cuts[i] ?? e.verts[i]
+		// 	return Math.sign(this.edge.decide(v))
+		// })
 		console.log("}sides", sides)
 
 		//if (Math.abs(sides[0]-sides[1])>1) console.log("decide edge", sides)
 		if (Math.abs(sides[1] - sides[0]) > 1) { // calculate cut. I already added the code to "ToCanvas", but I need it here while inserting ( and while instering the face ). I thought, BSP is pure. Weird that I don't need to keep the cut after insertion
 			cut = null
-			while (node.edge.cache_cut.length > node.edge.cache_read_pointer) {
-				const kv = node.edge.cache_cut[node.edge.cache_read_pointer++]
-				if (kv.e == this.edge) cut = kv.c
-			}
+			// Thanks to the explict mesh, each edge is inserted only once. There will be no prior cut (instance). Face harvests cuts
+			// while (node.edge.cache_cut.length > node.edge.cache_read_pointer) {
+			// 	const kv = node.edge.cache_cut[node.edge.cache_read_pointer++]
+			// 	if (kv.e == this.edge) cut = kv
+			// }
 
 			if (cut == null) {
 				// beam tree
@@ -424,18 +429,18 @@ class BSPnode extends CanvasObject {
 				const e_in_BSP = new Vec3([this.edge.xy.v.concat(this.edge.z)])
 				const cut3d = e_to_insert.crossProduct(e_in_BSP)
 				//allocation problem for cached cuts  const cut3d_forward = cut3d.scalarProduct(Math.sign(cut3d.v[2]))
-				var cut = new Vertex_OnScreen()
+				const c = new Vertex_OnScreen()
 				const d = new Vertex_decision();
 				d.d = 0
 				d.e = this.edge
-				cut.cache_edge_decide[0] = d // todo: probably useless
-				cut.xy = new Vec2([cut3d.v.slice(0, 2)])
-				cut.z = cut3d.v[2]
-				const c = new Edge_cut()
-				c.c = cut
-				c.e = this.edge
-				node.edge.cache_cut.push(c) // how does hits look in JRISC? I don't find any trick. Needs bound check, needs capacity, needs pointer to grow
-				if (cut.z < 0) {
+				c.cache_edge_decide[0] = d // todo: probably useless
+				c.xy = new Vec2([cut3d.v.slice(0, 2)])
+				c.z = cut3d.v[2]
+				var cut = new Edge_cut()
+				cut.c = c
+				cut.e = this.edge
+				node.edge.cache_cut.push(cut) // how does hits look in JRISC? I don't find any trick. Needs bound check, needs capacity, needs pointer to grow
+				if (c.z < 0) {
 					//console.warn("z<0")
 					const dummy = 0
 				}
@@ -501,7 +506,7 @@ class BSPnode extends CanvasObject {
 	}
 
 
-	decide_face(p: Polygon_in_cameraSpace, vsp?: Vertex_OnScreen[], edges?: BSPnode_edge[]) { // todo: use edges to pull the vsp==undefined case out of this function
+	decide_face(p: Polygon_in_cameraSpace, cuts?: Edge_cut[]) { // todo: use edges to pull the vsp==undefined case out of this function
 
 
 		//console.log("deciding face : this cuts these edges",this.cut_others.map(c=>[c.debugy,c.edge.index])) //, "is cut", eg.map(e=>[e.cuts,e.cut2children]))
@@ -535,63 +540,41 @@ class BSPnode extends CanvasObject {
 		// And for the face it allows, the tree.node has been cut by the same edges (not nodes) like itself
 		// so the decide_face really needs the actual edge (not the face) as parameter
 
-		if (typeof vsp != 'undefined') {
-			var vs = vsp
-			console.log("vsp", vsp.map(v => v.normalize()))
+		if (typeof cuts != 'undefined') {
+			var cs = cuts
+			console.log("vsp", cuts.map(cut => cut.c.normalize()))
 		} else {
-			vs = p.vertices
+			const vs = p.vertices
 			// ¿Perhaps cut the reference
 			vs.forEach((v, i) => {
 				v.index_in_polygon = i
 				v.cache_read_pointer = 0
 			})
+			cs = vs.map(v => {
+				const c = new Edge_cut()
+				c.c = v
+				return c
+			})
 		}
-		if (vs.length < 3) {
-			console.warn("vs.length=", vs.length)
+		if (cs.length < 3) {
+			console.warn("vs.length=", cs.length)
 			return
 		}
 
-		if (typeof edges != 'undefined') {
-			var eg = edges
-		} else {
-			eg = p.edges_in_BSP
-			eg.forEach(e => { e.cache_read_pointer = 0 }) // todo: pull out into wrapper function
-		}
+		// if (typeof edges != 'undefined') {
+		// 	var eg = edges
+		// } else {
+		// 	eg = p.edges_in_BSP
+		// 	eg.forEach(e => { e.cache_read_pointer = 0 }) // todo: pull out into wrapper function
+		// }
 
-		const sides_v = vs.forEach((v, vi) => {
-			const vf = this.cuts.findIndex((cut, ci) => {
-				if (typeof cut == 'undefined') {
-					return this.edge[ci].v == v
-				}
-				return false
-			})
-			if (vf > -1) return 0
-			for (let w = 0; w < 2; w++) {
-				if (eg[(vi + w) % eg.length] == this.edge) { return 0 }
-			}
-
-			// can I prove the order? Do other edges need a different order?
-			// same code for edge and face as users
-			// edges can have a similar cache for their cuts. Ordered
-			while (v.cache_edge_decide.length > v.cache_read_pointer) {
-				const kv = v.cache_edge_decide[v.cache_read_pointer++]
-				if (kv.e == this.edge) return kv.d
-			}
-
-			const dis = Math.sign(this.edge.decide(vs[vi]));
-			// how do I cache vertices
-			// it should already work for insert_edges ( of a mesh)
-			// the faces then should find it. Parameter edges is the correct one
-			const keyValue = new Vertex_decision()
-			keyValue.e = this.edge
-			keyValue.d = dis
-			v.cache_edge_decide.push(keyValue)
-
-			return dis  // I could just cache these, but do I need a list, or is a pair enough?
-
-			return 0
-		}
-		);
+		// I cannot use the adjacent edges
+		// Same as in my explicit view frustum code, it is important to know if a vertex is original
+		// with two edges, I would still like to know which is my edge, and what border did cut us
+		// thanks to an explicit mesh, I insert every edge only once
+		// So this.edge (aka border) could not have seen node.edge before
+		// insert face is just a replay. Doom space here means: faces in 3d (Quake) would cut stuff, but in 2d they cannot
+		const sides_v = this.decide_vertices(cs)
 
 
 
@@ -606,32 +589,31 @@ class BSPnode extends CanvasObject {
 
 		// })
 
-
+		// to recognize cuts I do not need the cutting edge
 		this.cuts.map((cut, i) => {
 			if (typeof cut == 'undefined') {
 				const v = this.edge.verts[i]
-				vs.indexOf(v)
+				cs.map(c => c.c).indexOf(v)  // todo
 			} else {
-				if (typeof edges !== 'undefined') {
-					const j = edges.indexOf(cut.e)
-					cut.v
-				}
+				// if (typeof edges !== 'undefined') {
+				// 	const j = edges.indexOf(cut.e)
+				// 	cut.c
+				// }
 			}
 		})
 
-
-
-		const explicit_mesh = vs.map(v => this.edge.verts.indexOf(v)) // some "cuts" are actually just the original vertices
-		const explicit_medg = eg.map(e => this.cuts.indexOf(eg))
-		const sides = explicit_mesh.map((f, i) => {
-			if (f >= 0) {//console.log("vertex eq by index");
-				return 0
-			}
-			if (explicit_medg[i] >= 0) {//console.log("vertex eq by index");
-				return 0
-			}
-			return Math.sign(this.edge.decide(vs[i]))  // I could just cache these, but do I need a list, or is a pair enough?
-		})
+		const sides = this.decide_vertices(cs)
+		// const explicit_mesh = cs.map(v => this.edge.verts.indexOf(v)) // some "cuts" are actually just the original vertices
+		// const explicit_medg = eg.map(e => this.cuts.indexOf(eg))
+		// const sides = explicit_mesh.map((f, i) => {
+		// 	if (f >= 0) {//console.log("vertex eq by index");
+		// 		return 0
+		// 	}
+		// 	if (explicit_medg[i] >= 0) {//console.log("vertex eq by index");
+		// 		return 0
+		// 	}
+		// 	return Math.sign(this.edge.decide(cs[i]))  // I could just cache these, but do I need a list, or is a pair enough?
+		// })
 
 		// const children=new Polygon_in_cameraSpace() // new for the vertices
 		// // old for the refs for the polygon
@@ -639,45 +621,58 @@ class BSPnode extends CanvasObject {
 		// find cuts. I have done this before
 		// All this reference dictionary stuff probably loves short reference in JRISC, aka IDs. I can see 16 bit IDs, but 10 bit is pushing it.
 		for (let retry = 0; retry < 2; retry += 2) {
-			var children: Vertex_OnScreen[][] = []   // was const before I wrapped the loop around 
+			var children: Edge_cut[][] = []   // was const before I wrapped the loop around 
 			for (let side = 0; side < 2; side++) {
 				children[side] = []
 			}
 			// todo: check if explicit edges can be paired with the next vertex in the polygon.
 			// todo: actually pair them in class
-			var childree: BSPnode[][] = []   // was const before I wrapped the loop around 
-			for (let side = 0; side < 2; side++) {
-				childree[side] = []
-			}
+			//var childree: BSPnode[][] = []   // was const before I wrapped the loop around 
+			// for (let side = 0; side < 2; side++) {
+			// 	childree[side] = []
+			// }
 
 			let last = sides[sides.length - 1], cut_counter = 0
 			for (let vertex_i = 0; vertex_i < sides.length; vertex_i++) {
 				let c = sides[vertex_i]
-				const j_pre = vs[vertex_i].index_in_polygon
+				const j_pre = cs[vertex_i].c.index_in_polygon // only!=null if e==null . todo: compress state
 				const j = j_pre >= 0 ? j_pre : vertex_i
 				if (Math.abs(c - last) > 0) { // ensure cut
 					cut_counter++
 					if (Math.abs(c - last) > 1) { // find cut of edge  . Cut as a verb . Clean cut
-						const e = eg[vertex_i]  // edge leading towards this vertex
-						const v = vs[vertex_i]
+						//const e = eg[vertex_i]  // edge leading towards this vertex
+						const cut = cs[vertex_i]
+						let e = cut.e  // for facelets this may not be the original polygon edge
+						if (e == null) {
+							const i = cut.c.index_in_polygon
+							if (i >= 0) {
+								e = p.edges_in_BSP[i]  // We only care about cuts going to the vertex. Reuse those, next edge comes later
+							}
+						}
+						if (e.cache_face != p) {  // p meaning face because I already inserted the edges
+							e.cache_face = p
+							e.cache_read_pointer = 0
+						}
 						while (e.cache_cut.length > e.cache_read_pointer) {
 							const kv = e.cache_cut[e.cache_read_pointer++]
-							if (kv.e == this.edge) return kv.c
+							if (kv.e == this.edge) {
+								var cut_1 = kv
+							}
 						}
 
 						// does not work in mesh var cut = this.cuts[(-c + 1) / 2] // cuts must have been (over-)written when we inserted one of the edges.
 						if (retry > 0) console.log("cut", cut, this.debugy, this.edge.verts.map(v => v.index_in_polygon))
 						// todo: unify insertion and ToCanvas code to share debugging
 						// the following code looks just like ToCanvas for face?
-						if (typeof cut != 'undefined') {
+						if (typeof cut_1 != 'undefined') {
 							var vsi = new Vertex_OnScreen()
 							try {
-								vsi.xy = cut.xy
+								vsi.xy = cut.c.xy
 							} catch {
 								console.log("this.cuts", this.cuts)
 							}
 
-							vsi.z = cut.z
+							vsi.z = cut.c.z
 							for (let c1 = 0; c1 < 2; c1++) {
 								if (retry > 0) {
 									console.log("c1", c1, last > c ? 1 - c1 : c1)
@@ -685,13 +680,13 @@ class BSPnode extends CanvasObject {
 
 								}
 								//?? todo: remove the order
-								children[last > c ? 1 - c1 : c1].push(vsi);// console.log("dupes ", last > c ? 1 - c : c, "<-", vsi.index_in_polygon)
+								children[last > c ? 1 - c1 : c1].push(cut_1);// console.log("dupes ", last > c ? 1 - c : c, "<-", vsi.index_in_polygon)
 								// we need to pass on the reference to both children so that a face can recognize
-								childree[c1].push(eg[vertex_i])
+								//childree[c1].push(eg[vertex_i])
 								//vsi.index_in_polygon = j  // todo: struct (value type) to make this have an effect  .for the old polyline, the cut is still in order. This is for debugging and profiling. Some might want to enforce a valid state by setting index eagerly.
 							}
-							children[(c + 1) / 2].push(vs[vertex_i])  // debugging made me duplicate code here. Todo: unite with vertex on border?
-							childree[(c + 1) / 2].push(eg[vertex_i])
+							children[(c + 1) / 2].push(cs[vertex_i])  // debugging made me duplicate code here. Todo: unite with vertex on border?
+							//childree[(c + 1) / 2].push(eg[vertex_i])
 						}
 					} else {
 						// vsi = vs[vertex_i]
@@ -702,8 +697,8 @@ class BSPnode extends CanvasObject {
 						let index = 0  // JRISC: i=1  cmp last jump cmp c jump i=0 label: store . Hopefully 2-complement bit is faster. 11 00 01 . copy shift xor. 10 00 01 . Or 10 01 . 10-x . 0 1. Or rather: add 1: 00 01 10. or 01 10. sub . 0 1
 						if (last == 1) index = 1
 						if (c == 1) index = 1
-						children[index].push(vs[vertex_i])
-						childree[index].push(eg[vertex_i])
+						children[index].push(cs[vertex_i])
+						//childree[index].push(eg[vertex_i])
 						// no duplicate if no real crossing! Check: ToCanvas: 0 0 -1 is no cut!
 						// IMHO, the only way for the face to know this border is when it is actually one of its own edges
 						// todo: Can this happen? // cut was already in vsp, . Todo: correct the toCanvas()
@@ -713,16 +708,16 @@ class BSPnode extends CanvasObject {
 					if (c == 0) { // always counter clockwise. Edges don't loose this property on insertions
 						// I could check the results of the other vertices. So, I would need two passes like in ToCanvas? Perhaps it was wrong there, too?
 						//c = 1  // I kinda feel that I did this, even though for consistency inside should be 0. Inside is smaller than outside (todo)
-						if (Math.max(...explicit_mesh[vertex_i]) < 0) {
-							console.warn("polygon vertex on border(aka portal edge), but no corner (aka portal vertex) reference matches", vs[vertex_i])
-							const dummy = 0
-						}
+						// if (Math.max(...explicit_mesh[vertex_i]) < 0) {
+						// 	console.warn("polygon vertex on border(aka portal edge), but no corner (aka portal vertex) reference matches", cs[vertex_i])
+						// 	const dummy = 0
+						// }
 					}
 					const ci = c == 0 ? 0 : (c + 1) / 2
 					// if (cut_counter == 0) {
 					//todo ask inserting edge for side
-					children[ci].push(vs[vertex_i])
-					childree[ci].push(eg[vertex_i])
+					children[ci].push(cs[vertex_i])
+					// childree[ci].push(eg[vertex_i])
 					// } else {
 					// 	// Why would I modify a Vertex object after creation? (like not here but later on)
 					// 	const vsi = new Vertex_OnScreen()
@@ -755,7 +750,7 @@ class BSPnode extends CanvasObject {
 					this.children[side] = child
 				} else {
 					if (child instanceof BSPnode) {
-						child.decide_face(p, children[side], childree[side]) // todo: distribute egs  also
+						child.decide_face(p, children[side]) //, childree[side]) // todo: distribute egs  also
 					} else {
 						if (child instanceof Leaf) { // child undefined
 							child.fillStyle.push(p.fillStyle)
@@ -764,6 +759,51 @@ class BSPnode extends CanvasObject {
 				}
 			}
 		}
+	}
+
+	// todo: ed: as property, not parameter
+	decide_vertices(cs: Edge_cut[]): number[] {
+
+		return cs.map((c, vi) => { // the callback function is a JS artifact. JRISC uses releative branch. Even Java has a sane forEach
+			const v = c.c
+			const vf = this.cuts.findIndex((cut, ci) => {
+				if (typeof cut == 'undefined') {
+					return this.edge[ci].v == v
+				}
+				return false
+			})
+			if (vf > -1) return 0
+			// for (let w = 0; w < 2; w++) {
+			// 	if (eg[(vi + w) % eg.length] == this.edge) { return 0 } // same as: c.e == this.e? no !
+			// }
+
+			// can I prove the order? Do other edges need a different order?
+			// same code for edge and face as users
+			// edges can have a similar cache for their cuts. Ordered. Order given by edges for faces and vertices. So this is differnt then the Transformation pipeline: V -> E-> F
+
+			// premature optimization, but I am mostly intersted in the JRISC cost!
+			const ed = c.e
+			if (v.cache_ed != ed) {
+				v.cache_ed = ed
+				v.cache_read_pointer = 0
+			}
+			while (v.cache_edge_decide.length > v.cache_read_pointer) {
+				const kv = v.cache_edge_decide[v.cache_read_pointer++]
+				if (kv.e == this.edge) return kv.d
+			}
+
+			const dis = Math.sign(this.edge.decide(v));
+			// how do I cache vertices
+			// it should already work for insert_edges ( of a mesh)
+			// the faces then should find it. Parameter edges is the correct one
+			const keyValue = new Vertex_decision()
+			keyValue.e = this.edge
+			keyValue.d = dis
+			v.cache_edge_decide.push(keyValue)
+
+			return dis  // I could just cache these, but do I need a list, or is a pair enough?			
+		}
+		);
 	}
 
 
@@ -932,6 +972,7 @@ export class BSPtree implements CanvasObject {
 					this.root = b
 				}
 				else {
+					// todo: reset all read pointers on vertex cache
 					this.root.decide_edge(b, p.fillStyle, false) // I could not find synergy going bottom up. There is some top down ratched thing when inserting the first edge and it does not get split.  i == 0) // insert edge
 
 					// this.root.insertPolygon(s.slice(0,i)) // to work for all sides 
@@ -942,6 +983,7 @@ export class BSPtree implements CanvasObject {
 
 			}
 
+			// todo: reset all cache read pointers on edges because facelets harvest cuts of foreign edges
 			console.log("decide face")
 			this.root.decide_face(p)  // todo: obviously we could check under which node the edges did end up. I do not know if the current way of recognizing pointer is a fast way to deal with our "own" edges as inserted in the tree. Less code is top priority. I see the 4kB limit slipping.
 		}
