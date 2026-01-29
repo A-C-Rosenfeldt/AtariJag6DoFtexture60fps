@@ -219,7 +219,7 @@ class BSPnode_edge {
 
 		let side = this.xy.innerProduct(v.xy) + this.z * v.z;
 		if (v.z < 0) side = -side  // sorry to mutate local variables, but I need it for debug and JRISC does it all the time
-		console.log("decide vertex", v.normalize(), "edge xy", this.xy.v, "z", this.z, "side", side, this.xy.innerProduct(v.xy), this.z * v.z) // todo: make sure that cuts point towards bigger z
+		//console.log("decide vertex", v.normalize(), "edge xy", this.xy.v, "z", this.z, "side", side, this.xy.innerProduct(v.xy), this.z * v.z) // todo: make sure that cuts point towards bigger z
 		if (side > 0) {
 			const dummy = 0
 		}
@@ -359,8 +359,11 @@ class BSPnode_edge {
 }
 
 class Edge_cut {
-	e: BSPnode_edge
+	e: BSPnode_edge = null
 	c: Vertex_OnScreen
+	constructor(v: Vertex_OnScreen) { // So, I learned that typeScript does not really support the old JS way of constructing objects (because it cannot interfere the interface? I only have properties)
+		this.c = v
+	}
 }
 
 // class Edge_cut {
@@ -399,11 +402,12 @@ class BSPnode extends CanvasObject {
 	decide_edge(node: BSPnode, fillStyle: string, last_edge_of_polygon = false): void {//:BSPnode_childref { 
 		const e = node.edge
 		console.log("ncuts ", node.cuts.map(c => c.c.normalize()).toString(), "this cuts", this.cuts.map(c => c.c.normalize()).toString())
-		const node_merged = e.verts.map((v, i) => node.cuts[i] ?? v) // Certainly the Doom level editor just used floats and epsilon. But I am on Jaguar
-		const this_merged = this.edge.verts.map((v, i) => this.cuts[i] ?? v) // Certainly the Doom level editor just used floats and epsilon. But I am on Jaguar
-		const explicit_mesh = node_merged.map(v => this_merged.indexOf(v))
-		console.log("sides{",)
-		const sides = this.decide_vertices(node.cuts)
+		// probably I should just reserve memory for Edge_cut from the start on Jaguar
+		const node_merged = e.verts.map((v, i) => node.cuts[i] ?? new Edge_cut(v)) // Certainly the Doom level editor just used floats and epsilon. But I am on Jaguar
+		const this_merged = this.edge.verts.map((v, i) => this.cuts[i] ?? new Edge_cut(v)) // Certainly the Doom level editor just used floats and epsilon. But I am on Jaguar
+		//const explicit_mesh = node_merged.map(v => this_merged.indexOf(v))
+		//console.log("sides{",)
+		const sides = this.decide_vertices(node_merged) //node.cuts)
 
 		// explicit_mesh.map((f, i) => {
 		// 	if (f >= 0) {//console.log("vertex eq by index");
@@ -436,8 +440,8 @@ class BSPnode extends CanvasObject {
 				c.cache_edge_decide[0] = d // todo: probably useless
 				c.xy = new Vec2([cut3d.v.slice(0, 2)])
 				c.z = cut3d.v[2]
-				var cut = new Edge_cut()
-				cut.c = c
+				var cut = new Edge_cut(c) // kinda : go to derived class
+				//cut.c = c
 				cut.e = this.edge
 				node.edge.cache_cut.push(cut) // how does hits look in JRISC? I don't find any trick. Needs bound check, needs capacity, needs pointer to grow
 				if (c.z < 0) {
@@ -542,7 +546,7 @@ class BSPnode extends CanvasObject {
 
 		if (typeof cuts != 'undefined') {
 			var cs = cuts
-			console.log("vsp", cuts.map(cut => cut.c.normalize()))
+			//console.log("vsp", cuts.map(cut => cut.c.normalize()))
 		} else {
 			const vs = p.vertices
 			// ¿Perhaps cut the reference
@@ -551,8 +555,8 @@ class BSPnode extends CanvasObject {
 				v.cache_read_pointer = 0
 			})
 			cs = vs.map(v => {
-				const c = new Edge_cut()
-				c.c = v
+				const c = new Edge_cut(v)
+				//c.c = v
 				return c
 			})
 		}
@@ -768,7 +772,7 @@ class BSPnode extends CanvasObject {
 			const v = c.c
 			const vf = this.cuts.findIndex((cut, ci) => {
 				if (typeof cut == 'undefined') {
-					return this.edge[ci].v == v
+					return this.edge.verts[ci] == v
 				}
 				return false
 			})
@@ -783,13 +787,15 @@ class BSPnode extends CanvasObject {
 
 			// premature optimization, but I am mostly intersted in the JRISC cost!
 			const ed = c.e
-			if (v.cache_ed != ed) {
-				v.cache_ed = ed
-				v.cache_read_pointer = 0
-			}
-			while (v.cache_edge_decide.length > v.cache_read_pointer) {
-				const kv = v.cache_edge_decide[v.cache_read_pointer++]
-				if (kv.e == this.edge) return kv.d
+			if ( ed != null){
+				if (v.cache_ed != ed) {
+					v.cache_ed = ed
+					v.cache_read_pointer = 0
+				}
+				while (v.cache_edge_decide.length > v.cache_read_pointer) {
+					const kv = v.cache_edge_decide[v.cache_read_pointer++]
+					if (kv.e == this.edge) return kv.d
+				}
 			}
 
 			const dis = Math.sign(this.edge.decide(v));
@@ -920,6 +926,9 @@ class Leaf {
 export class BSPtree implements CanvasObject {
 	// constructor  
 	root: BSPnode // I come to the conclusion that basically a tree with zero nodes is valid, for example after culling
+	// todo: don't insert duplicated vertices or edges.
+	// fileformat => binary sets up the links
+	// mark object on insertion. Dedicated property? Indes into polygyon? chache.length>=0 ?
 	insertPolygon(p: Polygon_in_cameraSpace) {
 		console.log("insertPolygon", p.vertices.length, p.fillStyle)
 		{//if (this.root == null) { // I imply the screen borders to be match my clipping code
