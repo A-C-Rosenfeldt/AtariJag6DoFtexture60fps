@@ -229,7 +229,7 @@ class BSPnode_edge {
 	// import {Portal} from "./pyramid.js"
 	// import { Vec, Vec2, Vec3 } from "./clipping.js"
 
-	toCanvas(ctx: CanvasRenderingContext2D, pi?: Array<Vec2> /*ref*/) {
+	toCanvas(ctx: CanvasRenderingContext2D, pi?: Array<Vec2> /*ref*/, verbose = true) {
 
 
 		let r: [number, number], last = 0, current = last, l = 0, last_v: Vec2
@@ -251,18 +251,21 @@ class BSPnode_edge {
 			}
 		}
 
-		ctx.strokeStyle = "#FF01"
-		ctx.beginPath()
+		if (ctx != null) {
+			ctx.strokeStyle = "#FF01"
+			ctx.beginPath()
+		}
 		const cache = new Array<number>(length);// cache lazy infinite precision values
 		for (let corner = 0; corner < pi.length; corner++) {
-			var v = pi[corner]; // one goal was to use explicit code to show the edge cases and allow logs and break points. So this code will stay and be amended by polygon (portal) code. 
-			// This is not the inner loop. If I want to remove branches, I need to optimize the compiler to unroll loops and implement those lag by one iteration variables
-			//const v = new Vec2([cxy])
-			co = [v.v[0] + debugshift, v.v[1] + debugshift] //;console.log("v",co[0],co[1])
-			if (l++ == 0) ctx.moveTo(...co)
-			else {
-				ctx.lineTo(...co)
-
+			var v = pi[corner]; // one goal was to use explicit code to show the edge cases and allow logs and break points. So this code will stay and be amended by polygon (portal) code. 			
+			if (ctx != null && verbose) {
+				// This is not the inner loop. If I want to remove branches, I need to optimize the compiler to unroll loops and implement those lag by one iteration variables
+				//const v = new Vec2([cxy])
+				co = [v.v[0] + debugshift, v.v[1] + debugshift] //;console.log("v",co[0],co[1])
+				if (l++ == 0) ctx.moveTo(...co)
+				else {
+					ctx.lineTo(...co)
+				}
 			}
 
 			current = this.xy.innerProduct(v) + this.z  // todo: * v.z . inner product when corners are assumed to be vertices at a distance
@@ -273,12 +276,14 @@ class BSPnode_edge {
 			cache[corner] = current //JRSICbitfield32 |= sign << (corner * 2)   // *2 becomes <<1 in JRISC
 
 		}
-		ctx.closePath()
-		ctx.stroke(); l = 0
-		const back = ctx.lineWidth
-		ctx.lineWidth = 5
-		ctx.strokeStyle = "#0" + variance.toString() + "F"; variance = (variance + 1) % 10
-		ctx.beginPath()
+		if (ctx != null) {
+			ctx.closePath()
+			ctx.stroke(); l = 0
+			const back = ctx.lineWidth
+			ctx.lineWidth = 1
+			ctx.strokeStyle = "#0" + variance.toString() + "F"; variance = (variance + 1) % 10
+			ctx.beginPath()
+		}
 
 		for (let corner = 0; corner < pi.length; corner++) {  // todo: polyon aka portal code
 
@@ -292,18 +297,24 @@ class BSPnode_edge {
 					const from_last = (corner ^ 1) & 1;
 					let from_corner = current / this.xy.v[from_last]
 					cxy[from_last] -= from_corner
+
 					var co: [number, number] = [cxy[0] + debugshift, cxy[1] + debugshift]
-					ctx.fillStyle = "#F80"
-					ctx.fillRect(co[0], co[1], 1, 1)
+					if (ctx != null && verbose) {
+						ctx.fillStyle = "#F80"
+						ctx.fillRect(co[0], co[1], 1, 1)
+					}
 					var cut = new Vec2([cxy]);
 					//console.log("cut",cut.v)
 				} else {
 					const edge = last_v.subtract01(v);
 					let from_corner = current / edge.innerProduct(this.xy)
 					var cut = v.subtract(edge.scalarProduct(from_corner))
+
 					co = [cut.v[0] + debugshift, cut.v[1] + debugshift]
-					ctx.fillStyle = "#288"
-					ctx.fillRect(co[0], co[1], 1, 1)
+					if (ctx != null && verbose) {
+						ctx.fillStyle = "#288"
+						ctx.fillRect(co[0], co[1], 1, 1)
+					}
 
 				}
 				for (let i = 0; i < 2; i++) {
@@ -311,10 +322,12 @@ class BSPnode_edge {
 					portal[i].push(cut)
 				}
 
-				if (l++ == 0) ctx.moveTo(...co)
-				else {
-					ctx.lineTo(...co)
-					ctx.stroke()
+				if (ctx != null) {
+					if (l++ == 0) ctx.moveTo(...co)
+					else {
+						ctx.lineTo(...co)
+						ctx.stroke()
+					}
 				}
 				// console.log("check for splits",co,last_v.v)
 				const dummy = 0
@@ -346,7 +359,7 @@ class BSPnode_edge {
 			console.warn(" 2 < l== ", l, pi_eq_null)  // 0 happens pretty ofte !?
 		}
 
-		ctx.lineWidth = 1 //back
+		if (ctx != null) { ctx.lineWidth = 1 } //back
 		return portal
 
 
@@ -373,18 +386,29 @@ class Edge_cut {
 
 // So this is like Horizon_Edge , while the partition is like the Edge_between_vertices
 class BSPnode extends CanvasObject {
-	debugy: number;
+	ID: number;
 	cut2children: Vertex_OnScreen;
 	constructor(p: number) {
 		super()
-		this.debugy = p //.vertices.length
+		this.ID = p //.vertices.length
 	}
 
 	children: (BSPnode | Leaf)[] = new Array<BSPnode>() // 0,1   
 	edge: BSPnode_edge   // real vertices to match mesh and shorten float calc
 	cuts: Edge_cut[] = []
-	getEnds() {
-		return this.cuts.map((c, i) => c ?? this.edge.verts[i])
+	getEnds(): [Vertex_OnScreen, Vertex_OnScreen] {
+		const r: [Vertex_OnScreen, Vertex_OnScreen] = [null, null]
+		var c: Edge_cut
+		for (let i = 0; i < 2; i++) {
+			r[i] = this.edge.verts[i]
+			// console.log(i," -> ",r[i])
+			const cond: boolean = (c = this.cuts[i]) && c ? true : false
+			// console.log("cond",cond)
+			if (cond) r[i] = c.c   // why are records so difficult?
+			// console.log(i," -> ",r[i])
+			if (r[i] == null) console.warn("ri should not be null")
+		}
+		return r // array gave me a bug once, now I am bitter: this.cuts.map((c, i) => c?.c ?? this.edge.verts[i])
 	}
 	//cut_others: BSPnode_edge[] = [] // temporary vertices while inserting an edge into a BSP. Oh wait, keep for face
 
@@ -401,12 +425,15 @@ class BSPnode extends CanvasObject {
 	// chronologically this belongs before decide_face. todo: refactor
 	decide_edge(node: BSPnode, fillStyle: string, last_edge_of_polygon = false): void {//:BSPnode_childref { 
 		const e = node.edge
-		console.log("ncuts ", node.cuts.map(c => c.c.normalize()).toString(), "this cuts", this.cuts.map(c => c.c.normalize()).toString())
+		//console.log("ncuts ", node.cuts.map(c => c.c.normalize()).toString(), "this cuts", this.cuts.map(c => c.c.normalize()).toString())
 		// probably I should just reserve memory for Edge_cut from the start on Jaguar
 		const node_merged = e.verts.map((v, i) => node.cuts[i] ?? new Edge_cut(v)) // Certainly the Doom level editor just used floats and epsilon. But I am on Jaguar
 		const this_merged = this.edge.verts.map((v, i) => this.cuts[i] ?? new Edge_cut(v)) // Certainly the Doom level editor just used floats and epsilon. But I am on Jaguar
 		//const explicit_mesh = node_merged.map(v => this_merged.indexOf(v))
 		//console.log("sides{",)
+		// if (this.ID===3 && this.edge.index==0){
+		// 	console.log("does it really look at the cuts?",node_merged.map(n=>n.c.normalize())) // todo: cuts went to wrong child
+		// }
 		const sides = this.decide_vertices(node_merged) //node.cuts)
 
 		// explicit_mesh.map((f, i) => {
@@ -416,7 +443,9 @@ class BSPnode extends CanvasObject {
 		// 	const v = node.cuts[i] ?? e.verts[i]
 		// 	return Math.sign(this.edge.decide(v))
 		// })
-		console.log("}sides", sides)
+		let s = ""
+		for (let i = 0; i < 2; i++) s += this.children[i] ? " truey" : " falsy"
+		// console.log("sides:", sides,"this ID", this.ID,this.edge.index,this.edge.xy,"this.children",s)
 
 		//if (Math.abs(sides[0]-sides[1])>1) console.log("decide edge", sides)
 		if (Math.abs(sides[1] - sides[0]) > 1) { // calculate cut. I already added the code to "ToCanvas", but I need it here while inserting ( and while instering the face ). I thought, BSP is pure. Weird that I don't need to keep the cut after insertion
@@ -443,6 +472,7 @@ class BSPnode extends CanvasObject {
 				var cut = new Edge_cut(c) // kinda : go to derived class
 				//cut.c = c
 				cut.e = this.edge
+				console.log("push cut", node.edge.index, this.ID, this.edge.index)
 				node.edge.cache_cut.push(cut) // how does hits look in JRISC? I don't find any trick. Needs bound check, needs capacity, needs pointer to grow
 				if (c.z < 0) {
 					//console.warn("z<0")
@@ -460,16 +490,20 @@ class BSPnode extends CanvasObject {
 		for (let s = 0; s < 2; s++) {
 			if (sides.map(si => si == (2 * s) - 1).reduce((p, c) => p || c, false)) { // any points to insert on this side of tree
 				let c = this.children[s]
-				const n = new BSPnode(node.debugy)
+				const n = new BSPnode(node.ID)
 				n.edge = e  // why no cut at this point? The "sides" code depends on it. The face wants to reuse it
 				n.cuts = node.cuts.slice() // temporarly for insert. Why did I comment this out?
 
 				if (typeof cut != 'undefined') {  // My explicit way of doing things will add "exception" branches into JRISC. So usually they only cost one cycle, +1 if I cannot fill the slot before with some copy
-					n.cuts[s] = cut   // the other end of the line is replaced
-					console.log("cuts on inserted and split edge", n.debugy, n.cuts)
+					// cuts go along the edge. They don't care about this.normal.
+					// Todo: do I need to flip?
+					const iso = sides.indexOf(-2 * s + 1) // point on the other side // I tweaked ToCanvas to show if I got this right
+					n.cuts[iso] = cut   // the other end of the line is replaced. Why did I flip this ever?
+					// console.log("cuts on inserted and split edge", n.debugy, n.cuts)
 				}
-				if (c == null || (c instanceof Leaf)) {
 
+				if (c == null || (c instanceof Leaf)) {
+					// console.log("try to insert on side",s)
 					this.children[s] = n  // I don't want too many instanceOf in my code.
 
 					if (c != null) {					// todo : Check for z
@@ -501,6 +535,7 @@ class BSPnode extends CanvasObject {
 						}
 					}
 				} else {
+					// console.log("try to insert on side",s,"there already is",c.ID,c.edge.index)
 					//return 
 					// todo: store cuts
 					c.decide_edge(n, fillStyle, last_edge_of_polygon) // todo: so at least one child should be filled, but right now I see none
@@ -653,9 +688,13 @@ class BSPnode extends CanvasObject {
 								e = p.edges_in_BSP[i]  // We only care about cuts going to the vertex. Reuse those, next edge comes later
 							}
 						}
-						if (e.cache_face != p) {  // p meaning face because I already inserted the edges
+						if (e.cache_face != p || retry == 1) {  // p meaning face because I already inserted the edges
 							e.cache_face = p
 							e.cache_read_pointer = 0
+						}
+						if (e.cache_cut.length == 0) {
+							console.warn("there has to be a cut", e.index, this.ID, this.edge.index)
+							const dummy = 0
 						}
 						while (e.cache_cut.length > e.cache_read_pointer) {
 							const kv = e.cache_cut[e.cache_read_pointer++]
@@ -665,7 +704,7 @@ class BSPnode extends CanvasObject {
 						}
 
 						// does not work in mesh var cut = this.cuts[(-c + 1) / 2] // cuts must have been (over-)written when we inserted one of the edges.
-						if (retry > 0) console.log("cut", cut, this.debugy, this.edge.verts.map(v => v.index_in_polygon))
+						if (retry > 0) console.log("cut", cut, this.ID, this.edge.verts.map(v => v.index_in_polygon))
 						// todo: unify insertion and ToCanvas code to share debugging
 						// the following code looks just like ToCanvas for face?
 						if (typeof cut_1 != 'undefined') {
@@ -787,7 +826,7 @@ class BSPnode extends CanvasObject {
 
 			// premature optimization, but I am mostly intersted in the JRISC cost!
 			const ed = c.e
-			if ( ed != null){
+			if (ed != null) {
 				if (v.cache_ed != ed) {
 					v.cache_ed = ed
 					v.cache_read_pointer = 0
@@ -815,7 +854,36 @@ class BSPnode extends CanvasObject {
 
 
 	toCanvas(ctx: CanvasRenderingContext2D, pi?: Array<Vec2> /*ref*/) {
-		return this.edge.toCanvas(ctx, pi)
+
+		let r: [number, number], l = 0
+		const back = ctx.lineWidth
+		ctx.lineWidth = 5
+		ctx.strokeStyle = "#0" + variance.toString() + "F"; variance = (variance + 1) % 10
+		ctx.beginPath()
+
+		const ends = this.getEnds().map(h => h.normalize())
+		for (let end = 0; end < ends.length; end++) {
+			const cxy = ends[end]
+			var co: [number, number] = [cxy[0] + debugshift, cxy[1] + debugshift]
+
+			ctx.fillStyle = "#F80"
+			ctx.fillRect(co[0] - 3, co[1] - 3, 1 + 6, 1 + 6)
+
+			if (l++ == 0) ctx.moveTo(...co)
+			else {
+				ctx.lineTo(...co)
+				ctx.stroke()
+			}
+		}
+
+		ctx.lineWidth = 1 //back
+		// return
+		// if (this.cuts.length > 0) console.warn("Todo: use ", this.cuts)
+		// orininally I wrote the clipping in the draw method for instant debugging
+		// I rewrote (cleaned up) so much when transfering to insert (sorry)
+		// it also draws the portal. Todo?: put back in
+		return this.edge.toCanvas(ctx, pi, false)
+		// return this.edge.toCanvas(ctx, pi)
 	}
 
 
@@ -931,6 +999,12 @@ export class BSPtree implements CanvasObject {
 	// mark object on insertion. Dedicated property? Indes into polygyon? chache.length>=0 ?
 	insertPolygon(p: Polygon_in_cameraSpace) {
 		console.log("insertPolygon", p.vertices.length, p.fillStyle)
+		// clear memory. I do it explicit here (not tested) perhaps this shows how to change the data structure
+		p.vertices.forEach(o => {
+			o.cache_edge_decide = []
+		});
+		p.edges_in_BSP = []
+			;
 		{//if (this.root == null) { // I imply the screen borders to be match my clipping code
 			//moved to polygon consructor
 			//const v3 = p.vertices.slice(0, 3).map(v => new Vec3([v.xy.v.concat(v.z)]))  // backface culling in 3d. One of the perks of subpixel correction. // By my definition, the first two edges span up the plane (default s,t and basis for u,v mapping). The level editor needs to make sure that the rest align ( kinda like in Doom space ). I may add a scene graph just to allow to rotate Doomspace objects with infinite precision.			
@@ -956,7 +1030,7 @@ export class BSPtree implements CanvasObject {
 			s.sort((a, b) => a[0] - b[0])
 			for (let i = s.length - 1; i >= 0; i--) {
 				const n = new BSPnode_edge()
-				n.index = s[i][2]
+				n.index = s[i][2] //; console.log("new edge",n.index)
 				p.edges_in_BSP.push(n) // for the cuts
 				const verts = (s[i][1]).vs    //new Vec2( [ lv[1].normalize() ]  ) )
 
