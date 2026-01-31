@@ -74,7 +74,7 @@ export class Polygon_in_cameraSpace {
         let lv = vs[vs.length - 1];
         this.edges = vs.map(v => {
             const e = new Edge_on_Screen();
-            e.vs = [v, lv];
+            e.vs = [lv, v];
             lv = v;
             return e;
         });
@@ -103,7 +103,7 @@ export class Vertex_OnScreen {
         this.cache_read_pointer = 0;
         this.cache_ed = null; // undefined would crash the if. is null implicit?
         // for insert face
-        this.index_in_polygon = -1; // JRISC has no undefined. C and JRISC like to use 0 as index. Though, not sure about JRISC, loadQ 1 is as fast. I could tell the compiler to back correct all pointers to arrays
+        this.index_in_polygon = 0; // JRISC has no undefined. C and JRISC like to use 0 as index. Though, not sure about JRISC, loadQ 1 is as fast. I could tell the compiler to back correct all pointers to arrays
         this.z = 1;
     }
     toCanvas(ctx, selected = false) {
@@ -180,7 +180,7 @@ var variance = 0;
 // to harmonize splitting with lazy precision
 class BSPnode_edge {
     constructor() {
-        this.index = -1;
+        this.index = 0;
         this.cache_cut = [];
         this.cache_read_pointer = 0; // cache is for lazy precision
     }
@@ -401,26 +401,15 @@ class BSPnode extends CanvasObject {
             // }
             if (cut == null) {
                 // beam tree
-                const e_to_insert = new Vec3([e.xy.v.concat(e.z)]);
-                const e_in_BSP = new Vec3([this.edge.xy.v.concat(this.edge.z)]);
-                const cut3d = e_to_insert.crossProduct(e_in_BSP);
-                //allocation problem for cached cuts  const cut3d_forward = cut3d.scalarProduct(Math.sign(cut3d.v[2]))
-                const c = new Vertex_OnScreen();
-                const d = new Vertex_decision();
-                d.d = 0;
-                d.e = this.edge;
-                c.cache_edge_decide[0] = d; // todo: probably useless
-                c.xy = new Vec2([cut3d.v.slice(0, 2)]);
-                c.z = cut3d.v[2];
-                var cut = new Edge_cut(c); // kinda : go to derived class
+                var cut = this.Cutter(e); // kinda : go to derived class
                 //cut.c = c
                 cut.e = this.edge;
-                console.log("push cut", node.edge.index, this.ID, this.edge.index);
+                console.log("push cut", node.edge.index, this.ID, this.edge.index, sides);
                 node.edge.cache_cut.push(cut); // how does hits look in JRISC? I don't find any trick. Needs bound check, needs capacity, needs pointer to grow
-                if (c.z < 0) {
-                    //console.warn("z<0")
-                    const dummy = 0;
-                }
+                // if (c.z < 0) {  // todo move inside this.Cutter
+                // 	//console.warn("z<0")
+                // 	const dummy = 0
+                // }
             }
             //this.cut_others[cut.z > 0 ? 1 : 0] = node  //  z>0 ? aparently not a good idea // I feel like cuts should be sorted by direction of border, not by length of edge
             //console.log("me", this.debugy, this.edge.verts.map(v => v.index_in_polygon), "inserted cuts", this.cuts, "@", cut.z > 0 ? 1 : 0) // Todo PolygonIndex
@@ -434,7 +423,7 @@ class BSPnode extends CanvasObject {
                 let c = this.children[s];
                 const n = new BSPnode(node.ID);
                 n.edge = e; // why no cut at this point? The "sides" code depends on it. The face wants to reuse it
-                n.cuts = node.cuts.slice(); // temporarly for insert. Why did I comment this out?
+                n.cuts = node.cuts.slice(); // temporarly for insert.
                 if (typeof cut != 'undefined') { // My explicit way of doing things will add "exception" branches into JRISC. So usually they only cost one cycle, +1 if I cannot fill the slot before with some copy
                     // cuts go along the edge. They don't care about this.normal.
                     // Todo: do I need to flip?
@@ -482,6 +471,28 @@ class BSPnode extends CanvasObject {
             }
         }
     }
+    Cutter(e) {
+        const e_to_insert = new Vec3([e.xy.v.concat(e.z)]);
+        const e_in_BSP = new Vec3([this.edge.xy.v.concat(this.edge.z)]);
+        const cut3d = e_to_insert.crossProduct(e_in_BSP);
+        //allocation problem for cached cuts  const cut3d_forward = cut3d.scalarProduct(Math.sign(cut3d.v[2]))
+        const c = new Vertex_OnScreen();
+        if (e.index > 0) { // always
+            c.index_in_polygon = -e.index;
+        }
+        else {
+            const dummy = 0;
+        }
+        console.log(c.index_in_polygon);
+        // const d = new Vertex_decision();
+        // d.d = 0
+        // d.e = this.edge
+        // c.cache_edge_decide[0] = d // todo: probably useless
+        c.xy = new Vec2([cut3d.v.slice(0, 2)]);
+        c.z = cut3d.v[2];
+        var cut = new Edge_cut(c); // kinda : go to derived class
+        return cut;
+    }
     decide_face(p, cuts) {
         //console.log("deciding face : this cuts these edges",this.cut_others.map(c=>[c.debugy,c.edge.index])) //, "is cut", eg.map(e=>[e.cuts,e.cut2children]))
         // this.decide_edge will make this edge.cut through p.edges twice. Allocation uses sign of product
@@ -517,7 +528,7 @@ class BSPnode extends CanvasObject {
             const vs = p.vertices;
             // ¿Perhaps cut the reference
             vs.forEach((v, i) => {
-                v.index_in_polygon = i;
+                v.index_in_polygon = 1 + i;
                 v.cache_read_pointer = 0;
             });
             cs = vs.map(v => {
@@ -583,6 +594,7 @@ class BSPnode extends CanvasObject {
         // All this reference dictionary stuff probably loves short reference in JRISC, aka IDs. I can see 16 bit IDs, but 10 bit is pushing it.
         for (let retry = 0; retry < 2; retry += 2) {
             var children = []; // was const before I wrapped the loop around 
+            //var children: [number,Edge_cut][][] = []   
             for (let side = 0; side < 2; side++) {
                 children[side] = [];
             }
@@ -592,36 +604,95 @@ class BSPnode extends CanvasObject {
             // for (let side = 0; side < 2; side++) {
             // 	childree[side] = []
             // }
-            let last = sides[sides.length - 1], cut_counter = 0;
-            for (let vertex_i = 0; vertex_i < sides.length; vertex_i++) {
-                let c = sides[vertex_i];
-                const j_pre = cs[vertex_i].c.index_in_polygon; // only!=null if e==null . todo: compress state
-                const j = j_pre >= 0 ? j_pre : vertex_i;
+            let last = -1;
+            let c = sides[sides.length - 2], last_vertex_part_of_current_polygon = cs[sides.length - 2].c;
+            let vertex_i = sides.length - 1;
+            let next = sides[vertex_i];
+            let cut_counter = 0;
+            for (let vertex_next = 0; vertex_next < sides.length; vertex_next++) {
+                if (false) { // still not sure about the replay bug
+                    //for (let vertex_i = 0; vertex_i < sides.length; vertex_i++) {
+                    const es = BSPtree.BSP_heuristic(p.edges); // re-play order of edges of this new polygon.
+                    // order of old edges is fixed. Cache order will be reproduced because I walk the tree
+                    for (let i = es.length - 1; i >= 0; i--) {
+                        const vertex_i = es[i][2]; // into sides. Not polygon
+                        const l = sides.length;
+                        const from = (vertex_i + l - 1) % l;
+                        const range = [from, vertex_i].map(j => cs.findIndex(o => o.c.index_in_polygon == j));
+                        //const till_c=cs.findIndex(o=>o.c.index_in_polygon==vertex_i)
+                        const restor = range.map(r => {
+                            if (r < 0)
+                                return -1;
+                            if (cs[r].c.index_in_polygon == -1)
+                                return 1;
+                            return 0;
+                        });
+                        if (restor[0] * restor[1] == -1) {
+                            range[(restor[0] + 1) / 2] = 0;
+                        }
+                        // fragil and confusing
+                        // How many cuts do I even do?
+                        // 2. So I could try out which of them hits the cache?
+                        // this is given by the tree
+                        // there are two cuts => edge is defined. But node?
+                        // I don't think that I need to look in the cache (because both could be hit?)
+                        // of the two cuts I need to know who was first
+                        // edges are already in tree
+                        // so the next edges need to be direct children of this.node
+                        let last = sides[from];
+                    }
+                }
+                last = c;
+                c = next;
+                next = sides[vertex_next];
+                // const j_pre = cs[vertex_i].c.index_in_polygon // only!=null if e==null . todo: compress state
+                // const j = j_pre >= 0 ? j_pre : vertex_i
                 if (Math.abs(c - last) > 0) { // ensure cut
                     cut_counter++;
                     if (Math.abs(c - last) > 1) { // find cut of edge  . Cut as a verb . Clean cut
                         //const e = eg[vertex_i]  // edge leading towards this vertex
                         const cut = cs[vertex_i];
-                        let e = cut.e; // for facelets this may not be the original polygon edge
+                        let e = null; // cut.e  // for facelets this may not be the original polygon edge
                         if (e == null) {
-                            const i = cut.c.index_in_polygon;
-                            if (i >= 0) {
-                                e = p.edges_in_BSP[i]; // We only care about cuts going to the vertex. Reuse those, next edge comes later
+                            const i = cut.c.index_in_polygon; // This is for facelets at the edges . I am now very sure that I have to store in the tree which border the child hits.
+                            if (i > 0) { // vertex is orginal vertex
+                                e = p.edges_in_BSP.find(e => e.verts[1].index_in_polygon == +i); // We only care about cuts going to the vertex. Reuse those, next edge comes later  // Todo: double link, or pre-alloc array and fill
+                            }
+                            if (i < 0) {
+                                if (last_vertex_part_of_current_polygon.index_in_polygon > 0) { // vertex is one cut of original vertex so still sits on ede
+                                    //console.warn("this is only okay if the last vertex.index>0")
+                                    e = p.edges_in_BSP.find(e => e.verts[1].index_in_polygon == -i); // We only care about cuts going to the vertex. Reuse those, next edge comes later  // Todo: double link, or pre-alloc array and fill
+                                }
+                                console.log(last_vertex_part_of_current_polygon);
+                            }
+                            if (i == 0) {
+                                console.warn("faces should just go with the flow of the BSP.");
                             }
                         }
-                        if (e.cache_face != p || retry == 1) { // p meaning face because I already inserted the edges
-                            e.cache_face = p;
-                            e.cache_read_pointer = 0;
-                        }
-                        if (e.cache_cut.length == 0) {
-                            console.warn("there has to be a cut", e.index, this.ID, this.edge.index);
-                            const dummy = 0;
-                        }
-                        while (e.cache_cut.length > e.cache_read_pointer) {
-                            const kv = e.cache_cut[e.cache_read_pointer++];
-                            if (kv.e == this.edge) {
-                                var cut_1 = kv;
+                        if (e != null) {
+                            if (e.cache_face != p || retry == 1) { // p meaning face because I already inserted the edges
+                                e.cache_face = p;
+                                e.cache_read_pointer = 0;
                             }
+                            if (e.cache_cut.length == 0) {
+                                console.warn("there has to be a cut", e.index, this.ID, this.edge.index, [last, c], cut.c.index_in_polygon);
+                                const dummy = 0;
+                            }
+                            while (e.cache_cut.length > e.cache_read_pointer) {
+                                const kv = e.cache_cut[e.cache_read_pointer++];
+                                if (kv.e == this.edge) {
+                                    var cut_1 = kv;
+                                }
+                            }
+                        }
+                        {
+                            return; // give up
+                            // todo: store two edges on each cut. Or at least with direction.
+                            // todo. Cache in tree. Not the actuall vertex, just border numbers
+                            // todo: I still need the edge in this loop
+                            //if (last_vertex_part_of_current_polygon)
+                            cut_1 = this.Cutter(cut.e); // kinda : go to derived class
+                            //cut_1=cut.e this.edge
                         }
                         // does not work in mesh var cut = this.cuts[(-c + 1) / 2] // cuts must have been (over-)written when we inserted one of the edges.
                         if (retry > 0)
@@ -629,26 +700,25 @@ class BSPnode extends CanvasObject {
                         // todo: unify insertion and ToCanvas code to share debugging
                         // the following code looks just like ToCanvas for face?
                         if (typeof cut_1 != 'undefined') {
-                            var vsi = new Vertex_OnScreen();
-                            try {
-                                vsi.xy = cut.c.xy;
-                            }
-                            catch (_a) {
-                                console.log("this.cuts", this.cuts);
-                            }
-                            vsi.z = cut.c.z;
+                            //var vsi = new Vertex_OnScreen()
+                            // try {
+                            // 	vsi.xy = cut.c.xy
+                            // } catch {
+                            // 	console.log("this.cuts", this.cuts)
+                            // }
+                            // vsi.z = cut.c.z
                             for (let c1 = 0; c1 < 2; c1++) {
                                 if (retry > 0) {
                                     console.log("c1", c1, last > c ? 1 - c1 : c1);
                                     const dummy = null;
                                 }
                                 //?? todo: remove the order
-                                children[last > c ? 1 - c1 : c1].push(cut_1); // console.log("dupes ", last > c ? 1 - c : c, "<-", vsi.index_in_polygon)
+                                children[last > c ? 1 - c1 : c1].push(cut_1); //[vertex_i,cut_1]);// console.log("dupes ", last > c ? 1 - c : c, "<-", vsi.index_in_polygon)
                                 // we need to pass on the reference to both children so that a face can recognize
                                 //childree[c1].push(eg[vertex_i])
                                 //vsi.index_in_polygon = j  // todo: struct (value type) to make this have an effect  .for the old polyline, the cut is still in order. This is for debugging and profiling. Some might want to enforce a valid state by setting index eagerly.
                             }
-                            children[(c + 1) / 2].push(cs[vertex_i]); // debugging made me duplicate code here. Todo: unite with vertex on border?
+                            children[(c + 1) / 2].push(cs[vertex_i]); //push([vertex_i,cs[vertex_i]])  // debugging made me duplicate code here. Todo: unite with vertex on border?
                             //childree[(c + 1) / 2].push(eg[vertex_i])
                         }
                     }
@@ -680,7 +750,8 @@ class BSPnode extends CanvasObject {
                         // 	const dummy = 0
                         // }
                     }
-                    const ci = c == 0 ? 0 : (c + 1) / 2;
+                    // if (c==0 ) last==0 in this branch. That's why we need next . Actually comes up in the first test: single triangle.
+                    const ci = c == 0 ? next : (c + 1) / 2;
                     // if (cut_counter == 0) {
                     //todo ask inserting edge for side
                     children[ci].push(cs[vertex_i]);
@@ -695,8 +766,10 @@ class BSPnode extends CanvasObject {
                     // }
                 }
                 //console.log("beforeSplit:", vertex_i, " c0: ", children[0].length, " c1: ", children[1].length,"c",c,"last",last)
-                last = c;
+                last_vertex_part_of_current_polygon = cs[vertex_i].c; //.index_in_polygon
+                vertex_i = vertex_next; // I am not sure about the "," syntax in C / TypeScript. So I have to write this at the tail
             }
+            // todo: sort children
             for (let side = 0; side < 2; side++) {
                 const l = children[side].length;
                 if (l == 1 || l == 2) {
@@ -707,6 +780,10 @@ class BSPnode extends CanvasObject {
             }
         }
         for (let side = 0; side < 2; side++) {
+            // sort back from lenght first to rotation. This must be conserving because splits share vertex_i, but are already ordered
+            // Since version 10 (or ECMAScript 2019), the specification dictates that Array.prototype.sort is stable.
+            // Of course, I could give the cut an index as the average of the orginal indices. SHR upfront
+            //const childs = children[side].sort((a, b) => a[0] - b[0]).map(c => c[1])
             if (children[side].length > 0) {
                 let child = this.children[side];
                 if (typeof child == 'undefined') { // once again I don't understand why null is not enough. Objects?
@@ -905,17 +982,10 @@ export class BSPtree {
             // if (normal.v[2] < 0) {
             // 	p.vertices.reverse(); console.log("reverse Insert") // ToDo: this rips meshes apart and confuses ToCanvas // This disturbed the parser, but I added an Array.slice
             // }
-            const s = p.edges.map((e, i) => {
-                const vecs = e.vs.map(v => new Vec2([v.normalize()])); // vertices start with v. I should rename to point to differentiate from vector -- but what about Transformation?
-                const delta = vecs[0].subtract01(vecs[1]);
-                //if (normal.v[2] >= 0) e.vs.reverse()  // uh too much cognitive load. Pehaps there is a way to figure out backfaces within a BSP, but not for me
-                const r = [delta.innerProduct(delta), e, i]; //  ref type
-                return r;
-            });
-            s.sort((a, b) => a[0] - b[0]);
+            const s = BSPtree.BSP_heuristic(p.edges);
             for (let i = s.length - 1; i >= 0; i--) {
                 const n = new BSPnode_edge();
-                n.index = s[i][2]; //; console.log("new edge",n.index)
+                n.index = 1 + s[i][2]; //; console.log("new edge",n.index)
                 p.edges_in_BSP.push(n); // for the cuts
                 const verts = (s[i][1]).vs; //new Vec2( [ lv[1].normalize() ]  ) )
                 // cross product of the beam tree. Trying to optimize, but still 6 multiplications = 2+2+2
@@ -950,6 +1020,17 @@ export class BSPtree {
         // run the vertices down the tree . So, like clipping to screen borders. Vertice, edges , planes? Ah, plane check is the same for the whole screen.
         // const b = new BSPnode   // on common parent
         // b.insertPolygon()  // todo: still happens on a node
+    }
+    static BSP_heuristic(edges) {
+        const s = edges.map((e, i) => {
+            const vecs = e.vs.map(v => new Vec2([v.normalize()])); // vertices start with v. I should rename to point to differentiate from vector -- but what about Transformation?
+            const delta = vecs[0].subtract01(vecs[1]);
+            //if (normal.v[2] >= 0) e.vs.reverse()  // uh too much cognitive load. Pehaps there is a way to figure out backfaces within a BSP, but not for me
+            const r = [delta.innerProduct(delta), e, i]; //  ref type
+            return r;
+        });
+        s.sort((a, b) => a[0] - b[0]);
+        return s;
     }
     // this algorithm can queue in a compact data structure to draw trapezoids deferred if I wanna try vsync tricks
     floodfill() {
