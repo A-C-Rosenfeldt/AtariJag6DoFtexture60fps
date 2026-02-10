@@ -1,3 +1,54 @@
+unit test for what works currently
+	mocha -> npm?
+	Inserting two triangles -> tree with topology and colors (aka original polyonID)
+	Paint -> filled polygons
+refactoring
+neues Modul.TS: 
+	FatNode
+		data
+			fromToRefBorders:integer[]
+				could be a corner because edges belong to a polygon and can even belong to a mesh
+					so both edges share this corner, but do they need to know about each other after insertion?
+			cuts:Cut[]
+		code
+			insert new edge
+				crossing condition
+					ID refering to the border elements
+	ExplicitPolygon
+		data
+			explicit vertices ( like for view pyramid. I feel like a boolean[] or type[] will fail. Return of the polymorphism )
+				complete
+					corner
+					border (cut)
+					vertex
+		code
+			insert polygon
+				compare vertices on the border by the ID refering to the border elements
+				if the edge of the node belongs to the polygon
+					then
+						will the border cuts match   // change: Border cuts live on the node. Exactly 2. No cut list with n entries in freshly inserted edges. All edges and nodes are the same 
+							go down on child
+					else
+						sides of vertices
+							we know those of those on the borders
+							calc free vertices.
+						if treshpassing
+							EachChildren gets vertices on their side and attached edges
+							Cuts are duplicated to the children
+								they don't need to stay in contact
+		Portal aka BorderPolygon
+			Vertex_polymorph[]
+				the insertion algorithm doing depth first search will reproduce the order
+				for debbuging / testing I should store the references here. And Cuts should (in debug build) have {ID,ref}
+
+
+
+
+
+
+
+
+
 So I feared that I cannot debug a beamtree, but now decided that I will keep numbers small by sticking to the raster.
 So the edge equations use 16-bit screen coordinates, but for every vertex I use 320x200 screen resolution -- no fraction. For natural vertices this works just as with my normal sub-pixel correction rasterizer.
 When two edges cross, I go along the dominant axis of one and find the crossing ordinate. This can use Bresenham on both edges.

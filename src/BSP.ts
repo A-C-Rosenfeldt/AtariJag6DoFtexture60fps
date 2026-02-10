@@ -385,7 +385,7 @@ class Edge_cut {
 // }
 
 // So this is like Horizon_Edge , while the partition is like the Edge_between_vertices
-class BSPnode extends CanvasObject {
+export class BSPnode extends CanvasObject {
 	ID: number;
 	cut2children: Vertex_OnScreen;
 	constructor(p: number) {
