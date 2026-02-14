@@ -209,7 +209,7 @@ class BSPnode_ExtensiononStack extends Polygon_in_cameraSpace {
 var variance = 0
 
 // to harmonize splitting with lazy precision
-class BSPnode_edge {
+export class BSPnode_edge {
 	xy: Vec2  //normal
 	z: number  // bias
 
@@ -371,7 +371,7 @@ class BSPnode_edge {
 	cache_read_pointer = 0  // cache is for lazy precision
 }
 
-class Edge_cut {
+export class Edge_cut {
 	e: BSPnode_edge = null
 	c: Vertex_OnScreen
 	constructor(v: Vertex_OnScreen) { // So, I learned that typeScript does not really support the old JS way of constructing objects (because it cannot interfere the interface? I only have properties)

@@ -178,7 +178,7 @@ class BSPnode_ExtensiononStack extends Polygon_in_cameraSpace {
 }
 var variance = 0;
 // to harmonize splitting with lazy precision
-class BSPnode_edge {
+export class BSPnode_edge {
     constructor() {
         this.index = 0;
         this.cache_cut = [];
@@ -332,7 +332,7 @@ class BSPnode_edge {
         return portal;
     }
 }
-class Edge_cut {
+export class Edge_cut {
     constructor(v) {
         this.e = null;
         this.c = v;
@@ -343,7 +343,7 @@ class Edge_cut {
 // 	e: BSPnode_edge
 // }
 // So this is like Horizon_Edge , while the partition is like the Edge_between_vertices
-class BSPnode extends CanvasObject {
+export class BSPnode extends CanvasObject {
     constructor(p) {
         super();
         this.children = new Array(); // 0,1   
