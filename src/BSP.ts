@@ -36,6 +36,7 @@ class CanvasObject {
 class Vertex_in_cameraSpace {
 	onScreen: Vertex_OnScreen  //nullable
 }
+
 export class Polygon_in_cameraSpace implements CanvasObject {
 	fillStyle: string;
 
@@ -1176,7 +1177,7 @@ class PartialFilled extends BSPnode {
 }
 
 // Todo after unit tests are written -> pull in edge construction, integrate in constructor
-export function Node_CreateFromVerts(verts: [Vertex_OnScreen, Vertex_OnScreen], n: BSPnode_edge, ID: number):BSPnode {
+export function Node_CreateFromVerts(verts: [Vertex_OnScreen, Vertex_OnScreen], n: BSPnode_edge, ID: number): BSPnode {
 	const delta = verts[0].xy.scalarProduct(verts[1].z).subtract01(verts[1].xy.scalarProduct(verts[0].z)).v; // calculation with fractions. No division. Looks random. Should this the duty of the compiler?
 
 	// n.xy = new Vec2([[delta[1], -delta[0]]])  // wedge

@@ -344,11 +344,11 @@ export class Edge_cut {
 // }
 // So this is like Horizon_Edge , while the partition is like the Edge_between_vertices
 export class BSPnode extends CanvasObject {
-    constructor(p) {
+    constructor(ID) {
         super();
         this.children = new Array(); // 0,1   
         this.cuts = [];
-        this.ID = p; //.vertices.length
+        this.ID = ID; //.vertices.length
     }
     getEnds() {
         const r = [null, null];
@@ -919,7 +919,7 @@ export class BSPnode extends CanvasObject {
     // before insertion?
     resolve_occlusion_order(split_from_3d_cut, grandchildren) { }
 }
-class Leaf {
+export class Leaf {
     toCanvas(ctx, pi) {
         var sum = this.JavaScriptCSS_bloat(this.fillStyle[0]);
         const i2 = [0];
@@ -989,18 +989,7 @@ export class BSPtree {
                 p.edges_in_BSP.push(n); // for the cuts
                 const verts = (s[i][1]).vs; //new Vec2( [ lv[1].normalize() ]  ) )
                 // cross product of the beam tree. Trying to optimize, but still 6 multiplications = 2+2+2
-                const delta = verts[0].xy.scalarProduct(verts[1].z).subtract01(verts[1].xy.scalarProduct(verts[0].z)).v; // calculation with fractions. No division. Looks random. Should this the duty of the compiler?
-                // n.xy = new Vec2([[delta[1], -delta[0]]])  // wedge
-                // n.z = -verts[0].xy.innerProduct(n.xy) / verts[0].z // be obvious how the implicit function would be 0 on a vertex => no wedge here and not "source of truth" ref to verts
-                n.xy = new Vec2([[delta[1], -delta[0]]]); //.scalarProduct( verts[0].z) // cross
-                n.z = -verts[0].xy.innerProduct(n.xy); // be obvious how the implicit function would be 0 on a vertex => no wedge here and not "source of truth" ref to verts
-                //n.xy = n.xy.scalarProduct( verts[0].z) // cross
-                // see:  this.xy.innerProduct(v.xy) - this.z * v.z              this=edge=n  = function    apply to ->  <- parameter  v= vertex =verts[], not normalized
-                // first the * v.z is compensated by / v.z , then the - does not need to be compensated here. Is it weird that I compensate at application?
-                // mesh insertion needs references to vertices
-                n.verts = verts; // Todo: check that this is readonly ! 
-                const b = new BSPnode(p.vertices.length);
-                b.edge = n;
+                const b = Node_CreateFromVerts(verts, n, p.vertices.length); // Refactor using editor to be able to add automated test . Long term goal is just co-incidental: get math out of the business logic
                 p.nodes_in_BSP.push(b);
                 if (this.root == null) {
                     this.root = b;
@@ -1058,6 +1047,22 @@ export class BSPtree {
     }
 }
 class PartialFilled extends BSPnode {
+}
+// Todo after unit tests are written -> pull in edge construction, integrate in constructor
+export function Node_CreateFromVerts(verts, n, ID) {
+    const delta = verts[0].xy.scalarProduct(verts[1].z).subtract01(verts[1].xy.scalarProduct(verts[0].z)).v; // calculation with fractions. No division. Looks random. Should this the duty of the compiler?
+    // n.xy = new Vec2([[delta[1], -delta[0]]])  // wedge
+    // n.z = -verts[0].xy.innerProduct(n.xy) / verts[0].z // be obvious how the implicit function would be 0 on a vertex => no wedge here and not "source of truth" ref to verts
+    n.xy = new Vec2([[delta[1], -delta[0]]]); //.scalarProduct( verts[0].z) // cross
+    n.z = -verts[0].xy.innerProduct(n.xy); // be obvious how the implicit function would be 0 on a vertex => no wedge here and not "source of truth" ref to verts
+    //n.xy = n.xy.scalarProduct( verts[0].z) // cross
+    // see:  this.xy.innerProduct(v.xy) - this.z * v.z              this=edge=n  = function    apply to ->  <- parameter  v= vertex =verts[], not normalized
+    // first the * v.z is compensated by / v.z , then the - does not need to be compensated here. Is it weird that I compensate at application?
+    // mesh insertion needs references to vertices
+    n.verts = verts; // Todo: check that this is readonly ! 
+    const b = new BSPnode(ID);
+    b.edge = n;
+    return b;
 }
 /* So it occured to me that my hard limit is cache memory. I feel like a BSP is most efficient to keep temporary data for occlusion between solid polygons. Transparent textures ($0000$) may come later.
 With forward or backwards ray tracing the math subroutines throw exceptions when they are unsure.
