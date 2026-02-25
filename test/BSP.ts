@@ -95,7 +95,7 @@ describe('I need to seggregate interfaces, but make sure they in combination the
 		// For my TS algorithm check, I do not care. But I need an interface
 		// cache.vectorOp([vec,vec])
 		// if an edge or vertex owns this, we only need a list. Ah, and vec are not bare bones, but owned by edge and vertex. Do we care?
-		// an external (non-clustered) service would need to look up based on two pointers
+		// an external (non-clustered) service would need to look up based on two pointers. IDs do not guarantee compact regions of IDs either.
 
 		// edge find is also difficult
 		// I wonder where I will plug in the service
@@ -143,7 +143,7 @@ describe('I need to seggregate interfaces, but make sure they in combination the
 		const p = new Polygon_in_cameraSpace()
 		p.edges_in_BSP = bb.map(n => n.edge)
 		p.fillStyle = "654"
-		node.decide_face(p)
+		node.decide_face(p)  // todo: const vs = p.vertices;  Fill it!
 
 		// the test should call .Draw ? 
 		// Or is there a shorter way to describe a test in a tree?
