@@ -28,10 +28,7 @@
             "problemMatcher": [
                 "$tsc-watch"
             ],
-            "group": {
-                "kind": "build",
-                "isDefault": true
-            },
+            "group": "build",
             "label": "tsc for edge and watch"
         },
         {
@@ -51,9 +48,12 @@
             "problemMatcher": [
                 "$tsc-watch"
             ],
-            "group": "build",
+            "group": {
+                "kind": "build",
+                "isDefault": true
+            },
             "label": "tsc for node and watch test"
-        },        
+        },
         {
             "label": "[Mocha] Run Tests (relative to Workspace-Folder)",
             "type": "shell",

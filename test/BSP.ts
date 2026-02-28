@@ -113,8 +113,8 @@ describe('I need to seggregate interfaces, but make sure they in combination the
 
 		edge_to_be_inserted = new BSPnode_edge() // when test pass, continue to refactor
 
-		verts = [new Vertex_OnScreen(), new Vertex_OnScreen()]
-		verts[0].xy = new Vec2([[+1, 0]])  // gotta keep math rotationial order
+		verts = [bb[0].edge.verts[1], new Vertex_OnScreen()]  // Why do I do it? Index in(to) polygon? Would feel weird to set temporary value on duplicated vertices. Decisions should not change thanks to my use of fractions.
+		expect(verts[0].xy.v[0]).to.equal(new Vec2([[+1, 0]]).v[0])  // gotta keep math rotationial order
 		verts[1].xy = new Vec2([[+1, 1]])
 		bb[1] = Node_CreateFromVerts(verts, edge_to_be_inserted, 8008)
 		node.decide_edge(bb[1], "857");
@@ -129,9 +129,11 @@ describe('I need to seggregate interfaces, but make sure they in combination the
 
 		edge_to_be_inserted = new BSPnode_edge() // when test pass, continue to refactor
 
-		verts = [new Vertex_OnScreen(), new Vertex_OnScreen()]
-		verts[0].xy = new Vec2([[+1, 1]])
-		verts[1].xy = new Vec2([[-1, 0]])
+		verts = [bb[1].edge.verts[1], bb[0].edge.verts[0]]
+		//verts[0].xy = new Vec2([[+1, 1]])
+		expect(verts[0].xy.v[1]).to.equal(new Vec2([[+1, 1]]).v[1])  // gotta keep math rotationial order
+		//verts[1].xy = new Vec2([[-1, 0]])
+		expect(verts[1].xy.v[0]).to.equal(new Vec2([[-1, 0]]).v[0])  // gotta keep math rotationial order
 
 		// cross product of the beam tree. Trying to optimize, but still 6 multiplications = 2+2+2
 		bb[2] = Node_CreateFromVerts(verts, edge_to_be_inserted, 6502);
@@ -141,9 +143,13 @@ describe('I need to seggregate interfaces, but make sure they in combination the
 
 		// Now to fully reproduce insertPolygon: the face!
 		const p = new Polygon_in_cameraSpace()
-		p.edges_in_BSP = bb.map(n => n.edge)
+		p.edges_in_BSP = bb.map((n,i) => {
+			n.edge.verts[1].index_in_polygon=i   // todo: vertices are shared. Should I set temporary properties for recognition?
+			return n.edge
+		}) // is order correct? Yes
 		p.fillStyle = "654"
-		node.decide_face(p)  // todo: const vs = p.vertices;  Fill it!
+		p.vertices=p.edges_in_BSP.map(e=>e.verts[0])  // the test is a bit backwards compared to the InsertPolygon. But that is just how a unit test is. Clipped polygons can have horizon edges. That's why vertices may not be part of the edge, but children of edge and a border.
+		node.decide_face(p)  
 
 		// the test should call .Draw ? 
 		// Or is there a shorter way to describe a test in a tree?
@@ -164,20 +170,25 @@ describe('I need to seggregate interfaces, but make sure they in combination the
 
 	var TreeToText = function (b: BSPnode, level = 0): string {
 		const c = b.children
+		let r=""
 		for (let i = 0; i < 2; i++) {
 			const ci = c[i];
 			if (typeof ci !== 'undefined') {
 				if (ci instanceof BSPnode) {
 					const t = TreeToText(ci, level + 1)
+					r+=t //" ".repeat(level)+t+'\n' // only way for me to debug visually, but does VSC show the \n ?
+
 				} else {
 					if (ci instanceof Leaf) {
-						return "(" + level.toString() + ":" + ci.fillStyle + ")"
+						r+=	" ".repeat(level)+ ci.fillStyle + '\n' // only way for me to debug visually, but does VSC show the \n ?
 						//const t=TreeToText(ci,level+1)
 					}
 				}
+			}else{
+				r+=" ".repeat(level)+'\n'
 			}
 		}
-		return ""
+		return r
 	}
 
 	// check face. Does it recognise its edges

@@ -1053,7 +1053,19 @@ export function Node_CreateFromVerts(verts, n, ID) {
     const delta = verts[0].xy.scalarProduct(verts[1].z).subtract01(verts[1].xy.scalarProduct(verts[0].z)).v; // calculation with fractions. No division. Looks random. Should this the duty of the compiler?
     // n.xy = new Vec2([[delta[1], -delta[0]]])  // wedge
     // n.z = -verts[0].xy.innerProduct(n.xy) / verts[0].z // be obvious how the implicit function would be 0 on a vertex => no wedge here and not "source of truth" ref to verts
-    n.xy = new Vec2([[delta[1], -delta[0]]]); //.scalarProduct( verts[0].z) // cross
+    // I cannot live with this n.xy = new Vec2([[delta[1], -delta[0]]]); //.scalarProduct( verts[0].z) // cross
+    // cross product has the negative sign on the backwards product. No sign change trumps 0=standard. Symmetry is almost more important
+    // Also when I test with and edge going "standard" to higher values on x and then have something at y > 0 ( y=r[1] , x=r[0], 1>0)
+    // then decide should push the vertex into child[1] (1>0)
+    n.xy = new Vec2([[-delta[1], delta[0]]]); //.scalarProduct( verts[0].z) //  delta /cross e_z  -> cross // should I abondon RMatrix pull convention?
+    // this needs to be - always. "compensate" . Or as cross product: delta /cross vertex . I do not like the diamond pattern, but did it again. ugh.
+    // so diamond shape:  delta /cross vertex -> normal  
+    // normal * (view vector = z*scale). So two crosses bring x and y back together? Somehow cross product is much more complicated...
+    // v0 x ( v1-v0) =  v0 x v1 = normal.  View vector samples z component: v0.x*v1.y-v1.x*v0.y   
+    // normal { x = v0.y* 1 - 1*v1.y ; y= v1.x*1 - v0.x*1    == wedge(delta=v1-v0) }
+    // inner product with this v0 to wedge is zero. So we are left with
+    // v0.x * ( -1*v1.y)  + v0.y * ( 1*v1.x)    // so cross product re-creates view vector ray tracing
+    // v0.y * v1.x   - v0.x*1 * v1.y   v1 must create the same result. Uups, Opposite sign. Ah cross product has no subtract? But it has!
     n.z = -verts[0].xy.innerProduct(n.xy); // be obvious how the implicit function would be 0 on a vertex => no wedge here and not "source of truth" ref to verts
     //n.xy = n.xy.scalarProduct( verts[0].z) // cross
     // see:  this.xy.innerProduct(v.xy) - this.z * v.z              this=edge=n  = function    apply to ->  <- parameter  v= vertex =verts[], not normalized
