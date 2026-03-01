@@ -158,6 +158,8 @@ describe('I need to seggregate interfaces, but make sure they in combination the
 
 		const just_reproduce = TreeToText(node) // a future test should be one triangle behind another. But right now it does not work. Vertex and Edge recognition is more important. In the test string, the leaves then have different colors
 
+		expect(just_reproduce).to.equal('0;-582|0;452\n|-1;0|1;0\n||u\n||1;1|-1;0\n|||u\n|||654\n|-1;0|1;0\n||u\n||1;0|1;1\n|||u\n|||1;1|-1;0\n||||u\n||||654\n')
+
 		const c2 = node.children[1]
 		if (c1 instanceof BSPnode) {
 			const cc: BSPnode = c1;
@@ -169,8 +171,11 @@ describe('I need to seggregate interfaces, but make sure they in combination the
 	})
 
 	var TreeToText = function (b: BSPnode, level = 0): string {
+		let r="",p="|"
+		if (b instanceof BSPnode) {
+			r=p.repeat(level) +b.edge.verts.map(v=>v.normalize().map(n=>n.toString()).join(";")).join("|")+"\n"
+		}
 		const c = b.children
-		let r=""
 		for (let i = 0; i < 2; i++) {
 			const ci = c[i];
 			if (typeof ci !== 'undefined') {
@@ -180,12 +185,12 @@ describe('I need to seggregate interfaces, but make sure they in combination the
 
 				} else {
 					if (ci instanceof Leaf) {
-						r+=	" ".repeat(level)+ ci.fillStyle + '\n' // only way for me to debug visually, but does VSC show the \n ?
+						r+=	p.repeat(level+1)+ ci.fillStyle + '\n' // only way for me to debug visually, but does VSC show the \n ?
 						//const t=TreeToText(ci,level+1)
 					}
 				}
 			}else{
-				r+=" ".repeat(level)+'\n'
+				r+=p.repeat(level+1)+'u\n'
 			}
 		}
 		return r
