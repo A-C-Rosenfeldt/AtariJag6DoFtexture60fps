@@ -161,6 +161,9 @@ describe('I need to seggregate interfaces, but make sure they in combination the
 		expect(just_reproduce).to.equal('0;-582|0;452\n|-1;0|1;0\n||u\n||1;1|-1;0\n|||u\n|||654\n|-1;0|1;0\n||u\n||1;0|1;1\n|||u\n|||1;1|-1;0\n||||u\n||||654\n')
 
 		const c2 = node.children[1]
+		
+		if(1)console.log("hguh")
+
 		if (c1 instanceof BSPnode) {
 			const cc: BSPnode = c1;
 			expect(cc).not.undefined;

@@ -90,7 +90,7 @@ export class Polygon_in_cameraSpace implements CanvasObject {
 	vertices: Array<Vertex_OnScreen>
 	edges: Array<Edge_on_Screen> // double link: edges point to vertices, and may later point to faces in a mesh
 	edges_in_BSP: BSPnode_edge[] = []
-	nodes_in_BSP: BSPnode[] = []
+	nodes_in_BSP: BSPnode_perInsert[] = []
 }
 
 /* // // nodes seem to be edges
@@ -180,7 +180,7 @@ class BSPnode_ExtensiononStack extends Polygon_in_cameraSpace {
 		let portal = [pi]
 
 		if (this.face_or_edge) {
-			if (n instanceof BSPnode) {
+			if (n instanceof BSPnode_perInsert) {
 				portal = n.toCanvas(this.ctx, pi)
 			} else {
 				if (n instanceof Leaf) {
@@ -195,7 +195,7 @@ class BSPnode_ExtensiononStack extends Polygon_in_cameraSpace {
 		}
 
 		if (portal.length == 0) return 0
-		if (n instanceof BSPnode) {
+		if (n instanceof BSPnode_perInsert) {
 			n.children.forEach((c, i) => {
 				//console.log("child ", typeof c == "object" ? c.constructor.name : "u")
 				const l = this.DFS(c, portal[i])
@@ -211,6 +211,9 @@ var variance = 0
 
 // to harmonize splitting with lazy precision
 export class BSPnode_edge {
+	AsVec3(): Vec3 {
+		return new Vec3([this.xy.v.concat(this.z)])
+	}
 	xy: Vec2  //normal
 	z: number  // bias
 
@@ -230,7 +233,7 @@ export class BSPnode_edge {
 	// import {Portal} from "./pyramid.js"
 	// import { Vec, Vec2, Vec3 } from "./clipping.js"
 
-	toCanvas(ctx: CanvasRenderingContext2D, pi?: Array<Vec2> /*ref*/, verbose = true) {
+	toCanvas(ctx: CanvasRenderingContext2D, sector?: Array<Vec2> /*ref*/, verbose = true) {
 
 
 		let r: [number, number], last = 0, current = last, l = 0, last_v: Vec2
@@ -240,15 +243,15 @@ export class BSPnode_edge {
 
 		// let JRSICbitfield32 = 0
 
-		const pi_eq_null = pi == null;
+		const pi_eq_null = sector == null;
 		if (pi_eq_null) {
 			const count = 4
-			var pi = new Array<Vec2>(count)
+			var sector = new Array<Vec2>(count)
 			for (let corner = 0; corner < count; corner++) {
 				const gray_xy = corner ^ ((corner & 2) >> 1)  // check code in screen clipping for single polygon
 				// cycle => xy   00 01 ! 10 11 ! 00
 				//               00 01   11 10   00
-				pi[corner] = new Vec2([BSPnode.screen.map((s, i) => (((gray_xy >> i) & 1) == 0 ? 0 : s))]) // one goal was to use explicit code to show the edge cases and allow logs and break points. So this code will stay and be amended by polygon (portal) code. 
+				sector[corner] = new Vec2([BSPnode_perInsert.screen.map((s, i) => (((gray_xy >> i) & 1) == 0 ? 0 : s))]) // one goal was to use explicit code to show the edge cases and allow logs and break points. So this code will stay and be amended by polygon (portal) code. 
 			}
 		}
 
@@ -257,8 +260,8 @@ export class BSPnode_edge {
 			ctx.beginPath()
 		}
 		const cache = new Array<number>(length);// cache lazy infinite precision values
-		for (let corner = 0; corner < pi.length; corner++) {
-			var v = pi[corner]; // one goal was to use explicit code to show the edge cases and allow logs and break points. So this code will stay and be amended by polygon (portal) code. 			
+		for (let corner = 0; corner < sector.length; corner++) {
+			var v = sector[corner]; // one goal was to use explicit code to show the edge cases and allow logs and break points. So this code will stay and be amended by polygon (portal) code. 			
 			if (ctx != null && verbose) {
 				// This is not the inner loop. If I want to remove branches, I need to optimize the compiler to unroll loops and implement those lag by one iteration variables
 				//const v = new Vec2([cxy])
@@ -286,9 +289,9 @@ export class BSPnode_edge {
 			ctx.beginPath()
 		}
 
-		for (let corner = 0; corner < pi.length; corner++) {  // todo: polyon aka portal code
+		for (let corner = 0; corner < sector.length; corner++) {  // todo: polyon aka portal code
 
-			v = pi[corner]
+			v = sector[corner]
 			current = cache[corner] //(JRSICbitfield32 >> (corner*2)) & 3
 			//if (current == 2) current = -1 // 2-complement, aka Shift Arithmethic Right in JRISC and some high level languages
 			if (Math.abs(Math.sign(last) - Math.sign(current)) > 1) { // todo: bug does not work 
@@ -388,7 +391,6 @@ export class Edge_cut {
 // So this is like Horizon_Edge , while the partition is like the Edge_between_vertices
 export class BSPnode extends CanvasObject {
 	ID: number;
-	cut2children: Vertex_OnScreen;
 	constructor(ID: number) {
 		super()
 		this.ID = ID //.vertices.length
@@ -396,6 +398,88 @@ export class BSPnode extends CanvasObject {
 
 	children: (BSPnode | Leaf)[] = new Array<BSPnode>() // 0,1   
 	edge: BSPnode_edge   // real vertices to match mesh and shorten float calc
+
+	decide_edge(node: BSPnode, fillStyle: string, last_edge_of_polygon = false): void { }  // virtual. So I need an interface? Feels weird when even Object in Java has implemented methods
+	decide_face(p: Polygon_in_cameraSpace, cuts?: Edge_cut[]) { }
+}
+
+class CutIntoBorderOfSector {  // Sector means convex polygon like in Doom where the monster live. But I do not call it polygon because it may be invisible. In servers as border and is a generalization of the screen. 
+	// There needs to be a repeatable way to generate those sectors. Or do I use pointers?
+	fromToRefBorders: number //integer
+	// could be a corner because edges belong to a polygon and can even belong to a mesh
+	// 	so both edges share this corner, but do they need to know about each other after insertion?
+	cuts: Vertex_OnScreen  // I just want an port to a graph [x,y]/z  because the context is the key mostly
+	crossProductWithEdge: Vec3   // [2] = z ? Z is not special in a beamtree. 0 is special, so it should be z. But uh, people put z last as do they the denominator
+}
+
+export class BSPnode_perFrame extends BSPnode {
+	// this is about how this.edge was clipped . Edge is immuteable to keep graph short. The edge is not really responsible how the BSP-tree heuristic works and how the z order is
+	cuts_r: [CutIntoBorderOfSector, CutIntoBorderOfSector] = [null, null]
+
+	parent: BSPnode_perFrame
+
+	constructor(ID: number, parent: BSPnode_perFrame = null) {  // I don't need pointer to the tree. That is only a wrapper. No edge there.
+		super(ID)
+		this.parent = parent
+	}
+
+	parents_inOrder: number[] = []
+
+	decide_edge(node: BSPnode, fillStyle: string, last_edge_of_polygon = false): void {
+		// BSOnode_edge has cuts. See old code
+		// edge was cut by parent border and by one other
+		// we need to find the local id of other ( parent is 0 to set a standard)
+		// all edges must be (grand)* parents. So it is a line. We have a distance and a number. But it is not (counter-)clockwise. So it will be incompatible to polygon.
+		// I added parent as parameter. Implementation on JRISC will probably peek the stack
+		// We still need the order to check if this.edge and node.edge can cross inside the sector
+
+		// this is symmetric. Both edges have the same parents and order and know which they cut.
+		// Only in the last step one edge gets a the other as parent and a parents_inOrder list
+		if (node instanceof BSPnode_perFrame) {
+			const n = node.cuts_r.map(c => c.fromToRefBorders)  // dissolve is cheaper than join. Perhaps in JRISC change loading order
+			const t = this.cuts_r.map(c => c.fromToRefBorders)
+			const l = this.parents_inOrder.length
+			n.sort((a, b) => a - b) // should be ensured elsewhere, I guess?
+			t.sort((a, b) => a - b)
+			//modulo complicates stuff, but just start
+			let crossing = false, solved = false, c_fine = 0 // ternary
+			for (let i = 0; i < 2; i++)
+				for (let k = 0; k < 2; k++)
+					if (n[i] == t[k]) {
+						solved = true
+						c_fine[i] = this.cuts_r[0].crossProductWithEdge.innerProduct(node.edge.AsVec3()) // this was my original motivation for infinite precision
+					}
+			if (solved) {
+				crossing = c_fine[0] < c_fine[1]
+			}
+			else {
+				crossing = (n[0] < t[0]) ==  (n[1] < t[1])
+			}
+
+			if (crossing){
+				// Do I actually want to calculate anything here. Ah yeah the cross
+				const cross=this.edge.AsVec3().crossProduct(node.edge.AsVec3())
+				for(let c=0;c<2;c++){
+					const b=new BSPnode_perFrame(node.ID)
+					b.cuts_r[1-c].crossProductWithEdge=cross
+					this.children[c]=b
+					b.decide_edge(node,fillStyle)					
+				}
+			}
+			else{
+				const b=new BSPnode_perFrame(node.ID)   // do I even create something? Reuse code
+				this.children[Math.sign(n[0] - t[0])]=b
+				b.decide_edge(node,fillStyle)
+			}
+		}
+
+	}
+	decide_face(p: Polygon_in_cameraSpace, cuts?: Edge_cut[]) { }
+
+}
+export class BSPnode_perInsert extends BSPnode {
+
+	cut2children: Vertex_OnScreen;
 	cuts: Edge_cut[] = []
 	getEnds(): [Vertex_OnScreen, Vertex_OnScreen] {
 		const r: [Vertex_OnScreen, Vertex_OnScreen] = [null, null]
@@ -424,7 +508,7 @@ export class BSPnode extends CanvasObject {
 
 
 	// chronologically this belongs before decide_face. todo: refactor
-	decide_edge(node: BSPnode, fillStyle: string, last_edge_of_polygon = false): void {//:BSPnode_childref { 
+	decide_edge(node: BSPnode_perInsert, fillStyle: string, last_edge_of_polygon = false): void {//:BSPnode_childref { 
 		const e = node.edge
 		//console.log("ncuts ", node.cuts.map(c => c.c.normalize()).toString(), "this cuts", this.cuts.map(c => c.c.normalize()).toString())
 		// probably I should just reserve memory for Edge_cut from the start on Jaguar
@@ -480,7 +564,7 @@ export class BSPnode extends CanvasObject {
 		for (let s = 0; s < 2; s++) {
 			if (sides.map(si => si == (2 * s) - 1).reduce((p, c) => p || c, false)) { // any points to insert on this side of tree
 				let c = this.children[s]
-				const n = new BSPnode(node.ID)
+				const n = new BSPnode_perInsert(node.ID)
 				n.edge = e  // why no cut at this point? The "sides" code depends on it. The face wants to reuse it
 				n.cuts = node.cuts.slice() // temporarly for insert.
 
@@ -761,7 +845,7 @@ export class BSPnode extends CanvasObject {
 									var cut_1 = kv
 								}
 							}
-						}else { // no idea what I did here
+						} else { // no idea what I did here
 							return // give up
 							// todo: store two edges on each cut. Or at least with direction.
 							// todo. Cache in tree. Not the actuall vertex, just border numbers
@@ -867,7 +951,7 @@ export class BSPnode extends CanvasObject {
 					child.fillStyle = [p.fillStyle]
 					this.children[side] = child
 				} else {
-					if (child instanceof BSPnode) {
+					if (child instanceof BSPnode_perInsert) {
 						child.decide_face(p, children[side]) //, childree[side]) // todo: distribute egs  also
 					} else {
 						if (child instanceof Leaf) { // child undefined
@@ -1013,7 +1097,7 @@ export class BSPnode extends CanvasObject {
 		//  elongation can "upgrade" a vertex to border -- an edge to horizon
 	}
 	// before insertion?
-	resolve_occlusion_order(split_from_3d_cut: number[], grandchildren: BSPnode[]) { }
+	resolve_occlusion_order(split_from_3d_cut: number[], grandchildren: BSPnode_perInsert[]) { }
 }
 
 export class Leaf {
@@ -1068,7 +1152,7 @@ export class Leaf {
 
 export class BSPtree implements CanvasObject {
 	// constructor  
-	root: BSPnode // I come to the conclusion that basically a tree with zero nodes is valid, for example after culling
+	root: BSPnode_perInsert // I come to the conclusion that basically a tree with zero nodes is valid, for example after culling
 	// todo: don't insert duplicated vertices or edges.
 	// fileformat => binary sets up the links
 	// mark object on insertion. Dedicated property? Indes into polygyon? chache.length>=0 ?
@@ -1144,7 +1228,7 @@ export class BSPtree implements CanvasObject {
 		// start with one node
 		// punch through seams (on both sides because I don't want sort overhead)
 		let y_max: number // keep track of the y when the next vertex will be passed
-		let invaded: BSPnode[][]  // [left, right],[distance]
+		let invaded: BSPnode_perInsert[][]  // [left, right],[distance]
 
 		let self = new PartialFilled(0)  // or do I mark nodes as filled in some other way? I could define the toggle to start with state=filled and then switch beyond y_max
 
@@ -1158,7 +1242,7 @@ export class BSPtree implements CanvasObject {
 		ne.ctx = ctx
 		for (let i = 0; i < 2; i++) { // lines in front of faces
 			ne.face_or_edge = i == 1
-			const stack = new Array<BSPnode>
+			const stack = new Array<BSPnode_perInsert>
 			ne.DFS(n, null)  // null means: No portal, yet. Use screen borders . Their size is injected as static/singleton upfront (before the frame)
 			//stack.push(n) // well, a manual stack is combersome and error prone
 
@@ -1171,13 +1255,13 @@ export class BSPtree implements CanvasObject {
 	}
 }
 
-class PartialFilled extends BSPnode {
+class PartialFilled extends BSPnode_perInsert {
 	// tuned=8 ; Here I can use a fixed size because flood fill can just fall back to sector fill
 	flips: number[]  // y where state flips from not filled to filled ( and back )
 }
 
 // Todo after unit tests are written -> pull in edge construction, integrate in constructor
-export function Node_CreateFromVerts(verts: [Vertex_OnScreen, Vertex_OnScreen], n: BSPnode_edge, ID: number): BSPnode {
+export function Node_CreateFromVerts(verts: [Vertex_OnScreen, Vertex_OnScreen], n: BSPnode_edge, ID: number): BSPnode_perInsert {
 	const delta = verts[0].xy.scalarProduct(verts[1].z).subtract01(verts[1].xy.scalarProduct(verts[0].z)).v; // calculation with fractions. No division. Looks random. Should this the duty of the compiler?
 
 	// n.xy = new Vec2([[delta[1], -delta[0]]])  // wedge
@@ -1202,7 +1286,7 @@ export function Node_CreateFromVerts(verts: [Vertex_OnScreen, Vertex_OnScreen], 
 	// first the * v.z is compensated by / v.z , then the - does not need to be compensated here. Is it weird that I compensate at application?
 	// mesh insertion needs references to vertices
 	n.verts = verts; // Todo: check that this is readonly ! 
-	const b = new BSPnode(ID);
+	const b = new BSPnode_perInsert(ID);
 	b.edge = n;
 	return b;
 }
