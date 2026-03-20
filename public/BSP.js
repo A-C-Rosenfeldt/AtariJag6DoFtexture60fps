@@ -685,7 +685,7 @@ export class BSPnode extends CanvasObject {
                                 }
                             }
                         }
-                        {
+                        else { // no idea what I did here
                             return; // give up
                             // todo: store two edges on each cut. Or at least with direction.
                             // todo. Cache in tree. Not the actuall vertex, just border numbers

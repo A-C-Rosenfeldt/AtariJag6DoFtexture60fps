@@ -63,6 +63,20 @@ On the other hand it would be cool if vehicles -- even if we cannot enter them -
 // I need vec3 and only two products
 // I don't want external dependencies of fat because I later need to compile to JRISC
 
+
+// Source - https://stackoverflow.com/a/57913509
+// Posted by jcalz, modified by community. See post 'Timeline' for change history
+// Retrieved 2026-03-20, License - CC BY-SA 4.0
+
+// I need this for cuts, but not vectors, but somehow TypeScript Compiler thinks I do?
+interface Array<T> {
+  map_t<U>(
+	callbackfn: (value: T, index: number, array: T[]) => U,
+	thisArg?: any
+  ): { [K in keyof this]: U };
+}
+
+
 export class Vec{ // looks like I need 2 and 3 dimensions to show off this (adaptive) linear approximation trick for textures after persepective projection 
 	v:number[]
 	innerProduct(o:Vec):number{
@@ -169,7 +183,7 @@ export class Vec2_den extends Vec2{
 class Frac{
 	nom:number[]
 	compare(o:Frac):boolean{
-		return this.nom[0]*o[1]<o[0]*this.nom[1]
+		return this.nom[0]*o.nom[1]<o.nom[0]*this.nom[1]
 	}
 	get_sign():boolean{
 		return this.nom[0]<0 == this.nom[1]<0 
@@ -399,7 +413,7 @@ export class Matrix_Rotation extends Matrix{
 		let res=new Vec([[0,0,0]])
 		for(let k=0;k<this.nominator.length;k++){
 			for(let i=0;i<this.nominator[k].v.length;i++){
-				res[i]+=this.nominator[k].v[i] * v[k] //.innerProductM(trans,i)  // base would want vector add, while JRISC wants inner product
+				res.v[i]+=this.nominator[k].v[i] * v.v[k] //.innerProductM(trans,i)  // base would want vector add, while JRISC wants inner product
 			}
 		}
 		return res
@@ -471,8 +485,8 @@ class Z_order{
 
 		// normal.inner(l*beam ) = normal.inner( anchor ) 
 		let l:Frac
-		l[0]=normal.innerProduct( anchor )
-		l[1]=normal.innerProduct( beam)
+		l.nom[0]=normal.innerProduct( anchor )
+		l.nom[1]=normal.innerProduct( beam)
 
 		return l
 	}
@@ -604,7 +618,7 @@ class Camera extends Player{ // camera
 
 	// Todo: Find my text about this. I only use rotation matrix to be able to debug this
 	// BeamTree language. Precision is no problem
-	edge_clip(origin){
+	edge_clip(){//origin
 		// planes form a BSP, which breaks symmmetry
 		// we go down the BSP. As long as both vertices fall into the same child, no problem
 		// and edge is split each time we go down a node

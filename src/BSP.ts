@@ -22,6 +22,38 @@ I kinda got rid of the idea that there is synergy between perspective correction
 I do BSP before portals because portals are boring and BSP only needs two triangles ( and for portal: one portal and one triangle is quite artificial).
 */
 
+const tes3=new Array<number>(2)
+const tes4=tes3.map(x=>2*x)
+// Source - https://stackoverflow.com/a/35079472
+// Posted by Fenton
+// Retrieved 2026-03-20, License - CC BY-SA 3.0
+
+declare global {
+    interface Array<T> {
+        popFromTop(): T;
+
+// Source - https://stackoverflow.com/a/57913509
+// Posted by jcalz, modified by community. See post 'Timeline' for change history
+// Retrieved 2026-03-20, License - CC BY-SA 4.0
+
+
+  map<U>(
+    callbackfn: (value: T, index: number, array: T[]) => U,
+    thisArg?: any
+  ): { [K in keyof this]: U };
+
+
+//map<U>(callbackfn: (value: T, index: number, array: T[]) => U, thisArg?: any): { [K in keyof this]: U } ; //U[];
+
+
+    }
+}
+const tes5=tes3.popFromTop()
+
+				// const test:Acme:null
+				// const tes2= (n:number, a:Acme) => 4
+
+//import {Acme} from "./BSP.d.ts"
 import { assert } from "chai";
 import { Vec, Vec2, Vec3 } from "./clipping.js"
 //import { Vertex_OnScreen } from "./Item"
@@ -30,6 +62,8 @@ class CanvasObject {
 	static screen = [640, 400];
 	toCanvas(ctx: CanvasRenderingContext2D) { }   // virtual  todo Placeholder
 }
+
+
 
 // OOD of polygon shader got a bit messy in rasterizer.ts. Clean version 2025-12-05
 // clearly the normalized data looks like this
@@ -113,20 +147,34 @@ class Vertex_decision {
 	d: number
 }
 
-export class Vertex_OnScreen implements CanvasObject {
+export class Vertex_OnScreen extends Vec3 implements CanvasObject {
 	cache_edge_decide: Vertex_decision[] = []
 	cache_read_pointer = 0
-	cache_ed: BSPnode_edge = null  // undefined would crash the if. is null implicit?
+	cache_ed: BSPnode_edge | null = null  // undefined would crash the if. is null implicit?
 	constructor() {
-		this.z = 1
+		super([[0, 0, 1]])  // something about strict TypeScript
+		this.z = 1  // redundant
 	}
 	toCanvas(ctx: CanvasRenderingContext2D, selected = false): void {
 		const size = selected ? 3 : 1
 		const full = 1 + 2 * size
 		ctx.fillRect(...this.normalize(size - debugshift), full, full)
 	}
-	xy: Vec2 // co-ordinate
-	z: number
+	//xy: Vec2 // co-ordinate
+	//z: number
+	get xy(): Vec2 {
+		return new Vec2([this.v.slice(0, 2)])  // performance does not matter, new code uses Vec3 aka beam tree
+	}
+	set xy(value: Vec2) {
+		this.v.splice(0, 2, ...(value.v));
+	}
+
+	get z(): number {
+		return this.v[2]  // performance does not matter, new code uses Vec3 aka beam tree
+	}
+	set z(value: number) {
+		this.v[2] = value
+	}
 
 	//const coordinates = (id: number) => [id, id] as const;
 	// const coordinates: (id: number) => [number, number]
@@ -375,10 +423,15 @@ export class BSPnode_edge {
 	cache_read_pointer = 0  // cache is for lazy precision
 }
 
-export class Edge_cut {
+class cut_base {
+	c: any
+}
+
+export class Edge_cut extends cut_base {
 	e: BSPnode_edge = null
 	c: Vertex_OnScreen
 	constructor(v: Vertex_OnScreen) { // So, I learned that typeScript does not really support the old JS way of constructing objects (because it cannot interfere the interface? I only have properties)
+		super()
 		this.c = v
 	}
 }
@@ -387,6 +440,18 @@ export class Edge_cut {
 // 	c: Vertex_OnScreen
 // 	e: BSPnode_edge
 // }
+
+// Box is the example here. Not like the implicit Box in C# for primitiv / value types.
+// type Box<T> = { value: T };
+// type Boxified<T> = { [P in keyof T]: Box<T[P]> };
+
+
+// function tupelMap<T,U> (callback: (value: T, index: number, array: T[]) => U,
+// 		tupel:any ): { [K in keyof T]: U } {
+// 			return 
+// 		}
+
+//type T1 = Boxified<string[]>;  // Box<string>[]
 
 // So this is like Horizon_Edge , while the partition is like the Edge_between_vertices
 export class BSPnode extends CanvasObject {
@@ -401,20 +466,32 @@ export class BSPnode extends CanvasObject {
 
 	decide_edge(node: BSPnode, fillStyle: string, last_edge_of_polygon = false): void { }  // virtual. So I need an interface? Feels weird when even Object in Java has implemented methods
 	decide_face(p: Polygon_in_cameraSpace, cuts?: Edge_cut[]) { }
+
+	//cuts: Boxified<[cut_base, cut_base]>
+	cuts: [cut_base, cut_base]
 }
 
-class CutIntoBorderOfSector {  // Sector means convex polygon like in Doom where the monster live. But I do not call it polygon because it may be invisible. In servers as border and is a generalization of the screen. 
+
+
+class CutIntoBorderOfSector extends cut_base {  // Sector means convex polygon like in Doom where the monster live. But I do not call it polygon because it may be invisible. In servers as border and is a generalization of the screen. 
 	// There needs to be a repeatable way to generate those sectors. Or do I use pointers?
 	fromToRefBorders: number //integer
 	// could be a corner because edges belong to a polygon and can even belong to a mesh
 	// 	so both edges share this corner, but do they need to know about each other after insertion?
-	cuts: Vertex_OnScreen  // I just want an port to a graph [x,y]/z  because the context is the key mostly
-	crossProductWithEdge: Vec3   // [2] = z ? Z is not special in a beamtree. 0 is special, so it should be z. But uh, people put z last as do they the denominator
+	//cuts: Vertex_OnScreen  // I just want an port to a graph [x,y]/z  because the context is the key mostly
+	//crossProductWithEdge
+	c: Vec3   // [2] = z ? Z is not special in a beamtree. 0 is special, so it should be z. But uh, people put z last as do they the denominator
 }
+
+//dupe
+
 
 export class BSPnode_perFrame extends BSPnode {
 	// this is about how this.edge was clipped . Edge is immuteable to keep graph short. The edge is not really responsible how the BSP-tree heuristic works and how the z order is
-	cuts_r: [CutIntoBorderOfSector, CutIntoBorderOfSector] = [null, null]
+	//cuts: Boxified<[CutIntoBorderOfSector, CutIntoBorderOfSector]> = [null, null] // todo: decide_edge becomes a constructor? How would this work in a factory? Builder pattern? Push to a list(capacity=2) (and hide the backing array in code?)
+
+	cuts: [CutIntoBorderOfSector, CutIntoBorderOfSector] = [null, null] // todo: decide_edge becomes a constructor? How would this work in a factory? Builder pattern? Push to a list(capacity=2) (and hide the backing array in code?)
+
 
 	parent: BSPnode_perFrame
 
@@ -423,7 +500,16 @@ export class BSPnode_perFrame extends BSPnode {
 		this.parent = parent
 	}
 
-	parents_inOrder: number[] = []
+	parents_inOrder: number[] = []  // rotation => ancestry 
+
+	// mapper_T<T, U>(
+	// 	callbackfn: (value: T, index: number, array: T[]) => T,
+	// 	tupel:U
+	// ): { [K in keyof U]: T } { 
+	// 	tupel.keys
+		
+	// 	return 
+	// }
 
 	decide_edge(node: BSPnode, fillStyle: string, last_edge_of_polygon = false): void {
 		// BSOnode_edge has cuts. See old code
@@ -436,51 +522,143 @@ export class BSPnode_perFrame extends BSPnode {
 		// this is symmetric. Both edges have the same parents and order and know which they cut.
 		// Only in the last step one edge gets a the other as parent and a parents_inOrder list
 		if (node instanceof BSPnode_perFrame) {
-			const n = node.cuts_r.map(c => c.fromToRefBorders)  // dissolve is cheaper than join. Perhaps in JRISC change loading order
-			const t = this.cuts_r.map(c => c.fromToRefBorders)
+			const n = node.cuts.map(c => c.fromToRefBorders)  // dissolve is cheaper than join. Perhaps in JRISC change loading order
+			const t = this.cuts.map(c => c.fromToRefBorders)
 			const l = this.parents_inOrder.length
 			n.sort((a, b) => a - b) // should be ensured elsewhere, I guess?
 			t.sort((a, b) => a - b)
 			//modulo complicates stuff, but just start
-			let crossing = false, solved = false, c_fine = 0 // ternary
+			let crossing = false, solved = false, c_fine = [0, 0], inOrderCount = l, side = 1 // ternary
 			for (let i = 0; i < 2; i++)
 				for (let k = 0; k < 2; k++)
 					if (n[i] == t[k]) {
-						solved = true
-						c_fine[i] = this.cuts_r[0].crossProductWithEdge.innerProduct(node.edge.AsVec3()) // this was my original motivation for infinite precision
-					}
-			if (solved) {
-				crossing = c_fine[0] < c_fine[1]
-			}
-			else {
-				crossing = (n[0] < t[0]) ==  (n[1] < t[1])
-			}
+						//solved = true
+						c_fine[k] = this.cuts[0].c.innerProduct(node.edge.AsVec3()) // this was my original motivation for infinite precision						
+						if (c_fine[k] > 0) n[i] += 0.5 //todo: sign depends on  // break tie . t[0]!=t[1] , hence we will not revisit this n[i] anyways
 
-			if (crossing){
-				// Do I actually want to calculate anything here. Ah yeah the cross
-				const cross=this.edge.AsVec3().crossProduct(node.edge.AsVec3())
-				for(let c=0;c<2;c++){
-					const b=new BSPnode_perFrame(node.ID)
-					b.cuts_r[1-c].crossProductWithEdge=cross
-					this.children[c]=b
-					b.decide_edge(node,fillStyle)					
+					}
+			// if (solved) {
+			// 	crossing = (c_fine[0] < 0) == (c_fine[1] < 0) // rotate along the border. I need to look from PoV of this . See below!
+			// 	side = 0; if (!crossing) { side = c_fine[1] } // Wrap around cannot happen. So things should be simple, right? Going with the rotaion flow. Todo: Check that inner product above is correct!
+			// } else 
+			{
+				// cases ?
+				// < makes no sense on a circle, why does the composition?
+				// code like the slice (todo: make it a class? Use tests or algebra (in comments?) to show why this can be solved in a more elegant way?)
+				// look from this, "build" a new node  ( node is the adaptor of the edge into the tree)
+				// test wedge convention: rotation order in math. I don't even care if the screen flips this. I am missing Vec3 here (todo)
+				// wedge is : this.v[0]*o.v[1]-this.v[1]*o.v[0]
+				// this=this . So t=[1 0] (lying) . a vertex above o=[0 1] => left-hand side aka math-rotation. wedge = 1
+				crossing = false
+
+				if (t[1] > t[0]) {
+					side = -1
+					t.reverse()
+				}
+
+				{ // kein wrap around => in flow , easy
+					if (t[0] < n[0] && n[1] < t[1]) { // inside
+						side = -side   // I cannot use -1 = false because the negative flag is defined the other way around
+					} else {  // outside
+						if (t[0] > n[0] && n[1] > t[1]) { // wrap around
+							//side = +1
+						} else {
+							if ((t[0] > n[0]) == (n[1] > t[1])) {
+								// top
+								// bottom								
+							} else {
+								crossing = true
+								side = 0 // do I need crossing? Or only locally for fine => coarse
+							}
+						}
+					}
+				}
+				{				//var side= n[0] < t[0]  // wedge convention
+					// const a0 = n[0] < t[0];
+					// const a1 = n[1] < t[1];
+					// // this is wrong for t[0]<t[1] < n[0]<n[1]
+					// const crossing2 = (a0) == (a1)  // correct no matter of orientation of vectors. I want tight integrate with side. This here is probably correct. Test?
+					// if (crossing != crossing2) console.log("edge crossing is wrong")
+					// if (!crossing) {
+					// 	const side2 =a0 // we know a0 != a1 . One of them is the side?
+					// 	// correct for 
+					// }
 				}
 			}
-			else{
-				const b=new BSPnode_perFrame(node.ID)   // do I even create something? Reuse code
-				this.children[Math.sign(n[0] - t[0])]=b
-				b.decide_edge(node,fillStyle)
-			}
-		}
 
+			if (crossing) { // == side!=0
+				// Do I actually want to calculate anything here. Ah yeah the cross_product which actually is a vector pointing along the ray . It is a (not primary) vertex on screen.
+				var cross = this.edge.AsVec3().crossProduct(node.edge.AsVec3())  // so there is one cross object..
+				// ah not, would be a list // ..referenced by both edges
+			}
+			for (let s = 0; s < 2; s++) {
+				if ((Math.abs(2 * s - 1) - side) > 1) continue
+
+				const bn = new BSPnode_perFrame(node.ID)
+				bn.edge = node.edge;
+				// https://github.com/microsoft/TypeScript/pull/26063
+
+
+
+				bn.cuts = node.cuts.map(nc => {
+					const n = new CutIntoBorderOfSector(); n.c = nc.c;
+
+					n.fromToRefBorders = ((nc.fromToRefBorders - t[s])) //+inOrderCount)%inOrderCount) // rotate to be relative to new parent
+					// depending on side, the fraction has a different effect
+					if (n.fromToRefBorders > 0) {  // 0 means in rotation order: n before this as checked by vector product
+						if (n.fromToRefBorders == 0.5) { n.fromToRefBorders = 1 } // clearly we need to persist integers
+						else {
+							n.fromToRefBorders++
+						}
+					}
+					if (n.fromToRefBorders < 0) console.warn("since we already decided on a side, border by rotation order must be >=0")
+					//const b=new Box<CutIntoBorderOfSector>();
+					return n
+				})
+
+				if (cross) {
+					bn.cuts[1 - s].fromToRefBorders = 0
+					bn.cuts[1 - s].c = cross
+				}
+
+				//Object.assign(bn.cuts, node.cuts)
+				//bn.cuts[1 - s].c = cross  // this shows why cuts needs to be a tupel with nullable elements. List does not work
+
+				let c = this.children[s]
+				if (c == null || (c instanceof Leaf)) {
+					const t = this.cuts.map(c => c.fromToRefBorders) // duplicated code; mainly as a reminder
+					// parents in order lacks behind. We pull this , not the new node. But we apply side!
+					if (s == 1) t.reverse()
+					bn.parents_inOrder = t[0] < t[1] ? this.parents_inOrder.slice(t[0], t[1] + 1) : this.parents_inOrder.slice(t[0] + 1).concat(this.parents_inOrder.slice(0, t[1])) // wrap around
+					// console.log("try to insert on side",s)
+
+					bn.parent = this
+					this.children[s] = bn  // I don't want too many instanceOf in my code.
+				} else {
+					c.decide_edge(bn, fillStyle)
+				}
+			}
+			// } else {
+			// 	// todo : in move into  if block  inside the for loop above
+			// 	const b = new BSPnode_perFrame(node.ID)   // do I even create something? Reuse code
+			// 	this.children[Math.sign(n[0] - t[0])] = b
+			// 	// b has a different order of parents. I need to transform
+			// 	node.cuts.forEach(c => { c.fromToRefBorders = c.fromToRefBorders }) // todo
+			// 	b.decide_edge(node, fillStyle)
+			// }
+		}
 	}
+
 	decide_face(p: Polygon_in_cameraSpace, cuts?: Edge_cut[]) { }
 
 }
 export class BSPnode_perInsert extends BSPnode {
 
 	cut2children: Vertex_OnScreen;
-	cuts: Edge_cut[] = []
+	//cuts: Edge_cut[] = []
+	//[CutIntoBorderOfSector, CutIntoBorderOfSector] 
+	cuts: [Edge_cut, Edge_cut] = [null, null]
+
 	getEnds(): [Vertex_OnScreen, Vertex_OnScreen] {
 		const r: [Vertex_OnScreen, Vertex_OnScreen] = [null, null]
 		var c: Edge_cut
@@ -566,7 +744,8 @@ export class BSPnode_perInsert extends BSPnode {
 				let c = this.children[s]
 				const n = new BSPnode_perInsert(node.ID)
 				n.edge = e  // why no cut at this point? The "sides" code depends on it. The face wants to reuse it
-				n.cuts = node.cuts.slice() // temporarly for insert.
+				//n.cuts = node.cuts.slice() // temporarly for insert.
+				const res = Object.assign(n.cuts, node.cuts); // nessary for test .. new code has records. I wrote the tests for array. Now test old and new code!
 
 
 				if (typeof cut != 'undefined') {  // My explicit way of doing things will add "exception" branches into JRISC. So usually they only cost one cycle, +1 if I cannot fill the slot before with some copy
@@ -871,7 +1050,7 @@ export class BSPnode_perInsert extends BSPnode {
 							for (let c1 = 0; c1 < 2; c1++) {
 								if (retry > 0) {
 									console.log("c1", c1, last > c ? 1 - c1 : c1)
-									const dummy = null
+									const dummy = 0 // for breakpoint
 
 								}
 								//?? todo: remove the order
@@ -1137,14 +1316,14 @@ export class Leaf {
 		//		/^[+-]?\d+(\.\d+)?$/		
 		const m = layer.match(/^rgba\s*\(\s*(\d+)\s*,\s*(\d+)\s*,\s*(\d+)\s*,\s*[+-]?\d+(\.\d+)?\s*\)$/i);
 		if (m) {
-			sum = m.slice(1).map(t => parseFloat(t));
+			var sum = m.slice(1).map(t => parseFloat(t));
 		} // End stack overflow
 
-		else {
-			var items = this.fillStyle[0].match(/[0-9a-z]{2}/gi);
-			//.map(s => s.match(/[0-9a-z]{2}/gi).map(t => parseInt(t, 16)))
-			var sum = items.map(t => parseInt(t, 16));
-		}
+		// else { // this seems to be incompatible regarding types
+		// 	var items = this.fillStyle[0].match(/[0-9a-z]{2}/gi);
+		// 	//.map(s => s.match(/[0-9a-z]{2}/gi).map(t => parseInt(t, 16)))
+		// 	var sum = items.map(t => parseInt(t, 16));
+		// }
 		return sum;
 	}
 }

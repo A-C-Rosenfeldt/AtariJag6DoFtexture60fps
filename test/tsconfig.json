@@ -2,5 +2,6 @@
     "compilerOptions": {
       "target": "ES2015",
       "module": "commonjs"
+      // "eslint":"strict-boolean-expressions"
     }
 }

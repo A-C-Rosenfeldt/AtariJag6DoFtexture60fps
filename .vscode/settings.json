@@ -2,4 +2,12 @@
 	"mochaExplorer.configFile": ".mocharc.js",
 	"mochaExplorer.mochaPath": "node_modules/mocha",
 	"mochaExplorer.logpanel":true,
+
+// Source - https://stackoverflow.com/q/45093510
+// Posted by John Landon, modified by community. See post 'Timeline' for change history
+// Retrieved 2026-03-06, License - CC BY-SA 3.0
+
+
+  "eslint.options": { "configFile": "eslint.config.js" }
 }
+
