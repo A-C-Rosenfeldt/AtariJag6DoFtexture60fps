@@ -22,36 +22,36 @@ I kinda got rid of the idea that there is synergy between perspective correction
 I do BSP before portals because portals are boring and BSP only needs two triangles ( and for portal: one portal and one triangle is quite artificial).
 */
 
-const tes3=new Array<number>(2)
-const tes4=tes3.map(x=>2*x)
+const tes3 = new Array<number>(2)
+const tes4 = tes3.map(x => 2 * x)
 // Source - https://stackoverflow.com/a/35079472
 // Posted by Fenton
 // Retrieved 2026-03-20, License - CC BY-SA 3.0
 
 declare global {
-    interface Array<T> {
-        popFromTop(): T;
+	interface Array<T> {
+		popFromTop(): T;
 
-// Source - https://stackoverflow.com/a/57913509
-// Posted by jcalz, modified by community. See post 'Timeline' for change history
-// Retrieved 2026-03-20, License - CC BY-SA 4.0
-
-
-  map<U>(
-    callbackfn: (value: T, index: number, array: T[]) => U,
-    thisArg?: any
-  ): { [K in keyof this]: U };
+		// Source - https://stackoverflow.com/a/57913509
+		// Posted by jcalz, modified by community. See post 'Timeline' for change history
+		// Retrieved 2026-03-20, License - CC BY-SA 4.0
 
 
-//map<U>(callbackfn: (value: T, index: number, array: T[]) => U, thisArg?: any): { [K in keyof this]: U } ; //U[];
+		map<U>(
+			callbackfn: (value: T, index: number, array: T[]) => U,
+			thisArg?: any
+		): { [K in keyof this]: U };
 
 
-    }
+		//map<U>(callbackfn: (value: T, index: number, array: T[]) => U, thisArg?: any): { [K in keyof this]: U } ; //U[];
+
+
+	}
 }
-const tes5=tes3.popFromTop()
+const tes5 = tes3.popFromTop()
 
-				// const test:Acme:null
-				// const tes2= (n:number, a:Acme) => 4
+// const test:Acme:null
+// const tes2= (n:number, a:Acme) => 4
 
 //import {Acme} from "./BSP.d.ts"
 import { assert } from "chai";
@@ -481,6 +481,7 @@ class CutIntoBorderOfSector extends cut_base {  // Sector means convex polygon l
 	//cuts: Vertex_OnScreen  // I just want an port to a graph [x,y]/z  because the context is the key mostly
 	//crossProductWithEdge
 	c: Vec3   // [2] = z ? Z is not special in a beamtree. 0 is special, so it should be z. But uh, people put z last as do they the denominator
+	other: BSPnode_perFrame;
 }
 
 //dupe
@@ -500,17 +501,20 @@ export class BSPnode_perFrame extends BSPnode {
 		this.parent = parent
 	}
 
-	parents_inOrder: number[] = []  // rotation => ancestry 
+	parents_inOrder: number[] = []  // rotation => ancestry . ToDo: allow null for open segments to get rid of viewing pyramide
 
 	// mapper_T<T, U>(
 	// 	callbackfn: (value: T, index: number, array: T[]) => T,
 	// 	tupel:U
 	// ): { [K in keyof U]: T } { 
 	// 	tupel.keys
-		
+
 	// 	return 
 	// }
 
+	// todo: wrap into call which adds the view pyramid
+	//        or change code to revert back to dangling?
+	// Makes no sense. The viewing frustum is no problem when I use a cursor to insert multiple polygons under one node
 	decide_edge(node: BSPnode, fillStyle: string, last_edge_of_polygon = false): void {
 		// BSOnode_edge has cuts. See old code
 		// edge was cut by parent border and by one other
@@ -522,77 +526,113 @@ export class BSPnode_perFrame extends BSPnode {
 		// this is symmetric. Both edges have the same parents and order and know which they cut.
 		// Only in the last step one edge gets a the other as parent and a parents_inOrder list
 		if (node instanceof BSPnode_perFrame) {
-			const n = node.cuts.map(c => c.fromToRefBorders)  // dissolve is cheaper than join. Perhaps in JRISC change loading order
-			const t = this.cuts.map(c => c.fromToRefBorders)
+			const t = this.cuts.map(c => c?.fromToRefBorders)  // first edge has no cuts. Second edge only one. Follwing can have two or one			
+			// if (t[0]==0) to mix in open segements, I still need the order.: 0 , 1     .  side == children side ? 2:-1  .
 			const l = this.parents_inOrder.length
-			n.sort((a, b) => a - b) // should be ensured elsewhere, I guess?
-			t.sort((a, b) => a - b)
-			//modulo complicates stuff, but just start
-			let crossing = false, solved = false, c_fine = [0, 0], inOrderCount = l, side = 1 // ternary
+
+			// When vertex_onscreen then side => c.fromToRefBorder
+			const sides = [0, 0]
+			let sc = 0, crossing = false, side = 1 // ternary
 			for (let i = 0; i < 2; i++)
-				for (let k = 0; k < 2; k++)
-					if (n[i] == t[k]) {
-						//solved = true
-						c_fine[k] = this.cuts[0].c.innerProduct(node.edge.AsVec3()) // this was my original motivation for infinite precision						
-						if (c_fine[k] > 0) n[i] += 0.5 //todo: sign depends on  // break tie . t[0]!=t[1] , hence we will not revisit this n[i] anyways
-
-					}
-			// if (solved) {
-			// 	crossing = (c_fine[0] < 0) == (c_fine[1] < 0) // rotate along the border. I need to look from PoV of this . See below!
-			// 	side = 0; if (!crossing) { side = c_fine[1] } // Wrap around cannot happen. So things should be simple, right? Going with the rotaion flow. Todo: Check that inner product above is correct!
-			// } else 
-			{
-				// cases ?
-				// < makes no sense on a circle, why does the composition?
-				// code like the slice (todo: make it a class? Use tests or algebra (in comments?) to show why this can be solved in a more elegant way?)
-				// look from this, "build" a new node  ( node is the adaptor of the edge into the tree)
-				// test wedge convention: rotation order in math. I don't even care if the screen flips this. I am missing Vec3 here (todo)
-				// wedge is : this.v[0]*o.v[1]-this.v[1]*o.v[0]
-				// this=this . So t=[1 0] (lying) . a vertex above o=[0 1] => left-hand side aka math-rotation. wedge = 1
-				crossing = false
-
-				if (t[1] > t[0]) {
-					side = -1
-					t.reverse()
+				if (node.cuts[i] == null) {  // todo i , I cached these values per insert. Now with per-frame:  Where? Key?
+					sides[i] = this.edge.AsVec3().innerProduct(node.cuts[0].c)   // beam tree version of "decide"
+					sc++
+					// this needs to have cuts in order to form the tree . Todo:type
+					//node.cuts[i].fromToRefBorders=t[1]+(Math.abs(side)/2+l)%l   // same trick as crossing in same border segment
 				}
+			switch (sc) {
+				case 2:
+					if ((sides[0] > 0) == (sides[1] > 0)) side = sides[0]; else {
+						side = 0; crossing = true
+					}
+					break;
+				case 1:
 
-				{ // kein wrap around => in flow , easy
-					if (t[0] < n[0] && n[1] < t[1]) { // inside
-						side = -side   // I cannot use -1 = false because the negative flag is defined the other way around
-					} else {  // outside
-						if (t[0] > n[0] && n[1] > t[1]) { // wrap around
-							//side = +1
+
+
+			}
+
+			if (sc < 2) {
+				const n = node.cuts.map(c => c?.fromToRefBorders)  // dissolve is cheaper than join. Perhaps in JRISC change loading order
+				n.sort((a, b) => a - b) // should be ensured elsewhere, I guess?
+				t.sort((a, b) => a - b)
+				//modulo complicates stuff, but just start
+				let solved = false, c_fine = [0, 0], inOrderCount = l
+				for (let i = 0; i < 2; i++)
+					if (n[i] != null) for (let k = 0; k < 2; k++)
+						if (n[i] == t[k]) {
+							// todo: catch real vertices (shared in a mesh)
+							//solved = true
+							c_fine[k] = this.cuts[0].c.innerProduct(node.edge.AsVec3()) // this was my original motivation for infinite precision						
+							if (c_fine[k] > 0) n[i] += 0.5 //todo: sign depends on  // break tie . t[0]!=t[1] , hence we will not revisit this n[i] anyways
+
+						}
+				// if (solved) {
+				// 	crossing = (c_fine[0] < 0) == (c_fine[1] < 0) // rotate along the border. I need to look from PoV of this . See below!
+				// 	side = 0; if (!crossing) { side = c_fine[1] } // Wrap around cannot happen. So things should be simple, right? Going with the rotaion flow. Todo: Check that inner product above is correct!
+				// } else 
+				{
+					// cases ?
+					// < makes no sense on a circle, why does the composition?
+					// code like the slice (todo: make it a class? Use tests or algebra (in comments?) to show why this can be solved in a more elegant way?)
+					// look from this, "build" a new node  ( node is the adaptor of the edge into the tree)
+					// test wedge convention: rotation order in math. I don't even care if the screen flips this. I am missing Vec3 here (todo)
+					// wedge is : this.v[0]*o.v[1]-this.v[1]*o.v[0]
+					// this=this . So t=[1 0] (lying) . a vertex above o=[0 1] => left-hand side aka math-rotation. wedge = 1
+					crossing = false
+
+					if (t[1] > t[0]) {
+						side = -1
+						t.reverse()
+					}
+
+					if (sc == 1) {
+						if (t[0] < n[0] && n[0] < t[1]) { // inside
+							crossing = sides[1] == side
 						} else {
-							if ((t[0] > n[0]) == (n[1] > t[1])) {
-								// top
-								// bottom								
+							crossing = sides[1] != side
+						}
+						side = crossing ? 0 : sides[1]
+					}
+					{ // kein wrap around => in flow , easy
+						if (t[0] < n[0] && n[1] < t[1]) { // inside
+							side = -side   // I cannot use -1 = false because the negative flag is defined the other way around
+						} else {  // outside
+							if (t[0] > n[0] && n[1] > t[1]) { // wrap around
+								//side = +1
 							} else {
-								crossing = true
-								side = 0 // do I need crossing? Or only locally for fine => coarse
+								if ((t[0] > n[0]) == (n[1] > t[1])) {
+									// top
+									// bottom								
+								} else {
+									crossing = true
+									side = 0 // do I need crossing? Or only locally for fine => coarse
+								}
 							}
 						}
 					}
+					{				//var side= n[0] < t[0]  // wedge convention
+						// const a0 = n[0] < t[0];
+						// const a1 = n[1] < t[1];
+						// // this is wrong for t[0]<t[1] < n[0]<n[1]
+						// const crossing2 = (a0) == (a1)  // correct no matter of orientation of vectors. I want tight integrate with side. This here is probably correct. Test?
+						// if (crossing != crossing2) console.log("edge crossing is wrong")
+						// if (!crossing) {
+						// 	const side2 =a0 // we know a0 != a1 . One of them is the side?
+						// 	// correct for 
+						// }
+					}
 				}
-				{				//var side= n[0] < t[0]  // wedge convention
-					// const a0 = n[0] < t[0];
-					// const a1 = n[1] < t[1];
-					// // this is wrong for t[0]<t[1] < n[0]<n[1]
-					// const crossing2 = (a0) == (a1)  // correct no matter of orientation of vectors. I want tight integrate with side. This here is probably correct. Test?
-					// if (crossing != crossing2) console.log("edge crossing is wrong")
-					// if (!crossing) {
-					// 	const side2 =a0 // we know a0 != a1 . One of them is the side?
-					// 	// correct for 
-					// }
+
+				if (crossing) { // == side!=0
+					// Do I actually want to calculate anything here. Ah yeah the cross_product which actually is a vector pointing along the ray . It is a (not primary) vertex on screen.
+					var cross = this.edge.AsVec3().crossProduct(node.edge.AsVec3())  // so there is one cross object..
+					// ah not, would be a list // ..referenced by both edges
 				}
 			}
 
-			if (crossing) { // == side!=0
-				// Do I actually want to calculate anything here. Ah yeah the cross_product which actually is a vector pointing along the ray . It is a (not primary) vertex on screen.
-				var cross = this.edge.AsVec3().crossProduct(node.edge.AsVec3())  // so there is one cross object..
-				// ah not, would be a list // ..referenced by both edges
-			}
-			for (let s = 0; s < 2; s++) {
-				if ((Math.abs(2 * s - 1) - side) > 1) continue
+			for (let s = 0; s < 2; s++) {  // each side of this
+				if ((Math.abs(2 * s - 1) - side) > 1) continue   // if some of node ends up here
 
 				const bn = new BSPnode_perFrame(node.ID)
 				bn.edge = node.edge;
@@ -601,6 +641,7 @@ export class BSPnode_perFrame extends BSPnode {
 
 
 				bn.cuts = node.cuts.map(nc => {
+					if (nc == null) return null  // vertex on screen  free floating / dangling vertex
 					const n = new CutIntoBorderOfSector(); n.c = nc.c;
 
 					n.fromToRefBorders = ((nc.fromToRefBorders - t[s])) //+inOrderCount)%inOrderCount) // rotate to be relative to new parent
@@ -632,8 +673,55 @@ export class BSPnode_perFrame extends BSPnode {
 					bn.parents_inOrder = t[0] < t[1] ? this.parents_inOrder.slice(t[0], t[1] + 1) : this.parents_inOrder.slice(t[0] + 1).concat(this.parents_inOrder.slice(0, t[1])) // wrap around
 					// console.log("try to insert on side",s)
 
-					bn.parent = this
-					this.children[s] = bn  // I don't want too many instanceOf in my code.
+					// todo optimization: A single polygon inside a large sector will recognize its vertices. Fallback to inner product? The BSP tree would have fat leaves with lots of code different from node.
+					const self = this
+					bn.cuts = node.cuts.map(nc => {
+						if (nc != null) return nc
+						// vertex on screen  free floating / dangling vertex
+						const n = new CutIntoBorderOfSector(); n.c = nc.c;
+						const parents: [BSPnode_perFrame,boolean][] = [[this, s>0]]  // why does this not have a type?
+						let lp: BSPnode_perFrame = this;
+						while (lp != null) {  // todo: && < max in references
+							parents.push([lp, lp.children[0]==lp])  // todo?: maintain
+							lp = lp.parent;
+						}
+						let last = null, wrap = null, current = null;
+						const u = bn.parents_inOrder.length,border_side=new Array<boolean>(u);
+						for (let r = 0; r <= u; r++) {
+							if (r == 0) { wrap = current }
+							else {
+								if (r < u) {
+									current = bn.parents_inOrder[r]
+								} else {
+									current = wrap
+								}
+								const pair = [last, current]
+								if (pair[0] > pair[1]) { pair.reverse() }
+								const par = pair.map(p => parents[p])
+								const vertx = par[0][0].cuts.filter(c => c.other == par[1][0])[0].c   // rotation order is not direction of edges
+
+								border_side[r-1] = node.edge.AsVec3().innerProduct(vertx)<0 // roles reverse compared to split face along a node
+
+							}
+							last = current;
+						}
+						const fromToRefBorders:number[]=[]
+						for (let r = 0; r < u; r++) {
+							if (border_side[r] != border_side[(r+1)%u] ) {
+								// in 2d I would use wedge to get the index of the vertex
+								// in 3d with beams:
+								const ex=this.parent
+								const border_beam_normal=ex.edge.AsVec3()
+								const raw_edge_3d=node.edge.verts[0].subtract01(node.edge.verts[1]) // oriented edge in 3d
+								const verID=border_beam_normal.innerProduct(raw_edge_3d)  // An alternative needs two products. Products cost in JRISC
+								const tert=(verID<0) == (parents[bn.parents_inOrder[r]][1] ) // border-segment needs to switch from own sides ( left hand | right hand) to border sides ( in | out)
+								fromToRefBorders[tert?1:0]=r   // todo: check signs
+							}
+						}
+					})
+
+					bn.parent = this;
+					this.children[s] = bn;  // I don't want too many instanceOf in my code.
 				} else {
 					c.decide_edge(bn, fillStyle)
 				}
@@ -649,9 +737,61 @@ export class BSPnode_perFrame extends BSPnode {
 		}
 	}
 
-	decide_face(p: Polygon_in_cameraSpace, cuts?: Edge_cut[]) { }
+	decide_face(p: Polygon_in_cameraSpace) {
+		const vs = p.vertices
+		// ¿Perhaps cut the reference
+		vs.forEach((v, i) => {
+			v.index_in_polygon = 1 + i
+			v.cache_read_pointer = 0
+		})
+		const cs = vs.map(v => {
+			const c = new Edge_cut(v) // add data structure
+			//c.c = v
+			return c
+		})
 
+		if (cs.length < 3) {
+			console.warn("vs.length=", cs.length)
+			return
+		}
+
+
+		// rotation order oriented code keeps the polygon and the border, joins them, sorts by direction
+		// like for face we like to start with the viewing pyramide
+		// looking at the edge, I want to demphesize the viewing pyramide? Perhaps not need the code in the loop-overlay, just in preparation.
+
+		this.decide_face_(cs)
+	}
+
+	private decide_face_(cuts: Edge_cut[]) {
+		// I check rotation order first. This has the effect that vertex only apply, if an edge-end is not cut. const sides = this.decide_vertices(cuts)
+		// We look from point of view of face+border and "insert" the BSP-node edge. After that we reverse the roles and solve any dangling vertices (decide_edge should have done that)
+		// In the first step we need edges. Only edges have this property that they merge in such a way that the winning border is rotated more. And they split so that the polygon is rotated more.
+
+		// edge know which border segments it does referenc. Now I need to find those in the merged list
+		// Perhaps it would be better to link from border to polyline start where polyline is inside. Merger Marker where it ends?
+		// Fast Paths edge.basedOnBorder and face basedOnBorder
+		// case: they meet. Split completely inside polygon => calculate two cuts and spread
+		// polygon edge and split meet on segment: read cached value from edge
+		// split segment is outside on one end: Do edges know their children after splitting?
+
+		//Looks like I need to keep a tree of edge splits per frame. And face tracks them while being split
+		// The leafs also live in the BSP, but nodes are independet. I mean, they link to BSP nodes, but not the other way around
+		// And actually, they don't need links because the mimic the structure with side
+		// lightweight. We check: Split at current level -> split passes through polygon at this edge
+		// would it make sense to insert vertices first?
+		// The same effect: only leafs of the BSP tree know of vertices, but each vertex know its path
+		// for a face to reuse horizon cuts within borders, we need the edges
+		// the polygon section references vertices where possible, horizons, or the border (I wrote about the combined structure for the last two items)
+	}
 }
+
+
+class Polygon_pair{
+	isBorder: number  	// -1 polygon 0 merged +1 border   (outside is positve)
+	edge:BSPnode_edge 
+}
+
 export class BSPnode_perInsert extends BSPnode {
 
 	cut2children: Vertex_OnScreen;
