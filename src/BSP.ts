@@ -266,6 +266,10 @@ export class BSPnode_edge {
 	z: number  // bias
 
 	index = 0
+	// chaching: Edge -> Face
+	// perFrame
+	splitEdge:SplitEdge=null  // for example the first edge in the viewing pyramid is not split into children .
+	// PerInsert. Todo: split class
 	cache_face: Polygon_in_cameraSpace;
 	decide(v: Vertex_OnScreen): number {
 
@@ -434,6 +438,8 @@ export class Edge_cut extends cut_base {
 		super()
 		this.c = v
 	}
+
+	se:SplitEdge
 }
 
 // class Edge_cut {
@@ -455,13 +461,15 @@ export class Edge_cut extends cut_base {
 
 // So this is like Horizon_Edge , while the partition is like the Edge_between_vertices
 export class BSPnode extends CanvasObject {
+
+	
 	ID: number;
 	constructor(ID: number) {
 		super()
 		this.ID = ID //.vertices.length
 	}
 
-	children: (BSPnode | Leaf)[] = new Array<BSPnode>() // 0,1   
+	 
 	edge: BSPnode_edge   // real vertices to match mesh and shorten float calc
 
 	decide_edge(node: BSPnode, fillStyle: string, last_edge_of_polygon = false): void { }  // virtual. So I need an interface? Feels weird when even Object in Java has implemented methods
@@ -493,7 +501,7 @@ export class BSPnode_perFrame extends BSPnode {
 
 	cuts: [CutIntoBorderOfSector, CutIntoBorderOfSector] = [null, null] // todo: decide_edge becomes a constructor? How would this work in a factory? Builder pattern? Push to a list(capacity=2) (and hide the backing array in code?)
 
-
+	children: (BSPnode_perFrame | Leaf)[] = new Array<BSPnode_perFrame>() // 0,1  
 	parent: BSPnode_perFrame
 
 	constructor(ID: number, parent: BSPnode_perFrame = null) {  // I don't need pointer to the tree. That is only a wrapper. No edge there.
@@ -516,6 +524,10 @@ export class BSPnode_perFrame extends BSPnode {
 	//        or change code to revert back to dangling?
 	// Makes no sense. The viewing frustum is no problem when I use a cursor to insert multiple polygons under one node
 	decide_edge(node: BSPnode, fillStyle: string, last_edge_of_polygon = false): void {
+		node.edge.splitEdge=new SplitEdge()  // My old problem with trees. How to align operations with calls?
+		this.decide_edge_inner(node, fillStyle, node.edge.splitEdge)
+	}
+	private decide_edge_inner(node: BSPnode, fillStyle: string, splitEdge:SplitEdge): void {
 		// BSOnode_edge has cuts. See old code
 		// edge was cut by parent border and by one other
 		// we need to find the local id of other ( parent is 0 to set a standard)
@@ -547,9 +559,7 @@ export class BSPnode_perFrame extends BSPnode {
 					}
 					break;
 				case 1:
-
-
-
+					// todo
 			}
 
 			if (sc < 2) {
@@ -627,7 +637,13 @@ export class BSPnode_perFrame extends BSPnode {
 				if (crossing) { // == side!=0
 					// Do I actually want to calculate anything here. Ah yeah the cross_product which actually is a vector pointing along the ray . It is a (not primary) vertex on screen.
 					var cross = this.edge.AsVec3().crossProduct(node.edge.AsVec3())  // so there is one cross object..
-					// ah not, would be a list // ..referenced by both edges
+					
+					// if node is split, it will not be persisted in the tree; only (grand) children
+					// I want to persist the expensive (high precision) decision
+					// I could store them on this, but it would be a list
+					// with a dedicated tree, every access is O(1)
+					splitEdge.splitBy=this.edge; //Todo: cursor. Parameter for this function?
+
 				}
 			}
 
@@ -723,7 +739,9 @@ export class BSPnode_perFrame extends BSPnode {
 					bn.parent = this;
 					this.children[s] = bn;  // I don't want too many instanceOf in my code.
 				} else {
-					c.decide_edge(bn, fillStyle)
+					const se=new SplitEdge()
+					splitEdge.children[s]=se
+					c.decide_edge_inner(bn, fillStyle,se)
 				}
 			}
 			// } else {
@@ -775,24 +793,46 @@ export class BSPnode_perFrame extends BSPnode {
 		// polygon edge and split meet on segment: read cached value from edge
 		// split segment is outside on one end: Do edges know their children after splitting?
 
-		//Looks like I need to keep a tree of edge splits per frame. And face tracks them while being split
+		//Looks like I need to keep a tree of edge splits per frame. And face tracks them while being split. I should remove only children. Rather rely on replay? No I need the information. Perhaps count
+		// This does not work. Not all edges are affected by polygon split. For each child, we need to note a reference to the splitting edge
 		// The leafs also live in the BSP, but nodes are independet. I mean, they link to BSP nodes, but not the other way around
 		// And actually, they don't need links because the mimic the structure with side
 		// lightweight. We check: Split at current level -> split passes through polygon at this edge
 		// would it make sense to insert vertices first?
-		// The same effect: only leafs of the BSP tree know of vertices, but each vertex know its path
+		// The same effect: only leafs of the BSP tree know of vertices, but each vertex know its path .. No, edges split the BSP and stay where they are. vertex paths would grow
 		// for a face to reuse horizon cuts within borders, we need the edges
 		// the polygon section references vertices where possible, horizons, or the border (I wrote about the combined structure for the last two items)
+
+		// Still (dangling vertex) .. ah not they don't exist. Face fill out sectors in the tree completely.
+		// So, a clipped polygon checks if any ( 0 or 2 ) of its edges are split by the current edge
+		// Where did my rotation order thing go?
+		const r:number[]=[]
+		cuts.forEach((c,i)=>{  // for is for debugging
+			if (this.edge == c.se.splitBy) { 
+				r.push(i)
+			}
+		})
+		switch(r.length){
+			case 2:  break; // insert code from BSPnode_perInstert
+			case 0: break; // todo: which side are we?
+			default: console.log("Error, weird numbre of splits",r) // numbers have nice .ToString()
+		}
 	}
 }
 
+class SplitEdge{
+	splitBy: BSPnode_edge  // there are less nodes than edges. Easier to debug and compress. It hurts a bit to follow this reference. Todo: Benchmark in JRISC
+	// .. into ..
+	children:[SplitEdge,SplitEdge]=[null,null]  // do we care to link back
+} 
 
-class Polygon_pair{
-	isBorder: number  	// -1 polygon 0 merged +1 border   (outside is positve)
-	edge:BSPnode_edge 
-}
+// class Polygon_pair{
+// 	isBorder: number  	// -1 polygon 0 merged +1 border   (outside is positve)
+// 	edge:BSPnode_edge 
+// }
 
 export class BSPnode_perInsert extends BSPnode {
+	children: (BSPnode_perInsert | Leaf)[] = new Array<BSPnode_perInsert>() // 0,1  // cannot be declared in parent. Perhaps a generic tree?
 
 	cut2children: Vertex_OnScreen;
 	//cuts: Edge_cut[] = []
