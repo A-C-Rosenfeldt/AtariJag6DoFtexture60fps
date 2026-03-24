@@ -773,15 +773,22 @@ export class BSPnode_perFrame extends BSPnode {
 			return
 		}
 
+		const lanes = vs.map(v => {
+			const p = new Polygon_pair() // add data structure
+			p.isBorder=-1
+			//c.c = v
+			return p
+		})
+
 
 		// rotation order oriented code keeps the polygon and the border, joins them, sorts by direction
 		// like for face we like to start with the viewing pyramide
 		// looking at the edge, I want to demphesize the viewing pyramide? Perhaps not need the code in the loop-overlay, just in preparation.
 
-		this.decide_face_(cs)
+		this.decide_face_(cs,lanes)
 	}
 
-	private decide_face_(cuts: Edge_cut[]) {
+	private decide_face_(cuts: Edge_cut[], lanes:Polygon_pair[]) {
 		// I check rotation order first. This has the effect that vertex only apply, if an edge-end is not cut. const sides = this.decide_vertices(cuts)
 		// We look from point of view of face+border and "insert" the BSP-node edge. After that we reverse the roles and solve any dangling vertices (decide_edge should have done that)
 		// In the first step we need edges. Only edges have this property that they merge in such a way that the winning border is rotated more. And they split so that the polygon is rotated more.
@@ -803,9 +810,12 @@ export class BSPnode_perFrame extends BSPnode {
 		// for a face to reuse horizon cuts within borders, we need the edges
 		// the polygon section references vertices where possible, horizons, or the border (I wrote about the combined structure for the last two items)
 
+		// rotation first does not work
+
 		// Still (dangling vertex) .. ah not they don't exist. Face fill out sectors in the tree completely.
 		// So, a clipped polygon checks if any ( 0 or 2 ) of its edges are split by the current edge
 		// Where did my rotation order thing go?
+
 		const r:number[]=[]
 		cuts.forEach((c,i)=>{  // for is for debugging
 			if (this.edge == c.se.splitBy) { 
@@ -813,8 +823,17 @@ export class BSPnode_perFrame extends BSPnode {
 			}
 		})
 		switch(r.length){
-			case 2:  break; // insert code from BSPnode_perInstert
-			case 0: break; // todo: which side are we?
+			case 2:  break; // todo: insert code from BSPnode_perInstert
+			// make sure that Polygon_pair and cuts start with the same edge
+			case 0: // todo: which side are we? Rotation second does work
+				const p=new Polygon_pair() // go by rotation
+				// modify the isBorder=1 segments
+				// unlike cut edges, I don't need to rotate the keys
+				const side=0
+				const c = this.children[side];
+				if (c instanceof BSPnode_perFrame)
+					c.decide_face_(cuts,lanes)
+			break; 
 			default: console.log("Error, weird numbre of splits",r) // numbers have nice .ToString()
 		}
 	}
@@ -826,10 +845,10 @@ class SplitEdge{
 	children:[SplitEdge,SplitEdge]=[null,null]  // do we care to link back
 } 
 
-// class Polygon_pair{
-// 	isBorder: number  	// -1 polygon 0 merged +1 border   (outside is positve)
-// 	edge:BSPnode_edge 
-// }
+class Polygon_pair{
+	isBorder: number  	// -1 polygon 0 merged +1 border   (outside is positve)
+	edge:BSPnode_edge  // Do I need this? todo
+}
 
 export class BSPnode_perInsert extends BSPnode {
 	children: (BSPnode_perInsert | Leaf)[] = new Array<BSPnode_perInsert>() // 0,1  // cannot be declared in parent. Perhaps a generic tree?
