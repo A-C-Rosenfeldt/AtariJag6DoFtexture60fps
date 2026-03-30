@@ -435,9 +435,11 @@ class cut_base {
 export class Edge_cut extends cut_base {
 	e: BSPnode_edge = null
 	c: Vertex_OnScreen
-	constructor(v: Vertex_OnScreen) { // So, I learned that typeScript does not really support the old JS way of constructing objects (because it cannot interfere the interface? I only have properties)
+	constructor(e: BSPnode_edge|Vertex_OnScreen) { // So, I learned that typeScript does not really support the old JS way of constructing objects
+		//  (because it cannot interfere the interface? I only have properties)
 		super()
-		this.c = v
+		if (e instanceof BSPnode_edge )	this.e = e  // per frame
+		if (e instanceof Vertex_OnScreen )	this.c = e  // per insert
 	}
 
 	se: SplitEdge
@@ -478,6 +480,8 @@ export class BSPnode extends CanvasObject {
 
 	//cuts: Boxified<[cut_base, cut_base]>
 	cuts: [cut_base, cut_base]
+
+	children: (BSPnode|Leaf)[]
 }
 
 
@@ -504,6 +508,7 @@ export class BSPnode_perFrame extends BSPnode {
 
 	children: (BSPnode_perFrame | Leaf)[] = new Array<BSPnode_perFrame>() // 0,1  
 	parent: BSPnode_perFrame
+	fillStyle: string;
 
 	constructor(ID: number, parent: BSPnode_perFrame = null) {  // I don't need pointer to the tree. That is only a wrapper. No edge there.
 		super(ID)
@@ -556,7 +561,7 @@ export class BSPnode_perFrame extends BSPnode {
 					// this needs to have cuts in order to form the tree . Todo:type
 					//node.cuts[i].fromToRefBorders=t[1]+(Math.abs(side)/2+l)%l   // same trick as crossing in same border segment
 
-					// cache for insert_face
+					// cache for insert_face -> splitEdge. See below
 					// verts is a reference. Vertices are shared ( so called valence like in chemistry )
 					// transformed vertices live only per frame. No dirty fields in the original vertices
 					//v.path=path . // I need to store the whole pass. So need it in this object. Level as parameter. Level property because I have multiple recursive calls ( in decide face and edge combined ) .
@@ -788,8 +793,10 @@ export class BSPnode_perFrame extends BSPnode {
 			v.index_in_polygon = 1 + i
 			v.cache_read_pointer = 0
 		})
-		const cs = vs.map(v => {
-			const c = new Edge_cut(v) // add data structure
+
+		// todo: ensure that this is in rotation order
+		const cs = p.nodes_in_BSP.map(n => {
+			const c = new Edge_cut(n.edge) // the split tree lives in an universe from the node tree, sadly
 			//c.c = v
 			return c
 		})
@@ -803,6 +810,7 @@ export class BSPnode_perFrame extends BSPnode {
 		// It does fit the beam tree.
 		const lanes = p.nodes_in_BSP.map(e => {  // similar to in decide_edge
 			const p = new Edge_may_touch_Border(e) // add data structure
+			p.splitEdge = e.edge.splitEdge // root -> cursor
 			//p.isBorder = -1
 			//c.c = v
 			return p
@@ -813,15 +821,16 @@ export class BSPnode_perFrame extends BSPnode {
 		// like for face we like to start with the viewing pyramide
 		// looking at the edge, I want to demphesize the viewing pyramide? Perhaps not need the code in the loop-overlay, just in preparation.
 
+		// todo: const df=new decide_face_runner()
 		this.stack_pointer = 0
-		this.decide_face_(cs, lanes)
+		this.fillStyle = p.fillStyle  // tunnel through the stack. I don't want fake parameters which don't change while walking the tree
+		this.decide_face_(cs)  // df.run
 	}
 
 	stack_pointer: number
 
-	private decide_face_(cuts: Edge_cut[]
-		, polygon: Edge_may_touch_Border[] // lanes is differnt from edge.parents because those are not the parents of this face. But there i
-	) { // lanes is wrong. We do not care about sync between lanes. Todo: Data structure: 
+	private decide_face_(cuts: Edge_cut[]){ // waste memory: stored by decide_edge;, parents_inOrder: number[] // lanes is differnt from edge.parents because those are not the parents of this face. But there i
+	 // lanes is wrong. We do not care about sync between lanes. Todo: Data structure: 
 		this.stack_pointer++
 		// I check rotation order first. This has the effect that vertex only apply, if an edge-end is not cut. const sides = this.decide_vertices(cuts)
 		// We look from point of view of face+border and "insert" the BSP-node edge. After that we reverse the roles and solve any dangling vertices (decide_edge should have done that)
@@ -853,39 +862,44 @@ export class BSPnode_perFrame extends BSPnode {
 		// border
 		const parents: [BSPnode_perFrame, boolean][] = [] // pushed down into calls. Todo: harmonize with decide_edge
 		this.linkedList2Array(parents)  // going with decide_edge this and face both are peers inside the borders. There could be none
-		this.parents_rotation2gen // todo
+		this.parents_rotation2gen // set by insert edge. Seems useless here?? 
+		// Only case is expensive (cylces and LoC) to find: join (in each call) all polygon.node.edge with border.segment.edge ; sort by rotation order => lane strucuture
+		// this.edge cuts a joint border or two dangling border which are separated by a joints on the circle
+		// Problem is: both methods read out cache and apply logic. No precision triggered.
+		// I would love to unify code and use rotation for both. I mean, I need rotation data for the split anyway
 
 		// polygon ( parameters)  .. edge_cuts?? what is it
 
 		// and cuts == polygon
 
-		let count = 0
-		polygon.forEach((edge, i) => {      // this starts out in rotation order. Keept it this way!
-			if (edge.touching != null) {    // todo : on touch down: rotate polygon to match border rotation. Like: both rotate so that this is at 0!				
-				count++						// repeated touch downs lead to tension. Don't even rotate the polygon. Keep original (arbitrary rotation). This neither matches border rotation nor border ancestry/hereditary
-			}
-		})
+		// let count = 0
+		// polygon.forEach((edge, i) => {      // this starts out in rotation order. Keept it this way!
+		// 	if (edge.touching != null) {    // todo : on touch down: rotate polygon to match border rotation. Like: both rotate so that this is at 0!				
+		// 		count++						// repeated touch downs lead to tension. Don't even rotate the polygon. Keep original (arbitrary rotation). This neither matches border rotation nor border ancestry/hereditary
+		// 	}
+		// })
 
 		// new rotation  (after splitting)
-		let new_edge_pullsAt:number[]=[1,3]  // rotation indexes  [ inside=polygon, outside=border ]   // border.lenght=0 ? lenght=1 
+		let new_edge_pullsAt: number[] = [1, 3]  // rotation indexes  [ inside=polygon, outside=border ]   // border.lenght=0 ? lenght=1 
 		//sliceStuff// we do not actually for the touches while rotating. Stiff rings to rotate while we walk the tree, lose rubbers between edge and segment . So logic is quite different from graph where edge and segment snug together over a long distance
 
 		const r: number[] = []
 		cuts.forEach((c, i) => {
-			if (this.edge == c.se.splitBy) {
-				r.push(i) 
-
+			if (c.se.splitBy == this.edge) {  // so cuts clearly is part of the polygon. Border would be: ..
+				// .. this.edge.splitEdge.splitBy				// 
+				r.push(i)
+				// see below actually split the cut (array manipulation is expensive. Do per child.)
 			} else {
 				if (this.edge == c.e) { // meet
 					r.push(i)  // r.length should be 1 at the end. Test?
-					if (count == 0) {  // todo move down
-						const l2 = polygon //.splice()
-						if (polygon.length == 0) {
-							//this.edge is the first
-						} else {
-							this.parents_rotation2gen // rotation order? Or stack order?
-						}
-					}
+					// if (count == 0) {  // todo move down
+					// 	const l2 = polygon //.splice()
+					// 	if (polygon.length == 0) {
+					// 		//this.edge is the first
+					// 	} else {
+					// 		this.parents_rotation2gen // rotation order? Or stack order?
+					// 	}
+					// }
 				} else {
 					// in a mesh this can happen
 				}
@@ -903,27 +917,64 @@ export class BSPnode_perFrame extends BSPnode {
 				// we go in-side == -1
 				{
 					// fine edge in lanes
-					const self = polygon.findIndex(seg => seg.edge.edge == this.edge)
-					const l2 = ((polygon.slice(self))).concat(...(polygon.slice(0, self))) // rotate myself upfront
+					// const self = polygon.findIndex(seg => seg.edge.edge == this.edge)
+					// const l2 = ((polygon.slice(self))).concat(...(polygon.slice(0, self))) // rotate myself upfront
 					const c = this.children[0]
-					if (c instanceof BSPnode_perFrame)
-						c.decide_face_(cuts, l2)
+					if (c instanceof BSPnode_perFrame) { c.decide_face_(cuts) }
+					else {
+						if (c == null) { // we have finally met our edge here
+							const l = new Leaf();
+							l.fillStyle = [this.fillStyle]
+							this.children[0] = l
+						} else {
+							if (c instanceof Leaf) {
+								c.fillStyle.push(this.fillStyle) // translucency
+							}
+						}
+					}
 				}
 				break;
 			case 2: // the cut produces children where then edge touches the segment => rotate to 0. Of course, this segment is this .
 				// we modify cuts ( to split, to insert ). So we could rotate to remove ambigion. And make the code more uniform with and without split. But nothing depends on it. Oh well it does. The cached indices are written for edges and read for faces. so better follow the edges. But I do? So, important for border, but not polygon.
 				for (let side = 0; side < 2; side++) {
 					const l2 = [p] // todo: the same for cuts . On first cut, two polygon edges are pinned to a border segment
+
 					// makes no sense to maintain lanes before
 					// It may take some time before a face reaches its own first edge or cut
 					// fast forward to establish this condidition upfront
 					//// Condition: the normal edge cut code runs and finds neither cuts nor
-					// then set up lanes
-					if (r[1 - side] < r[0 + side]) l2.splice(1, 0, ...(polygon.slice(r[1 - side], r[0 + side] + 1)))
-					else l2.splice(1, 0, ...((polygon.slice(r[1 - side]))).concat(...(polygon.slice(0, r[0 + side] + 1)))) // wrap around. Todo: unify
+					// then set up lanes. 
+
+					// Border code is inside the child (at the beginning of function)
+					// Polygon is here
+
+					let child_cut = []
+					for (let ortho = 0; ortho < 2; ortho++) {
+						const xor = ortho ^ side
+						const k = r[xor]
+						const t = cuts[k].se.children[side];
+						const cc = new Edge_cut(cuts[k].e)  // a key for joins fishing edges out of the soup? Todo: clean class. Todo: add edge property to splitEdge					
+						cc.se = t // can be null
+						child_cut.push(cc)
+						if (ortho > 0) break
+						const fresh = new Edge_cut(this.edge); fresh.se = null // is in tree and will not be split further
+						child_cut.push(fresh)
+					}
+					if (r[1 - side] < r[0 + side]) {
+						//l2.splice(1, 0, ...(polygon.slice(r[1 - side], r[0 + side] + 1))) // todo: merge class
+						child_cut.push(...cuts.slice(r[1 - side]+1, r[0 + side])) // may be empty, but not negative because children are at least triangles
+					}
+					else {
+						//l2.splice(1, 0, ...((polygon.slice(r[1 - side]))).concat(...(polygon.slice(0, r[0 + side] + 1)))) // wrap around. Todo: unify
+						child_cut.push(...cuts.slice(r[1 - side]+1).concat(...(cuts.slice(0, r[0 + side] ))))
+					}
+					// // rotate fresh from 1 to 0 . For debugging. Easier when parents and cuts align at parent
+					// const around=child_cut.shift()
+					// child_cut.push(around) 
+
 					const c = this.children[side]
 					if (c instanceof BSPnode_perFrame)
-						c.decide_face_(cuts, l2)
+						c.decide_face_(child_cut)
 					break;
 				}
 				// make sure that Polygon_pair and cuts start with the same edge
@@ -943,40 +994,40 @@ export class BSPnode_perFrame extends BSPnode {
 				//let ia =-1 // splitBy works without rotation
 
 
-				polygon.forEach((a, i) => {
-					if (a.touching!= null) {
-						// count touches to the common border on either side of this
-						if (count == t[0]) { oia[0] = i; if (a.touching==null) side *= -1 }
-						if (count == t[1]) oia[1] = i
-						count++
-					}
-					// if (a.isBorder <= 0 && ia<0) {
-					// 	iia[]=ia  //this is akward . Do I even need to rotate border cuts
-					// 	ia++
-					// }
-				})
+				// polygon.forEach((a, i) => {
+				// 	if (a.touching != null) {
+				// 		// count touches to the common border on either side of this
+				// 		if (count == t[0]) { oia[0] = i; if (a.touching == null) side *= -1 }
+				// 		if (count == t[1]) oia[1] = i
+				// 		count++
+				// 	}
+				// 	// if (a.isBorder <= 0 && ia<0) {
+				// 	// 	iia[]=ia  //this is akward . Do I even need to rotate border cuts
+				// 	// 	ia++
+				// 	// }
+				// })
 
-				let l2 = polygon
-				if (count == 0) { // 
-					// special case: Polygon floating withing a large sector. No lanes!!! Lanes may be created by a cut. Todo: lean data structure
-					// no edge is cut (case 0).
-					// So how do we know the side?
-					// Fall back on vertices ! => I need to cache those!?
-					// I only need one per face, but I don't know while drawing a mesh
-					// just log more? Can't be more than the edge cache
-					// I only need the original vertices and then their path
-					// who logs it? decide_edge logs them because then the path is final.
-					// edges and vertice share a mesh. Valence! Just overwrite?		
-					// all paths are long enough
-					side = cuts[0].e.verts[0].path[this.stack_pointer - 1] ? -1 : 1 // sign bit?  // object needs one new property: path of first vertex. Level property because I have multiple recursive calls
+				// let l2 = polygon
+				// if (count == 0) { // 
+				// 	// special case: Polygon floating withing a large sector. No lanes!!! Lanes may be created by a cut. Todo: lean data structure
+				// 	// no edge is cut (case 0).
+				// 	// So how do we know the side?
+				// 	// Fall back on vertices ! => I need to cache those!?
+				// 	// I only need one per face, but I don't know while drawing a mesh
+				// 	// just log more? Can't be more than the edge cache
+				// 	// I only need the original vertices and then their path
+				// 	// who logs it? decide_edge logs them because then the path is final.
+				// 	// edges and vertice share a mesh. Valence! Just overwrite?		
+				// 	// all paths are long enough
+				// 	side = cuts[0].e.verts[0].path[this.stack_pointer - 1] ? -1 : 1 // sign bit?  // object needs one new property: path of first vertex. Level property because I have multiple recursive calls
 
-				} else {				// lanes are only synced at isBorder=0 . So this can happen at a cut
+				// } else {				// lanes are only synced at isBorder=0 . So this can happen at a cut
 
-					// insert
-					//		const l2=lanes.slice(0,oia[0]+1).concat(p).concat(...(lanes.slice(oia[1]))) // we know that there is no cut. So we include the shared border segments
-					// ,but rotate to put parent at 0
-					l2 = [p].concat(...(polygon.slice(oia[1]))).concat(...(polygon.slice(0, oia[0] + 1))) // we know that there is no cut. So we include the shared border segments
-				}
+				// 	// insert
+				// 	//		const l2=lanes.slice(0,oia[0]+1).concat(p).concat(...(lanes.slice(oia[1]))) // we know that there is no cut. So we include the shared border segments
+				// 	// ,but rotate to put parent at 0
+				// 	l2 = [p].concat(...(polygon.slice(oia[1]))).concat(...(polygon.slice(0, oia[0] + 1))) // we know that there is no cut. So we include the shared border segments
+				// }
 
 				// Edge_Cut uses references. Not rotation positions.
 
@@ -985,7 +1036,7 @@ export class BSPnode_perFrame extends BSPnode {
 
 				const c = this.children[side];
 				if (c instanceof BSPnode_perFrame)
-					c.decide_face_(cuts, l2)
+					c.decide_face_(cuts)
 				break;
 			default: console.log("Error, weird numbre of splits", r) // numbers have nice .ToString()
 		}
@@ -994,16 +1045,17 @@ export class BSPnode_perFrame extends BSPnode {
 }
 
 class SplitEdge {
-	splitBy: BSPnode_edge  // there are less nodes than edges. Easier to debug and compress. It hurts a bit to follow this reference. Todo: Benchmark in JRISC
+	splitBy: BSPnode_edge  // there are less edges than nodes. Easier to debug and compress. It hurts a bit to follow this reference. Todo: Benchmark in JRISC
 	// .. into ..
 	children: [SplitEdge, SplitEdge] = [null, null]  // do we care to link back
 }
 
 class Edge_may_touch_Border {
-	edge:BSPnode
-	touching:BSPnode|null = null
-	constructor(b:BSPnode){
-		this.edge=b
+	edge: BSPnode
+	touching: BSPnode | null = null
+	splitEdge: SplitEdge;
+	constructor(b: BSPnode) {
+		this.edge = b
 	}
 }
 
