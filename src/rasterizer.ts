@@ -18,7 +18,7 @@ import { Vertex_OnScreen, Corner, Item, Onthe_border, vertex_behind_nearPlane, E
 // there is a limit. So add fragment, check for overflow, roll back. So I should probably start from the leafs.
 // Even if I use a 2d tree, the int(cut.y) is the result of a division.
 // So the viewing frustum starts the tree
-// cutting has to happen in 3d here, even if we use a 2d tree. At least the near plane needs to be processed in 3d.
+// cliping has to happen in 3d here, even if we use a 2d tree. At least the near plane needs to be processed in 3d.
 // The Jaguar SDK code cuts the polygon to the frustum like the frustum was a tree.
 // Can I use the fast track to avoid cuts which are themself cut off? We can on the frustum because we know that we broke the symmetry ..ah no we can do in convex, but we cannot on arbitrary trees. 
 // But even then we don't gain to much. Cuts along the edge need divisions or a lot of mul before we can sort them. At least we can wait with U and V?
@@ -26,6 +26,19 @@ import { Vertex_OnScreen, Corner, Item, Onthe_border, vertex_behind_nearPlane, E
 // we should not double cut for UV. So even with cutting, wait for the final cut. For each cut refer to the original vertices. Throw away the preliminar results.
 // Do we care if where an edge passes the vertex (corner) of a clipping polygon? This sign tells where to cut. Have to check with the camera position.
 // On the back mirror of the frustum the signs change.
+
+
+// Clipping in Beam-Tree terms
+// Once one vertex is on screen, the polygon is visible. The intersting cases are these
+// edge on screen "horizon" . Its vertices are on different side of a viewing pyramide plane (infinite). The edge forms a plane with the vertex vector.
+// One corner of the pyramid is above, the other is below this plane. We sort vertices by ordinate ( x0<x1 for the x=const plane). The normal of the edge-plane will flip, when it passes through the camera.
+// repeat this for all borders. Interleaved: First check the corners. Then on the border between the flip check if in front or behind the camera.
+// For a polygon ( facing a wall ) without edges on screen. Vertice must be on different side of the border-planes. Uh, for a portal: differnt side of all border blane?
+// that is not enough. I need a proof per border segment: one edge above, one below . Both in front of the camera. (Plane can only cut one of the double pyramids)
+//  A pure version can go over all planes and check for "inside" 4 times. Best selective: smaller FoV ( up, down) , wider Fov ( left right )
+// so the corners check if they are inside of two edges ( if any works it is okay because polygon is convex ). I can reuse corner values for both adjacent borders.
+// I should cache the corner values from the edge calculation
+
 
 // checks for overdraw
 // rasterizes into canvas
@@ -168,7 +181,7 @@ export class SymmetricRectangle_clipper extends Polygon_in_cameraSpace {
 				outside = true; break // todo: for isEdgeVisible() I need a bit [0=+ 1=-] set in cases_xy[direction]. NDC are great. State is your enemy, but JRISC loves single source registers 
 			}  // abs works because there is a (0,0) DMZ between the four center pixels. DMZ around the pixels are used as a kindof mini guard band. symmetric NDC. For Jaguar with its 2-port register file it may makes sense to skew and check for the sign bit (AND r0,r0 sets N-flag). Jaguar has abs()
 		}
-		if (v[2] < this.near_plane) {
+		if (v.inSpace[2] < this.near_plane) {
 			throw new Error("Should never happen. What bits to I set in v.outside_of_border, anyways")
 			outside = true;
 		} else v.onScreen = new Vertex_OnScreen()
