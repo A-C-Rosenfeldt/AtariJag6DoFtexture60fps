@@ -507,7 +507,11 @@ export class BSPnode_perFrame extends BSPnode {
 	cuts: [CutIntoBorderOfSector, CutIntoBorderOfSector] = [null, null] // todo: decide_edge becomes a constructor? How would this work in a factory? Builder pattern? Push to a list(capacity=2) (and hide the backing array in code?)
 
 	children: (BSPnode_perFrame | Leaf)[] = new Array<BSPnode_perFrame>() // 0,1  
-	parent: BSPnode_perFrame
+	parent: BSPnode_perFrame  // Todo (JRISC) Stack while walking. I mean: depends on memory constraints in scratchpad memory. StoreP is broken. So we rather read multiple times instead of using a stack in external memory. But I need a stack to use the rotation2gen pointer!
+	parents_rotation2gen: number[] = []  // rotation => generation aka ancestry .
+	//  ToDo: allow null for open segments to get rid of viewing pyramide. I may not want to have a stack. So the gen-ref fails. So I may better store a list of pointers to external memory.
+	// I know the size of the list when I construct this object. So variable size is no problem. For fixed size I could recalculate -- too much code probably. I would need to store the age of entries to stabilize this
+
 	fillStyle: string;
 
 	constructor(ID: number, parent: BSPnode_perFrame = null) {  // I don't need pointer to the tree. That is only a wrapper. No edge there.
@@ -515,7 +519,6 @@ export class BSPnode_perFrame extends BSPnode {
 		this.parent = parent
 	}
 
-	parents_rotation2gen: number[] = []  // rotation => generation aka ancestry . ToDo: allow null for open segments to get rid of viewing pyramide
 
 	// mapper_T<T, U>(
 	// 	callbackfn: (value: T, index: number, array: T[]) => T,

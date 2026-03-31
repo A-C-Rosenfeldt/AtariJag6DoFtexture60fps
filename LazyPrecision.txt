@@ -5,6 +5,19 @@ precision can use the same exponent as all components. This leads to more natura
 Precision is upgraded in number of bits given by the node. Nodes can sit on different "steps" depending on the bit-width and if tolerance was too high on previous pass.
 Some operations can only add 14 bits, so some storage will be wasted,
 but not really. These operations start with 14 bit to even stay below 32 for the result.
+Lazy precision brings back the bits. About scope: vertex transfomation works better with integer32 (hard to match this precision using floats). 
+For the vertices I split the postion 15.15 . Vertices are clusterred in a "scene graph". Like in OpenGL, rotation happens before shift ( counter intuitive for floats ).
+I did introduce Lazy precision to avoid any rounding errors. So after rotation there are 48 bit: 15.32 . Inside a cluster 32 bit are enough for OpenGL like clip space. The low 16 bit from rough are subtracted from clipplane?
+Over the viewing frustum select different transformation matrices so that each cluster is optimized for the clip plane2 which pass through it. (vertex first approach, extra cost for edges (esp. inter cluster) later).
+Now add the low 16 bit of rough. Branches (self modifying code) for sign, so that we know what to do on overflow (fast) (move to next cluster).
+Projection needs Division:  (rough + fine) / d =  rough/d + fine/d = q. We calcuate rough once per cluster. D can have a (signed)fine part. So residuum: fine-q*d_fine . Rinse repeat to find a carry?
+FoV/pixelPitch adds another multiplication which kills this as lazy precision basis. Or does it? The mantissa could squeeze rough and fine. FoV no problem because I do not round, but later for lazy precision because I need to skew to consistency. No FoV adds bits.
+So looks like I would need to transform into pixels ( mantissa -- exponent=don't care). So, clip planes add another multiplication / rotation : round away from zero==guard band. 8 bits VoF angle precision is more than enough
+No need to have 32 bit rotation matrix .. I mean that was an idea with lazy precision
+
+Low number of bits? Still not sure if my: polygon visible despite all vertices culled code would not still check a lot of polygons?
+Really looks like projection enters lazy float territory. But then remember that we only want pixel precision here ( and only for y -- depending on the occlusion algorithm ). The fine part onyl actually removes 1bit or rounding. A test. No full division.
+
 Yeah, rounding degenerates the precision through the chain, yet I feel like it is difficult to decide for high precision -> precision funnel.
 I hope that this comes automatically due to dependency. Important values will be backtracked to often. This would mean to swap out code. This would kill the code cache.
 I can abort the current polygon. I can forward trace the vertices (just the pointers, no math) for cheap. Additional code sounds like a "second system" to me.
