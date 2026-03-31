@@ -7,16 +7,17 @@ Some operations can only add 14 bits, so some storage will be wasted,
 but not really. These operations start with 14 bit to even stay below 32 for the result.
 Lazy precision brings back the bits. About scope: vertex transfomation works better with integer32 (hard to match this precision using floats). 
 For the vertices I split the postion 15.15 . Vertices are clusterred in a "scene graph". Like in OpenGL, rotation happens before shift ( counter intuitive for floats ).
-I did introduce Lazy precision to avoid any rounding errors. So after rotation there are 48 bit: 15.32 . Inside a cluster 32 bit are enough for OpenGL like clip space. The low 16 bit from rough are subtracted from clipplane?
-Over the viewing frustum select different transformation matrices so that each cluster is optimized for the clip plane2 which pass through it. (vertex first approach, extra cost for edges (esp. inter cluster) later).
-Now add the low 16 bit of rough. Branches (self modifying code) for sign, so that we know what to do on overflow (fast) (move to next cluster).
-Projection needs Division:  (rough + fine) / d =  rough/d + fine/d = q. We calcuate rough once per cluster. D can have a (signed)fine part. So residuum: fine-q*d_fine . Rinse repeat to find a carry?
-FoV/pixelPitch adds another multiplication which kills this as lazy precision basis. Or does it? The mantissa could squeeze rough and fine. FoV no problem because I do not round, but later for lazy precision because I need to skew to consistency. No FoV adds bits.
-So looks like I would need to transform into pixels ( mantissa -- exponent=don't care). So, clip planes add another multiplication / rotation : round away from zero==guard band. 8 bits VoF angle precision is more than enough
-No need to have 32 bit rotation matrix .. I mean that was an idea with lazy precision
+I did introduce Lazy precision to avoid any rounding errors. So after rotation there are 48 bit: 15.32 . Inside a cluster 32 bit.
 
-Low number of bits? Still not sure if my: polygon visible despite all vertices culled code would not still check a lot of polygons?
-Really looks like projection enters lazy float territory. But then remember that we only want pixel precision here ( and only for y -- depending on the occlusion algorithm ). The fine part onyl actually removes 1bit or rounding. A test. No full division.
+Culling faces is more efficient with a near plane just due to the normal of this plane. It forms the biggest angles to all other planes. It is just one more test to do. It is easy to calculate (if we don't defer z calculation).
+I culls a ton of edges and planes which I could not cull using vertex-pyramid relations. You know, once two vertices are on different sides (or both inside) for all pyramid planes, I cannot cull early.
+I mean different for x and y. Clipping is expensive. So this original BSP-tree inspired algorithm is too slow for my taste. Probably I should rewrite my beam tree to work like the pyramid and also use the portal as near plane.
+
+I wonder if I could rotate in two angeles. The difference between pixels and FoV is small. Planes need to stay planes. No rounding error in pixel transformaition.
+For clipping, rounding is okay, I just stick to culling. So there would be 5 rotation matrices. Each cluster will be rotated according to pixel and one corner matrix. Load vector once, work on it twice. Fast.
+For the cluster where the camera is in, we can clip the fine values directly. 32x16 ( FoV only needs 8 bit) is quite fast.
+
+Division is for floats.
 
 Yeah, rounding degenerates the precision through the chain, yet I feel like it is difficult to decide for high precision -> precision funnel.
 I hope that this comes automatically due to dependency. Important values will be backtracked to often. This would mean to swap out code. This would kill the code cache.
