@@ -2,7 +2,7 @@
 	rotating cube
 		portal davor
 
-rasterizer: https://a-c-rosenfeldt.github.io/AtariJag6DoFtexture60fps/public/index.htm  (I am too lazy right now to set up a separate release repository. I wish that Pages would work like ASP.NET core)
+rasterizer: [https://a-c-rosenfeldt.github.io/AtariJag6DoFtexture60fps/public/index.htm]  (I am too lazy right now to set up a separate release repository. I wish that Pages would work like ASP.NET core)
 beamtree: not running at the moment.
 
 # Motivation
