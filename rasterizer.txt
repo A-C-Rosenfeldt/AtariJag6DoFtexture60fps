@@ -336,6 +336,11 @@ Like for one blitter action the GPU does the left pixel and for the other the gp
 The backbuffer is for the first part. If I don't mind screen tearing, the second pass renders to the 16bpp front buffer. I hope that Grouraud shading code paths also fits into local memory.
 "It normally compares the source data register with the pattern data register," => "The action of the Blitter can be stopped altogether"
 
+I should include sub-span rendering at some point (not for new insights, just for aesthetics ).
+Though there is something about the Jaguar: Setting up the blitter is more expensive than Maths. So for a few splits, I would try equal length and only switch to power of two later on.
+DIV on Jaguar is weird. It is free if we wait 18 cycles. Correction already needs one division. So for large polygons .. ah well, back at the Quake / Descent way of doing stuff.
+Propagating edges also takes time. So we get two DIVs. So we can place smaller than 16 spans on the far side ( round down, round up ) and then fill with 16px.
+
 After clipping, affine texture mapping does not work anymore. I guess that the KISS method is to clip perfectly, but then interpolate on the edges.
 I do not like that I need one extra division per scanline to recalculate the delta. Divisions should be used for perspective correction..
 uh but which also needs one delta calcuation per scanline. Triangulation would indeed avoid this. But then again, I have one division free per scanline iteration.
