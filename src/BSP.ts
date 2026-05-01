@@ -55,13 +55,13 @@ const tes5 = tes3.popFromTop()
 
 //import {Acme} from "./BSP.d.ts"
 import { assert } from "chai";
-import { Vec, Vec2, Vec3 } from "./clipping.js"
+import { Vec, Vec2, Vec3, CanvasObject } from "./clipping.js"
 //import { Vertex_OnScreen } from "./Item"
 
-class CanvasObject {
-	static screen = [640, 400];
-	toCanvas(ctx: CanvasRenderingContext2D) { }   // virtual  todo Placeholder
-}
+// class CanvasObject {
+// 	static screen = [640, 400];
+// 	toCanvas(ctx: CanvasRenderingContext2D):void { }   // virtual  todo Placeholder
+// }
 
 
 
@@ -78,7 +78,8 @@ export class Polygon_in_cameraSpace implements CanvasObject {
 	// I feel like this will the method for all polygons not matter if clipped
 	// Clipped edges behave special on projection, but actually clipping and projection happen shortly after each other
 	// We persist screen coordinates ( ah, well, z does not exist for clipped edges ) . Just integers for scanlines
-	toCanvas(ctx: CanvasRenderingContext2D): void {
+	//toCanvas(ctx: CanvasRenderingContext2D): void {
+	toCanvas(marker:string=null):void { let ctx=CanvasObject.ctx		
 		// leaf (debug) ToCanvas needs the area to fill
 		if (false) {
 			ctx.fillStyle = this.fillStyle
@@ -88,10 +89,11 @@ export class Polygon_in_cameraSpace implements CanvasObject {
 			ctx.closePath()
 			ctx.fill()  // stroke()
 		}
-		this.edges.forEach(e => e.toCanvas(ctx))
+		this.edges.forEach(e => e.toCanvas())
 		ctx.fillStyle = "#911"
 		this.selected %= this.vertices.length
-		this.vertices.forEach((v, i) => v.toCanvas(ctx, i == this.selected))
+
+		this.vertices.forEach((v, i) => v.toCanvas( i == this.selected ? "bright":"" ))
 	}
 	selected = -1
 	constructor(vs?: Array<Vertex_OnScreen>, fillStyle = "rgba(0, 136, 0, 0.2)") {
@@ -147,7 +149,7 @@ class Vertex_decision {
 	d: number
 }
 
-export class Vertex_OnScreen extends Vec3 implements CanvasObject {
+export class Vertex_OnScreen extends Vec3 {//implements CanvasObject {
 	cache_edge_decide: Vertex_decision[] = []
 	cache_read_pointer = 0
 	cache_ed: BSPnode_edge | null = null  // undefined would crash the if. is null implicit?
@@ -156,8 +158,8 @@ export class Vertex_OnScreen extends Vec3 implements CanvasObject {
 		super([[0, 0, 1]])  // something about strict TypeScript
 		this.z = 1  // redundant
 	}
-	toCanvas(ctx: CanvasRenderingContext2D, selected = false): void {
-		const size = selected ? 3 : 1
+	toCanvas(marker:string=null):void{ let ctx=CanvasObject.ctx //ctx: CanvasRenderingContext2D, selected = false): void {
+		const size = marker=="bright" ? 3 : 1
 		const full = 1 + 2 * size
 		ctx.fillRect(...this.normalize(size - debugshift), full, full)
 	}
@@ -202,7 +204,7 @@ const debugshift = 8
 
 export class Edge_on_Screen implements CanvasObject {
 	vs: [Vertex_OnScreen, Vertex_OnScreen]
-	toCanvas(ctx: CanvasRenderingContext2D): void {
+	toCanvas(marker:string=null):void{ let ctx=CanvasObject.ctx //ctx: CanvasRenderingContext2D): void {
 		ctx.strokeStyle = '#bbb'
 		ctx.beginPath(); // Start a new path
 		ctx.moveTo(...(this.vs[0].normalize(-debugshift))); // Move the pen to (30, 50)
@@ -215,7 +217,7 @@ export class Edge_on_Screen implements CanvasObject {
 
 class BSPnode_ExtensiononStack extends Polygon_in_cameraSpace {
 	ctx: CanvasRenderingContext2D;
-	toCanvas(ctx: CanvasRenderingContext2D): void { // dupe
+	toCanvas(marker:string=null):void{ let ctx=CanvasObject.ctx  // toCanvas(ctx: CanvasRenderingContext2D): void { // dupe
 		ctx.fillStyle = "green";
 		ctx.beginPath()
 		ctx.moveTo(...this.vertices[0].normalize(-debugshift))
@@ -230,7 +232,8 @@ class BSPnode_ExtensiononStack extends Polygon_in_cameraSpace {
 
 		if (this.face_or_edge) {
 			if (n instanceof BSPnode_perInsert) {
-				portal = n.toCanvas(this.ctx, pi)
+				// portal =  what was I even thinking?
+				n.toCanvas()//this.ctx, pi)
 			} else {
 				if (n instanceof Leaf) {
 					//console.log("Leaf.ToCanvas")
@@ -1602,7 +1605,7 @@ export class BSPnode_perInsert extends BSPnode {
 
 
 
-	toCanvas(ctx: CanvasRenderingContext2D, pi?: Array<Vec2> /*ref*/) {
+	toCanvas(marker:string=null):void{ let ctx=CanvasObject.ctx  //toCanvas(ctx: CanvasRenderingContext2D, pi?: Array<Vec2> /*ref*/) {
 
 		let r: [number, number], l = 0
 		const back = ctx.lineWidth
@@ -1631,7 +1634,7 @@ export class BSPnode_perInsert extends BSPnode {
 		// orininally I wrote the clipping in the draw method for instant debugging
 		// I rewrote (cleaned up) so much when transfering to insert (sorry)
 		// it also draws the portal. Todo?: put back in
-		return this.edge.toCanvas(ctx, pi, false)
+		//return this.edge.toCanvas() //ctx, pi, false)
 		// return this.edge.toCanvas(ctx, pi)
 	}
 
@@ -1740,7 +1743,7 @@ export class Leaf {
 }
 
 
-export class BSPtree implements CanvasObject {
+export class BSPtree extends CanvasObject {
 	// constructor  
 	root: BSPnode_perInsert // I come to the conclusion that basically a tree with zero nodes is valid, for example after culling
 	// todo: don't insert duplicated vertices or edges.
@@ -1825,7 +1828,7 @@ export class BSPtree implements CanvasObject {
 		let covered: BSPtree // subtree . Child pointers are useless. The bits need to mean left and right in the base tree. Floodfill stops at the 32th child, and falls back to sector
 	}
 
-	toCanvas(ctx: CanvasRenderingContext2D) {
+	toCanvas(marker:string=null):void{ let ctx=CanvasObject.ctx //toCanvas(ctx: CanvasRenderingContext2D) {
 		if (this.root == null) return
 		let n = this.root
 		let ne = new BSPnode_ExtensiononStack

@@ -76,8 +76,13 @@ interface Array<T> {
   ): { [K in keyof this]: U };
 }
 
+export class CanvasObject {
+	static screen = [640, 480];
+	static ctx: CanvasRenderingContext2D
+	toCanvas(marker:string=null):void { }   // virtual  todo Placeholder
+}
 
-export class Vec{ // looks like I need 2 and 3 dimensions to show off this (adaptive) linear approximation trick for textures after persepective projection 
+export class Vec extends CanvasObject{ // looks like I need 2 and 3 dimensions to show off this (adaptive) linear approximation trick for textures after persepective projection 
 	v:number[]
 	innerProduct(o:Vec):number{
 		let sum=0
@@ -97,6 +102,7 @@ export class Vec{ // looks like I need 2 and 3 dimensions to show off this (adap
 
 	//constructor(points:number[][],len)
 	constructor(points:number[][]){
+		super()
 		if (points.length<2){
 			if (points[0].length<2) 			this.v=new Array<number>(points[0][0]).fill(0)
 				else this.v=new Array(...points[0])
@@ -139,6 +145,14 @@ export class Vec{ // looks like I need 2 and 3 dimensions to show off this (adap
 }
 
 export class Vec2 extends Vec{
+	toCanvas(marker:string=null) {
+		this.v[0];
+		this.v[1];
+
+		var ctx=CanvasObject.ctx  // I can access protected members
+		if (ctx==null) return  // ctx is set for debugging. Single step. then for walking and displaying the tree. Does it make sense to show debugging lines? verbosity level? BSP lines are created on instert. Walk should not need to repaint them. Just draw the official faces in bright colors. And handles.
+	 }   // virtual  todo Placeholder
+
 	// override? covariant?
 	subtract(other: Vec2): Vec2 {
 		return new Vec2([this.v, other.v])

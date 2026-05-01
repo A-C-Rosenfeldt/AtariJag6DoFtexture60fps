@@ -151,10 +151,11 @@ function drawCanvasGame() {
 		// ctx.fillStyle = "#911";
 
 		const t = new BSPtree()
+		BSPtree.ctx=ctx // looks like globals are a better fit here than parameters (todo: check dependency injection )
 		ps.forEach(p => t.insertPolygon(p))
-		t.toCanvas(ctx)
+		t.toCanvas()
 
-		ps.forEach(p => p.toCanvas(ctx))
+		ps.forEach(p => p.toCanvas())
 	}
 }
 

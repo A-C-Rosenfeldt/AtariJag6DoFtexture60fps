@@ -1,0 +1,38 @@
+<!DOCTYPE html>
+<html>
+
+<head>
+    <link rel="stylesheet" href="index.css">
+    <link rel="shortcut icon" type="image/x-icon" href="favicon.ico">
+</head>
+
+
+
+<body style="background-color: darkslategray;color: antiquewhite;">
+
+        <canvas id="Canvas2d" width="656" height="416" style="border:1px solid #000000;image-rendering: pixelated;
+	    image-rendering: crisp-edges;" class=""></canvas>
+
+<p>
+    So it looks like in debug mode, each stroke appears on the screen.
+    I will need to clutter my algorithm with draw calls.
+    Do I use layers? For example, I could use a top layer which shows how I select the sector and how I check the which edge is clipped by which border.
+</p>
+</body>
+
+
+<script>
+    const canvas = document.getElementById("Canvas2d");
+const ctx = canvas.getContext("2d");
+ctx.strokeStyle = '#bbb'
+ctx.lineWidth = 15;
+ctx.moveTo(90, 130);
+ctx.lineTo(95, 25);
+ctx.lineTo(150, 80);
+ctx.stroke();
+ctx.moveTo(150, 80);
+ctx.lineTo(205, 25);
+ctx.lineTo(210, 130);
+
+ctx.stroke();
+</script>
