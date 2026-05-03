@@ -1,6 +1,13 @@
 import { BSPtree, Polygon_in_cameraSpace, Vertex_OnScreen } from "./BSP.js"
 import { Vec2 } from "./clipping.js";
 
+window.document.getElementById("singleStep").addEventListener("click",
+	(event) => {
+		p.selected++
+		SingleSteps()
+	}
+)
+
 window.document.getElementById("forward").addEventListener("click",
 	(event) => {
 		p.selected++
@@ -96,7 +103,7 @@ window.document.getElementById("left").addEventListener("click", touch_button(-1
 window.document.getElementById("right").addEventListener("click", touch_button(+1, 0))
 
 function touch_button(a: number, b: number) {
-	return (event) => {
+	return (event:any) => {
 		if ((p.selected >= 0)) {
 			p.vertices[p.selected].xy.add(new Vec2([[a, b]]))
 		}
@@ -133,12 +140,26 @@ let pse = 0
 let p = ps[pse]
 p.selected = 0
 
-function drawCanvasGame() {
+function CanvasCstr() {
 	const canvas = document.getElementById("Canvas2d") as HTMLCanvasElement;
-	canvas.style.background = '#000'; // Set background color
+	canvas.style.background = '#000'; // Set background color.  Todo (after single step drawing proof of principle): Draw the hot new stuff in a cavas without background. Placed over the permanent canvas.
 	const ctx = canvas.getContext("2d");
+	if (ctx) ctx.clearRect(0, 0, canvas.width, canvas.height);
+	return ctx
+}
+
+function SingleSteps(){
+	const ctx=CanvasCstr()
+	if (ctx) {	
+		Vec2.ctx=ctx
+		const t = new Vec2([[0,0]])  // so, this should show up. Good OOP still means constructing a complete object. I hope that I can avoid POJO here; and even a Factory calls the constructor. Null to rescue? Let's try..
+	}		
+}
+
+function drawCanvasGame() {
+	const ctx=CanvasCstr()
 	if (ctx) {
-		ctx.clearRect(0, 0, canvas.width, canvas.height);
+
 		ctx.strokeStyle = 'lightblue'
 		// ctx.beginPath(); // Start a new path
 		// ctx.moveTo(30, 50); // Move the pen to (30, 50)

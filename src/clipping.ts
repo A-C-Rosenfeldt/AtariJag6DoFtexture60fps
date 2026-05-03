@@ -79,6 +79,7 @@ interface Array<T> {
 export class CanvasObject {
 	static screen = [640, 480];
 	static ctx: CanvasRenderingContext2D
+	static slowmo_ms=0;
 	toCanvas(marker:string=null):void { }   // virtual  todo Placeholder
 }
 
@@ -145,13 +146,22 @@ export class Vec extends CanvasObject{ // looks like I need 2 and 3 dimensions t
 }
 
 export class Vec2 extends Vec{
+	constructor(points:number[][]){
+		super(points)
+		this.toCanvas()
+	}
 	toCanvas(marker:string=null) {
 		this.v[0];
 		this.v[1];
 
 		var ctx=CanvasObject.ctx  // I can access protected members
 		if (ctx==null) return  // ctx is set for debugging. Single step. then for walking and displaying the tree. Does it make sense to show debugging lines? verbosity level? BSP lines are created on instert. Walk should not need to repaint them. Just draw the official faces in bright colors. And handles.
-	 }   // virtual  todo Placeholder
+
+		ctx.fillStyle = "#F80"
+		const hsize=marker!=null && marker=="hot" ? 3:0
+		ctx.fillRect(this.v[0] - hsize, this.v[1] - hsize, 2*hsize+1, 2*hsize+1)
+
+	 }   // virtual 
 
 	// override? covariant?
 	subtract(other: Vec2): Vec2 {
