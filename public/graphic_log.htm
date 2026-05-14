@@ -9,11 +9,14 @@
 
 
 <body style="background-color: darkslategray;color: antiquewhite;">
-
-        <canvas id="Canvas2d" width="656" height="416" style="border:1px solid #000000;image-rendering: pixelated;
-	    image-rendering: crisp-edges;" class=""></canvas>
-
-<p>
+<div>
+    <div style="position: relative;width:658px; height:498px;">
+    <div  style="background-color: #000000;width:658px; height:498px;position:absolute; "></div>
+        <canvas id="Canvas2d" width="656" height="496" style="border:1px solid #000000;image-rendering: pixelated;
+	    image-rendering: crisp-edges;position:absolute;" class=""></canvas>
+</div>
+</div>
+<p style="position: relative;top:0px">
     So it looks like in debug mode, each stroke appears on the screen.
     I will need to clutter my algorithm with draw calls.
     Do I use layers? For example, I could use a top layer which shows how I select the sector and how I check the which edge is clipped by which border.
@@ -21,7 +24,7 @@
 </body>
 
 
-<script>
+<!--script>
     const canvas = document.getElementById("Canvas2d");
 const ctx = canvas.getContext("2d");
 ctx.strokeStyle = '#bbb'
@@ -35,4 +38,7 @@ ctx.lineTo(205, 25);
 ctx.lineTo(210, 130);
 
 ctx.stroke();
-</script>
+
+
+</script -->
+<script src="graphic_log.js" type="module" ></script>

@@ -159,7 +159,7 @@ function initVertexBuffers(shaderProgram: any, screenGl: AttribNameRange) {
   //     0.7,0.6//,0 
   //  ]
 
-  const gl: WebGL2RenderingContext = this
+  const gl: WebGL2RenderingContext = new WebGL2RenderingContext()
   gl.bindBuffer(gl.ARRAY_BUFFER, gl.createBuffer()); // type? . create and set target for next command
   gl.bufferData(gl.ARRAY_BUFFER,  // type and target slot
     new Float32Array(cross),               // source
@@ -177,9 +177,9 @@ function initVertexBuffers(shaderProgram: any, screenGl: AttribNameRange) {
   gl.enableVertexAttribArray(id);
 }
 
-function initShaderProgram(gl) { }
+//function initShaderProgram(gl) { }
 
-function loadShader(gl, type, source) {
+function loadShader(gl:WebGLRenderingContext, type:number, source:string) {
   const shader = gl.createShader(type);
   gl.shaderSource(shader, source); // Send the source to the shader object
   gl.compileShader(shader);    // Compile the shader program
@@ -211,7 +211,7 @@ export class SimpleImage extends Squeeze {
 //
 
 // Texture != vertex buffer
-function loadTexture(gl, data: SimpleImage) {
+function loadTexture(gl:WebGLRenderingContext, data: SimpleImage) {
 
   // Because images have to be download over the internet
   // they might take a moment until they are ready.
@@ -262,6 +262,6 @@ image.src = url;
   return texture;
 }
 
-function isPowerOf2(value) {
+function isPowerOf2(value:number) {
   return (value & (value - 1)) == 0;
 }

@@ -324,7 +324,7 @@ class Portal { //implements Pyramid {
 		// Ah, DMZ becomes the old guad band all over again? I can only cull edges fast. It almost looks like I need to calculate all cuts with all portal edges for all passing polygon edges.
 		// If the portal area (in real covered pixels -- consider for sithers an alignment! You need to rasterize) becomes small enough, I may switch to raytracing in Camera 3dspace.
 
-		for(var angle=s[0][0];angle<s[1][0];angle++){ // todo: bring back cyclic, but in a clean way
+		for(var angle=s[0].signs[0];angle<s[1].signs[0];angle++){ // todo: bring back cyclic, but in a clean way
 			// check exposed corners of pixel DMZ
 			const c=p.v.map((o,i)=> (o+cursor[i]+1)/2)  // top left pixel convention. So like, the offset needs to be >=0 . Is also memory management convention
 			const v=new Vec3([[...c,1000]])   // todo: Ah, here the z appears again. This has to match the relation between FoV 0.8 (mostly used to define aspect ratio) and FoV in pixels. The real (common FoV) is determined by the transformation into camera space.
@@ -423,7 +423,7 @@ class Portal { //implements Pyramid {
 				grad.nominator = item.map(it => {
 					const v = new Vec2([(it[2] as Vertex_OnScreen).position, (it[0] as Vertex_OnScreen).position])
 					const grad = new Vec2([[2]])
-					grad.v = [-v[1], v[0]]   // wedging . Todo check sign. Was this convention okay? Ah I think Bresenham breaks the sign anyway. So lets keep this convention because it feels natural in my head.
+					grad.v = [-v.v[1], v.v[0]]   // wedging . Todo check sign. Was this convention okay? Ah I think Bresenham breaks the sign anyway. So lets keep this convention because it feels natural in my head.
 					return grad
 				}
 				);
@@ -453,14 +453,14 @@ class Portal { //implements Pyramid {
 									else side_p = side
 								}
 							})
-							if (side_p!=0 && !same_side){   // on_Screen  -slope-> border  fits in this code in nicely .   // this allows for v-v  and v-s  for "that"
-									const edge=null // dummy. Todo fiddle with the indeces!
-									if (edge instanceof Edge_w_slope){   // while crafting the display list, the signs in slope have a meansing!
-										const side=grad.nominator[i_grad].wedgeProduct(edge.gradient)   // Not for horizon
-										if (side_p == side) same_side = true  // this is  return  for the algorithm, but how to express in funcitonal?
-										else side_p = side										
-									}
-							}
+							// if (side_p!=0 && !same_side){   // on_Screen  -slope-> border  fits in this code in nicely .   // this allows for v-v  and v-s  for "that"
+							// 		const edge=null // dummy. Todo fiddle with the indexes!
+							// 		if (edge instanceof Edge_w_slope){   // while crafting the display list, the signs in slope have a meansing!
+							// 			const side=grad.nominator[i_grad].wedgeProduct(edge.gradient)   // Not for horizon
+							// 			if (side_p == side) same_side = true  // this is  return  for the algorithm, but how to express in funcitonal?
+							// 			else side_p = side										
+							// 		}
+							// }
 						}
 					})
 				});   

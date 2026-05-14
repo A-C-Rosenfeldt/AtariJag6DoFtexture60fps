@@ -68,7 +68,7 @@ export class Camera_in_stSpace{
 		return pl
 	}
 
-	uvzw_from_viewvector(C:number[],dbuggy):{uvzw_from_viewvector:Matrix , uvz_cameraHover:Vec}{
+	uvzw_from_viewvector(C:number[],dbuggy: HTMLElement):{uvzw_from_viewvector:Matrix , uvz_cameraHover:Vec}{
 
 		// s, t  = texture cooridinates ( t like texture ). The third is "along Normal" or should I write "Altitude" ?
 
@@ -175,7 +175,7 @@ export class Camera_in_stSpace{
 			// This keeps the values in the nominator small. On the nose the view vector is a full 3d vector. The normal component goes into the denominator
 			// the camera normal (5 in my test example) goes into the nominator, yeah. But the camere st does not go over the denominator, but is added (0,0,5) in my example
 			if (this.hoist_cameraHover){
-			cv.viewVector.nominator[st].v[2]+=cv.cameraPosition.v[st] * cv.viewVector.nominator[2][2]  // [][2] (bias) in camera and [2(denominator)][bias] in view vector
+			cv.viewVector.nominator[st].v[2]+=cv.cameraPosition.v[st] * cv.viewVector.nominator[2].v[2]  // [][2] (bias) in camera and [2(denominator)][bias] in view vector
 			}
 			
 			//}

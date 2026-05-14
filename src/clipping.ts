@@ -148,7 +148,7 @@ export class Vec extends CanvasObject{ // looks like I need 2 and 3 dimensions t
 export class Vec2 extends Vec{
 	constructor(points:number[][]){
 		super(points)
-		this.toCanvas()
+		this.toCanvas("hot")
 	}
 	toCanvas(marker:string=null) {
 		this.v[0];
@@ -158,8 +158,9 @@ export class Vec2 extends Vec{
 		if (ctx==null) return  // ctx is set for debugging. Single step. then for walking and displaying the tree. Does it make sense to show debugging lines? verbosity level? BSP lines are created on instert. Walk should not need to repaint them. Just draw the official faces in bright colors. And handles.
 
 		ctx.fillStyle = "#F80"
-		const hsize=marker!=null && marker=="hot" ? 3:0
-		ctx.fillRect(this.v[0] - hsize, this.v[1] - hsize, 2*hsize+1, 2*hsize+1)
+		let hsize=marker!=null && marker=="hot" ? 3:0
+		let coords=[CanvasObject.screen[0]/2+this.v[0] , CanvasObject.screen[1]/2+this.v[1]]
+		ctx.fillRect( coords[0], coords[1], 2*hsize+1, 2*hsize+1)
 
 	 }   // virtual 
 

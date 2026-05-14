@@ -28,7 +28,10 @@
             "problemMatcher": [
                 "$tsc-watch"
             ],
-            "group": "build",
+            "group": {
+                "kind": "build",
+                "isDefault": true
+            },
             "label": "tsc for edge and watch"
         },
         {
@@ -50,7 +53,7 @@
             ],
             "group": {
                 "kind": "build",
-                "isDefault": true
+                "isDefault": false
             },
             "label": "tsc for node and watch test"
         },
