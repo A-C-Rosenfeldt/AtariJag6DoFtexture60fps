@@ -83,9 +83,10 @@ export class CanvasObject {
 	toCanvas(marker:string=null):void { }   // virtual  todo Placeholder
 }
 
-export class Vec extends CanvasObject{ // looks like I need 2 and 3 dimensions to show off this (adaptive) linear approximation trick for textures after persepective projection 
+export class Vec<N extends number> extends CanvasObject{ // looks like I need 2 and 3 dimensions to show off this (adaptive) linear approximation trick for textures after persepective projection 
+	length: N;
 	v:number[]
-	innerProduct(o:Vec):number{
+	innerProduct(o:Vec<N>):number{
 		let sum=0
 		for(let i=0;i<this.v.length;i++){
 			sum+=this.v[i]*o.v[i]
@@ -126,6 +127,7 @@ export class Vec extends CanvasObject{ // looks like I need 2 and 3 dimensions t
 		return new Vec([this.v, other.v])
 	}
 
+	// How do I c
 	subtract01(other: Vec): Vec {
 		return new Vec([ other.v,this.v])
 	}
@@ -145,11 +147,19 @@ export class Vec extends CanvasObject{ // looks like I need 2 and 3 dimensions t
 	}	
 }
 
-export class Vec2 extends Vec{
+
+
+export class Vec2 extends Vec<2>{
 	constructor(points:number[][]){
 		super(points)
 		this.toCanvas("hot")
 	}
+
+	// todo: move debug code back into the derived class?
+	// so there would be two derived classes: one for debug, one for release
+	// Although, the final game will only draw "infinite plane"s (inspired by doom floors).
+	// Anyway, "Vertex on Screen" has so many code migration helper in it, while "toCanvas" is like ToString:
+	// Every Object should have it. I cannot debug in floats in the console -- sorry.
 	toCanvas(marker:string=null) {
 		this.v[0];
 		this.v[1];
@@ -162,9 +172,8 @@ export class Vec2 extends Vec{
 		let coords=[CanvasObject.screen[0]/2+this.v[0] , CanvasObject.screen[1]/2+this.v[1]]
 		ctx.fillRect( coords[0], coords[1], 2*hsize+1, 2*hsize+1)
 
-	 }   // virtual 
-
-	// override? covariant?
+	 } 
+	
 	subtract(other: Vec2): Vec2 {
 		return new Vec2([this.v, other.v])
 	}
@@ -180,9 +189,7 @@ export class Vec2 extends Vec{
 	}
 }
 
-export class Vec3 extends Vec{
-
-
+export class Vec3 extends Vec<3>{
 	crossProduct(o:Vec3):Vec3{
 		let v:Vec3=new Vec3([[this.v.length]])
 		for(let i=0;i<this.v.length;i++){
@@ -191,9 +198,22 @@ export class Vec3 extends Vec{
 		return v
 	}
 
-	subtract01(other: Vec3): Vec3 {
-		return new Vec3([ other.v,this.v])
-	}
+	toCanvas(marker:string=null) {
+		this.v[0];
+		this.v[1];
+		if (this.v[2]<=0) return; // z == 2 . I guess that I have to accept this convention
+
+		var ctx=CanvasObject.ctx  // I can access protected members
+		if (ctx==null) return  // ctx is set for debugging. Single step. then for walking and displaying the tree. Does it make sense to show debugging lines? verbosity level? BSP lines are created on instert. Walk should not need to repaint them. Just draw the official faces in bright colors. And handles.
+
+		ctx.fillStyle = "rgb(225, 0, 255)"
+		let hsize=marker!=null && marker=="hot" ? 3:0
+		const s = CanvasObject.screen.map(full=>full/2);
+		const m=Math.max(...s);
+		let coords=this.v.map( (w,i)=>s[i]+m*w/this.v[2])    // square pixels. NDC strikes again .. almost
+		ctx.fillRect( coords[0], coords[1], 2*hsize+1, 2*hsize+1)
+
+	 } 
 
 }
 
@@ -532,10 +552,27 @@ class Z_order{
 	}
 }
 
-class Edge{
-	constructor( anchor:Vec3, direction:Vec3){
-
+export class Edge<N extends number> extends CanvasObject{
+	vs:Vec<N>[]
+	constructor( vs:Vec<N>[]){
+		super();
+		this.vs=vs;
 	}
+	toCanvas(marker:string=null):void{ let ctx=CanvasObject.ctx //ctx: CanvasRenderingContext2D): void {
+		ctx.strokeStyle = '#bbb'
+		ctx.beginPath(); // Start a new path
+		if ( N==2 ){
+			const s = CanvasObject.screen.map(full=>full/2);
+			let coords=this.vs.map(v=>v.v.map( (w,i)=>s[i]+w/v.v[2]))
+	let t=coords[0];
+		ctx.moveTo(t[0],t[1] ); // Move the pen to (30, 50) . So wild that this does not accept arrays.
+		t=coords[1];
+		ctx.lineTo(t[0],t[1]); // Draw a line to (150, 100)
+		}
+		ctx.stroke(); // Render the path
+
+		// Might be need if caller is BSPtree this.vs.forEach(v=>v.toCanvas(ctx))
+	}	
 }
 
 interface Split{
