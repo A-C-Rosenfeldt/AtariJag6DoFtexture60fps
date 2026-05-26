@@ -22,9 +22,20 @@ import { Vertex_in_cameraSpace } from './Item.js';
 
 export class CameraViewvector{
 	
-	cameraPosition: Vec // this is for internal use only . It lives flying  "over the textured plane" (s,t,z)
+	cameraPosition: Vec<3> // this is for internal use only . It lives flying  "over the textured plane" (s,t,z)
 	// This is an array of Vec3. The first two are the (s,t) vectors, the third is the z vector. Matrix of rows makes sense because the consumer wants to "pull" stz from the screen coordinates.
-	viewVector:Matrix   // I have a problem to find a nice way because this is really a function which viewVector as output. Input are the screen coordinates + (const FoV_z)
+	viewVector:Matrix<3,3>   // I have a problem to find a nice way because this is really a function which viewVector as output. Input are the screen coordinates + (const FoV_z)
+	// the first number is called inner product count and here it is for the two texture coordinates ( mode-7 )
+	// For perspective correction, I need z => 3 . Yeah, this second application of homegenous coordinates which is different from the 
+	// lines(3d) will be lines for the transformation into NormalizedDeviceCoordinates.
+	// though, lines will be lines sounds exactly like the texture mapping effect
+	// rotation matches
+	// I think I got it: z-buffer NDC is clipped at the far plane. So indeed at the horizon there will always be the 1/z pole,
+	// just with NDC, the polygon will be clipped ( visibly on screen ) before it gets there
+	// Now I do wonder how people come to the idea to switch near and far plane? Clearly I want the small denominator values far away.
+	// Rounding is rounding. I don't even round, so I am safe from division by zero. A far plane is kind of a safety epsilon.
+	// And with floats and a limited level size, there is no logical / philosophical infite far away point.
+	// it is not like that emerge through water surface problem.
 }
 
 // Here in the source code I show the naive calculation above the corresponding
@@ -68,7 +79,7 @@ export class Camera_in_stSpace{
 		return pl
 	}
 
-	uvzw_from_viewvector(C:number[],dbuggy: HTMLElement):{uvzw_from_viewvector:Matrix , uvz_cameraHover:Vec}{
+	uvzw_from_viewvector(C:number[],dbuggy: HTMLElement):{uvzw_from_viewvector:Matrix<4,3> , uvz_cameraHover:Vec<3>}{ // TODO: z=w . See: viewVector:Matrix<3,3> 
 
 		// s, t  = texture cooridinates ( t like texture ). The third is "along Normal" or should I write "Altitude" ?
 
@@ -82,7 +93,7 @@ export class Camera_in_stSpace{
 		// UV mapping is great to map one rectangular texture onto a mesh
 		// But we don't depend on it here.
 		// what mesh?    // First occurence of matrix mul. Not sure about interface. Clearly I need this for rotation (frame to frame), and generally transformation (within frame)
-		const uvzw_mapped=new Matrix()
+		const uvzw_mapped=new Matrix<4,3>()
 		// the first Vec is the w component of homogenous coordinates (okay, usually w is last?). It feeds the 1/ve[2] through
 		// So for the infinite plane, the first two components are actually the view vectors, but the last component is the camer hover height over the plane. Still a naming convention?
 		// I need to change to names. One component here adds bias. So it does not bind to the (x,y) input row (mul from left). The other feeds into the denominator on the left. This comes later
@@ -97,6 +108,7 @@ export class Camera_in_stSpace{
 		// So the screen z (of camera position) is queezed in before the in texture coordinates z (of the camera vector)
 		uvzw_mapped.nominator=	this.UVmapping_fromST.map(p=>new Vec3([[...p,0]])).concat( new Vec3( [[...this.z,0]] ), new Vec3( [[0,0,1]] )); // Error: jaggies. In the trivial test with billboard polygon z=00 ( a third 0 is padded )
 		// JRISC: replace 001 with code
+		// New discussion 20 lines below. Old:
 			// Everone uses the general proof that 1/z is linear in screen space (far plane can be substracted.). Sorry that I cannot utilize my: "just calculate with fractions as in school!"
 			// Linear allows for an offset. So 0 does not need to be the horizon. Together with scaling there are two degrees of freedom which can change from polygon to polygon
 			// Do polygons bring their far-plane along? Perhaps due to vertex position
@@ -104,14 +116,15 @@ export class Camera_in_stSpace{
 			// with viewVector should fix scaling
 			// with cameraPostion should fix offset  ( both indirectly through cv.nominator)
 		//console.log("uvzw_mapped",uvzw_mapped.nominator,stn_from_viewvector.nominator)  // For a billboard, uv should interpolate. z=0  w=const. And math says that polygon facing camera gives us -1 ( view vector facing down)
-		const uvzw_from_viewvector=Matrix.mul__Matrices_of_Rows( [uvzw_mapped.nominator, stn_from_viewvector.viewVector.nominator]  ) 
+		//const uvzw_from_viewvector=Matrix.mul__Matrices_of_Rows( [uvzw_mapped.nominator, stn_from_viewvector.viewVector.nominator]  ) 
+		const uvzw_from_viewvector=uvzw_mapped.thisMatrices_of_Rows__mul_thatRows(stn_from_viewvector.viewVector);
 
-		let uvz_cameraHover:Vec
+		let uvz_cameraHover:Vec<3>
 		if (this.hoist_cameraHover){
 			// Later, UV offset into a large map can be added to add.32 it after division
-			uvz_cameraHover=new Vec([[3]])
+			uvz_cameraHover=new Vec<3>([[3]])
 		}else{
-					const m=new Matrix(2)
+					const m=new Matrix<3,3>(2)
 				m.nominator=this.UVmapping_fromST.map(p=>new Vec3([p]))
 				uvz_cameraHover=m.mul_left_vec(  stn_from_viewvector.cameraPosition  )  // test with identity
 		}
@@ -124,6 +137,20 @@ export class Camera_in_stSpace{
 		// so basically in homogenous NDC coordinates, w is the real 1/z used for division (divergence needs to stay at the horizon). And z is 1/z - 1/far_plane and used for the z-buffer.
 
 		// this.z inner product with s,t traced along lines of const-z is clearly const ( [a,b] is the slope of the horizon )
+		// I don't know what I meant here. Now that I can clearly read the OpenGl perspective transformation matrix,
+		// It is clear that w= 1/z . W and Z switch places to draw this nice NDC picture with the same labes on the axes as in isometric projection
+		// It does not help with clipping, nor with textures. Lines will be lines, but markers along the line will not be like in isometric.
+		// Just think of a line along z. The 1/z transformation acts!
+		// I can't find a rigid proof, just that s,t,u,v -- and according to openGl naming -- w are linear in view space.
+		// Or rather: World space: otherwise z would an axis. I need to pull aka ray trace for my equations. So the forward Matrix muls of OpenGL don't help.
+		// Still, multiplying with the inverse ( easy for roto-scale ), keeps z linear.
+		// So, why is one 1/z enough? In the equations I have the altitude and the sink rate. Only this goes to the denominator -- for all linear functions on the plane.
+		// So when I have one ( ViewSpace z ), I have them all.
+
+		// So, why do my products look so ugly?
+		// 
+
+		// ???
 		// If we proove that we have the same slope in nominator and denominator, we know that really we got on offset in w.
 		// we get:              n + ax + by          d + ax + by       n-d
 		//                 w = -------------  =  -----------------  + ------------ 
@@ -132,7 +159,7 @@ export class Camera_in_stSpace{
 		// So there cannot be an offset
 		// So multiplication with this.z really is just to scale?
 		// infinte_checkerBoard_m mixes cv.viewVector.nominator[2] into these components
-		return {uvzw_from_viewvector,uvz_cameraHover}
+		return {uvzw_from_viewvector: uvzw_from_viewvector,uvz_cameraHover}
 	}
 
 	infinte_checkerBoard(C:number[],V:number[]):number[]{
@@ -193,8 +220,8 @@ export class Camera_in_stSpace{
 		return coords
 	}
 
-	transform_into_texture_space_m():Matrix{
-		const m=new Matrix()
+	transform_into_texture_space_m():Matrix<3,3>{
+		const m=new Matrix<3,3>()
 		m.nominator=[...this.only,this.normal]
 		return m
 	}

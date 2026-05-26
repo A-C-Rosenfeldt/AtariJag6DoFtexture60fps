@@ -94,7 +94,7 @@ export class Vec<N extends number> extends CanvasObject{ // looks like I need 2 
 		return sum
 	}
 	
-	innerProductM(o:Vec[],k:number):number{
+	innerProductM(o:Vec<N>[],k:number):number{
 		let sum=0
 		for(let i=0;i<this.v.length;i++){
 			sum+=this.v[i]*o[i].v[k]
@@ -120,19 +120,19 @@ export class Vec<N extends number> extends CanvasObject{ // looks like I need 2 
 	// in-place also not
 	scalarProduct(f:number){
 		let v= this.v.map( comp=> comp*f)
-		return new Vec([v])
+		return new Vec<N>([v])
 	}
 
-	subtract(other: Vec): Vec {
+	subtract(other: Vec<N>): Vec<N> {
 		return new Vec([this.v, other.v])
 	}
 
 	// How do I c
-	subtract01(other: Vec): Vec {
+	subtract01(other: Vec<N>): Vec<N> {
 		return new Vec([ other.v,this.v])
 	}
 	
-	add(other: Vec, weight?:number) {
+	add(other: Vec<N>, weight?:number) {
 		for(let i=0;i<this.v.length;i++){
 			this.v[i]+=other.v[i]*(weight||1)
 		}		
@@ -146,8 +146,6 @@ export class Vec<N extends number> extends CanvasObject{ // looks like I need 2 
 		return ret
 	}	
 }
-
-
 
 export class Vec2 extends Vec<2>{
 	constructor(points:number[][]){
@@ -170,7 +168,7 @@ export class Vec2 extends Vec<2>{
 		ctx.fillStyle = "#F80"
 		let hsize=marker!=null && marker=="hot" ? 3:0
 		let coords=[CanvasObject.screen[0]/2+this.v[0] , CanvasObject.screen[1]/2+this.v[1]]
-		ctx.fillRect( coords[0], coords[1], 2*hsize+1, 2*hsize+1)
+		ctx.fillRect( coords[0]-hsize, coords[1]-hsize, 2*hsize+1, 2*hsize+1)
 
 	 } 
 	
@@ -236,17 +234,17 @@ class Frac{
 }
 
 
-export class Matrix{
-	nominator:Vec[]
+export class Matrix<innerProducts extends number,N extends number>{
+	nominator:Vec<N>[]
 	constructor(cols?:number ){
-		if (typeof cols == 'number') this.nominator=new Array<Vec>(cols)
+		if (typeof cols == 'number') this.nominator=new Array<Vec<N>>(cols)
 	}
-	static inverse(spanning2d: Vec[]) {
-		throw new Error("Method not implemented.")
-	}
-	inverse(m:Vec[]):Matrix_frac{ // see applications. May need to pull back here for unit tests
-		return null;
-	}
+	// static inverse(spanning2d: Vec<N>[]) {
+	// 	throw new Error("Method not implemented.")
+	// }
+	// inverse(m:Vec<N>[]):Matrix_frac{ // see applications. May need to pull back here for unit tests
+	// 	return null;
+	// }
 	// Matrix with vector shoud usually use the inner product for fast implementation in JRISC MMULT and for nice mathematical notation ( as opposed to the SUM sign Sigma)
 	// So here the right Matrix is seen as a collection of vectors. Somehow this works great to interpolate, but badly for rotation.
 	// Thinking of column major for the vector. We store along columns, we mmult along columns
@@ -256,9 +254,9 @@ export class Matrix{
 	// this means that this Matrix has rows. So the vectors are rotated by 90° (transposed). Weird.
 	// Rotating the camera coordinate system, cannot use the inner product.
 	// But I just don't write it a Matrix. Just vector adds. So that I can skip some zeroes.
-	mul_left(trans:Vec[]):Matrix{		
-		let res=new Matrix(this.nominator.length)
-		let k=0
+	mul_left(trans:Vec<N>[]):Matrix<innerProducts,N>{		
+		let res=new Matrix<innerProducts,N>(this.nominator.length)
+		let k=0 // TODO
 		for(let i=0;i<this.nominator.length;i++){
 			res.nominator[i].v[k]=this.nominator[i].innerProductM(trans,k)  // base would want vector add, while JRISC wants inner product
 		}
@@ -266,8 +264,8 @@ export class Matrix{
 	}
 
 	// for some reason Matrix makes the code unreadable in many places. VertexId as Matrix dimension makes no sense
-	mul_left_vec(trans:Vec):Vec{		
-		let res=new Vec([[this.nominator.length]])
+	mul_left_vec(trans:Vec<N>):Vec<N>{		
+		let res=new Vec<N>([[this.nominator.length]])
 		//let k=0
 		for(let i=0;i<this.nominator.length;i++){
 			res.v[i]=this.nominator[i].innerProduct(trans)  // base would want vector add, while JRISC wants inner product
@@ -297,17 +295,40 @@ export class Matrix{
 	// Do we need transposed versions? This is used only for uv -> st mapping, so no.
 
 	// uvz <- st <- viewVector  is pulling. So again, I use row major (Matrix of rows). It is an accident that rotation and texture mapping are both row major?
-	static mul__Matrices_of_Rows(A: Vec[][]): Matrix {
-		const row_count = A[0].length;
-		const res = new Matrix(row_count)
+	// static mul__Matrices_of_Rows<innerProducts extends number,N extends number>(A: Vec<N>[][]): Matrix<innerProducts,N> {
+	// 	console.warn("There is probably no math or Matrix storage convetion/plan which needs this");
+	// 	const row_count = A[0].length;						// A[x].length is row count because I put both factors in an array. So this is kinda transposed? But I don't get it, how can I mess up math so bad that not at least one of the Matrices can utilize inner products?
+	// 	const res = new Matrix<innerProducts,N>(row_count)  // row count = innerProducts.Count . I imagine B = M.V  . Even though I love lambda V.M => B
+	// 	for (let row_i = 0; row_i < row_count; row_i++) {
+	// 		//if (row_i==row_count-1) console.log("mul row",A[0][row_i],A[1]) // debug
+	// 		const field_per_row__count = A[1][0].v.length  // 0=any
+ 	// 		const row= new Vec<N>([[field_per_row__count]])  // jagged array does not work here. The 90° rotate picture in my head for V=M&*V does not deal with the fields in the result well. My head cannot do multply from right like V=V &* M . I mean, there is no application in 3d graphics. Of course it is useful for eigen values for differential equations or the stress-strain tensor. But we are lucky, zero overlap with computer graphics here.
+	// 		for (let field_i = 0; field_i < field_per_row__count; field_i++) {
+	// 			if (A[0][field_i].v.length != A[1].length) throw new Error("Incompatible matrix sizes")
+	// 			for (let inner = 0; inner < A[1].length; inner++) {  // k inner ? inner loop? Encapsulated. Inner working?
+	// 				row.v[field_i] += A[0][row_i].v[inner] * A[1][inner].v[field_i]  // notice how indeces in second factor are interleaved. It looks like this transposed form is not natural for the application. So I have to transpose here.
+	// 				// for Vector Add, we want the last index select the component
+	// 				// So no matter what picture you have in your head ( row or column, left or right multiply),
+	// 				// Like in OpenGL Vectors would need to live in the right factor ( the inner loop ) as input
+	// 				// Output uses the other index
+	// 			}
+	// 		}
+	// 		res.nominator[row_i] = row
+	// 	}
+	// 	return res
+	// }
+
+	public thisMatrices_of_Rows__mul_thatRows<otherDimension extends number>(A: Matrix<N,otherDimension>): Matrix<innerProducts,otherDimension> {
+		const row_count = this.nominator.length; // == innerProducts . Seems like TypeScript cant convert Type number to const number.						// A[x].length is row count because I put both factors in an array. So this is kinda transposed? But I don't get it, how can I mess up math so bad that not at least one of the Matrices can utilize inner products?
+		const res = new Matrix<innerProducts,otherDimension>(row_count)  // row count = innerProducts.Count . I imagine B = M.V  . Even though I love lambda V.M => B
 		for (let row_i = 0; row_i < row_count; row_i++) {
 			//if (row_i==row_count-1) console.log("mul row",A[0][row_i],A[1]) // debug
-			const field_per_row__count = A[1][0].v.length  // 0=any
- 			const row= new Vec([[field_per_row__count]])  // jagged array does not work here. The 90° rotate picture in my head for V=M&*V does not deal with the fields in the result well. My head cannot do multply from right like V=V &* M . I mean, there is no application in 3d graphics. Of course it is useful for eigen values for differential equations or the stress-strain tensor. But we are lucky, zero overlap with computer graphics here.
+			const field_per_row__count = A.nominator[0].v.length  // == otherDimension   0=any
+ 			const row= new Vec<otherDimension>([[field_per_row__count]])  // jagged array does not work here. The 90° rotate picture in my head for V=M&*V does not deal with the fields in the result well. My head cannot do multply from right like V=V &* M . I mean, there is no application in 3d graphics. Of course it is useful for eigen values for differential equations or the stress-strain tensor. But we are lucky, zero overlap with computer graphics here.
 			for (let field_i = 0; field_i < field_per_row__count; field_i++) {
-				if (A[0][field_i].v.length != A[1].length) throw new Error("Incompatible matrix sizes")
-				for (let inner = 0; inner < A[1].length; inner++) {  // k inner ? inner loop? Encapsulated. Inner working?
-					row.v[field_i] += A[0][row_i].v[inner] * A[1][inner].v[field_i]  // notice how indeces in second factor are interleaved. It looks like this transposed form is not natural for the application. So I have to transpose here.
+				if (this.nominator[row_i].v.length != A.nominator.length) throw new Error("Incompatible matrix sizes")
+				for (let inner = 0; inner < A.nominator.length; inner++) {  // k inner ? inner loop? Encapsulated. Inner working?
+					row.v[field_i] += this.nominator[row_i].v[inner] * A.nominator[inner].v[field_i]  // notice how indeces in second factor are interleaved. It looks like this transposed form is not natural for the application. So I have to transpose here.
 					// for Vector Add, we want the last index select the component
 					// So no matter what picture you have in your head ( row or column, left or right multiply),
 					// Like in OpenGL Vectors would need to live in the right factor ( the inner loop ) as input
@@ -317,21 +338,21 @@ export class Matrix{
 			res.nominator[row_i] = row
 		}
 		return res
-	}
+	}	
 }
 
-export class Matrix2 extends Matrix{
-	override nominator: Vec2[]
-	inverse_rn(result_row:number): Vec2_den {
-		let m=this.nominator
-		let det = m[0].wedgeProduct(m[1]);
-		if (det === 0) throw new Error("Matrix is not invertible");
+// export class Matrix2 extends Matrix<N>{
+// 	override nominator: Vec2[]
+// 	inverse_rn(result_row:number): Vec2_den {
+// 		let m=this.nominator
+// 		let det = m[0].wedgeProduct(m[1]);
+// 		if (det === 0) throw new Error("Matrix is not invertible");
 
-		let vd=new Vec2_den( [m[1-result_row].v[result_row] , m[result_row].v[1-result_row] ], det) ;  // Vectors are always vertical. Otherwise my head would hurt
-		return vd;
+// 		let vd=new Vec2_den( [m[1-result_row].v[result_row] , m[result_row].v[1-result_row] ], det) ;  // Vectors are always vertical. Otherwise my head would hurt
+// 		return vd;
 
-	}
-}
+// 	}
+// }
 
 // So some engines don't seem to care, but I care about rounding
 // Now for Doom or portal renderers I need infinite precision to avoid glitches.
@@ -447,15 +468,17 @@ Just this gets a little weird for screen corners. Like I would raytrace exactly 
 // All the math is 3d with some non-normalized vectors. But the edges can still be drawn on screen.
 // So uh, okay fantasy world without rounding
 
-export class Matrix_Rotation extends Matrix{
+export class Matrix_Rotation extends Matrix<3,3>{
 	// for rotation matrices this is the same as multiplying with inverse
 	// I always multiply from the left ( MAtrix=rows aka row major ). Vectors are on the right and "vertical"
 	// First version only uses vectors because beam tree has a lot of rays to trace which are not projected
 	// I want to leak the implementation because I count the bits. It is research code!
 	// transpose only confuses me with other Matrices
 	// Looks like Quaternions and Rotation Matrix belong together, while other Matrices don't
-	MUL_left_transposed(v:Vec):Vec{  // Rot Matrix in column major makes more sense as it pushes the coordinate system into world space
-		let res=new Vec([[0,0,0]])
+	MUL_left_transposed(v:Vec<3>):Vec<3>{  // Rot Matrix in column major makes more sense as it pushes the coordinate system into world space
+
+		const newLocal = [0, 0, 0];
+		let res=new Vec< 3  >([newLocal]); // why is 3 a type ?
 		for(let k=0;k<this.nominator.length;k++){
 			for(let i=0;i<this.nominator[k].v.length;i++){
 				res.v[i]+=this.nominator[k].v[i] * v.v[k] //.innerProductM(trans,i)  // base would want vector add, while JRISC wants inner product
@@ -476,7 +499,7 @@ export class Matrix_Rotation extends Matrix{
 		//let cosine=Math.sqrt(1-sine*sine)
 
 		// Rotate by mixing two axes
-		let n:Vec[] = []
+		let n:Vec<3>[] = []
 		n[axis]=this.nominator[axis] // copy the axis
 		for(let i=0;i<2;i++){ // copy the other two axes
 			let others=[(axis+1+i)%3,(axis+2-i)%3]
@@ -506,17 +529,15 @@ export class Matrix_Rotation extends Matrix{
 	}
 }
 
-
-export class Matrix_frac extends Matrix{
-	denominator:number
-/*  UV has no denominator .. super class suffices!
-	mul(trans:Vec[]):Matrix_frac{
-		let mf=new Matrix_frac()
-		mf.nominator=super.mul(trans).nominator
-		mf.denominator=this.denominator*trans.den
-	} */
-}
-
+// export class Matrix_frac extends Matrix{
+// 	denominator:number
+// /*  UV has no denominator .. super class suffices!
+// 	mul(trans:Vec[]):Matrix_frac{
+// 		let mf=new Matrix_frac()
+// 		mf.nominator=super.mul(trans).nominator
+// 		mf.denominator=this.denominator*trans.den
+// 	} */
+// }
 
 class Plane{
 	anchor:number[]
@@ -524,7 +545,7 @@ class Plane{
 }
 
 class Z_order{
-	z_at_intersection(e:Vec3[], anchor:Vec, normal:Vec):Frac{
+	z_at_intersection(e:Vec3[], anchor:Vec<3>, normal:Vec<3>):Frac{
 
 		let beam=e[0].crossProduct(e[1]) // edges are planes with a normal in a beam tree
 
@@ -557,21 +578,43 @@ export class Edge<N extends number> extends CanvasObject{
 	constructor( vs:Vec<N>[]){
 		super();
 		this.vs=vs;
+		this.toCanvas(); // On the one hand, new should be bright like on a CRT RADAR. On the other hand this is implicit.
 	}
+	toCanvas(marker:string=null){} // abstract
+	toCanvasInner(coords:number[][], marker:string=null):void{
+		let ctx=CanvasObject.ctx //ctx: CanvasRenderingContext2D): void {
+		ctx.strokeStyle = '#bbb'
+		ctx.beginPath(); // Start a new path
+		let t=coords[0];
+		ctx.moveTo(t[0],t[1] ); // Move the pen to (30, 50) . So wild that this does not accept arrays.
+		t=coords[1];
+		ctx.lineTo(t[0],t[1]); // Draw a line to (150, 100)		
+		ctx.stroke(); // Render the path
+		// Might be need if caller is BSPtree this.vs.forEach(v=>v.toCanvas(ctx))
+	}	
+}
+
+export class Edge2 extends Edge<2>{
 	toCanvas(marker:string=null):void{ let ctx=CanvasObject.ctx //ctx: CanvasRenderingContext2D): void {
 		ctx.strokeStyle = '#bbb'
 		ctx.beginPath(); // Start a new path
-		if ( N==2 ){
-			const s = CanvasObject.screen.map(full=>full/2);
-			let coords=this.vs.map(v=>v.v.map( (w,i)=>s[i]+w/v.v[2]))
-	let t=coords[0];
-		ctx.moveTo(t[0],t[1] ); // Move the pen to (30, 50) . So wild that this does not accept arrays.
-		t=coords[1];
-		ctx.lineTo(t[0],t[1]); // Draw a line to (150, 100)
-		}
-		ctx.stroke(); // Render the path
 
-		// Might be need if caller is BSPtree this.vs.forEach(v=>v.toCanvas(ctx))
+		const s = CanvasObject.screen.map(full=>full/2);
+		let coords=this.vs.map(v=>v.v.map( (w,i)=>s[i]+w))
+
+		super.toCanvasInner(coords,marker);
+	}	
+}
+
+export class Edge3 extends Edge<3>{
+	toCanvas(marker:string=null):void{ let ctx=CanvasObject.ctx //ctx: CanvasRenderingContext2D): void {
+		ctx.strokeStyle = '#bbb'
+		ctx.beginPath(); // Start a new path
+
+		const s = CanvasObject.screen.map(full=>full/2);
+		let coords=this.vs.map(v=>v.v.map( (w,i)=>s[i]+w/v.v[2]))
+
+		super.toCanvasInner(coords,marker);
 	}	
 }
 

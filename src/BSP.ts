@@ -103,7 +103,8 @@ export class Polygon_in_cameraSpace implements CanvasObject {
 		const v3 = vs.slice(0, 3).map(v => new Vec3([v.xy.v.concat(v.z)]))  // backface culling in 3d. One of the perks of subpixel correction. // By my definition, the first two edges span up the plane (default s,t and basis for u,v mapping). The level editor needs to make sure that the rest align ( kinda like in Doom space ). I may add a scene graph just to allow to rotate Doomspace objects with infinite precision.			
 		const edge: Vec3[] = []
 		for (let i = 0; i < 2; i++) { // somehow array functions do not work for this. Todo: Move behind edge code
-			edge.push(v3[i].subtract01(v3[1 + 1]))
+			const v32 = v3[i].subtract01(v3[1 + 1]) as Vec3;
+			edge.push(v32)
 		}
 		const normal = edge[0].crossProduct(edge[1])  // Todo: Cross product optional parameter for z only? I don't want to leak the internal sign convention here
 		if (normal.v[2] > 0) {
@@ -203,6 +204,10 @@ export class Vertex_OnScreen extends Vec3 {//implements CanvasObject {
 const debugshift = 8
 
 export class Edge_on_Screen implements CanvasObject {
+	// constructor(vs?:(Vec<3>|Vec<2>)[]){
+	// 	this.vs=[vs[0],vs[1]];
+	// 	this.toCanvas()
+	// }
 	vs: [Vertex_OnScreen, Vertex_OnScreen]
 	toCanvas(marker:string=null):void{ let ctx=CanvasObject.ctx //ctx: CanvasRenderingContext2D): void {
 		ctx.strokeStyle = '#bbb'

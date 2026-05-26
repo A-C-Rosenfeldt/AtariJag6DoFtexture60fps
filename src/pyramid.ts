@@ -1,4 +1,4 @@
-import { Vec2, Vec3, Matrix2, Vec2_den, Matrix, Vec } from "./clipping"
+import { Vec2, Vec3, Vec2_den, Matrix, Vec } from "./clipping"
 import { Edge_w_slope, Item, Point, Vertex_in_cameraSpace, Vertex_OnScreen,Corner } from './Item'
 import { Polygon_in_cameraSpace } from "./rasterizer"
 
@@ -277,62 +277,62 @@ class Portal { //implements Pyramid {
 	}
 
 	pixelRay_portal= new Array<Vec2> (5)
-	ray_SideOf_Edge(ray:number, edge_as_beam:Vec2){
-		const p=this.pixelRay_portal[ray]
-		const s:DMZ_corner[]=this.edge_as_beams.slice(ray, ray+1).map(r=> ( {angle:this.karthesic_to_angle(r.v.map(o=>Math.sign(o))), signs:r.v.map(o=>Math.sign(o)) } ) as DMZ_corner )
+	// ray_SideOf_Edge(ray:number, edge_as_beam:Vec2){
+	// 	const p=this.pixelRay_portal[ray]
+	// 	const s:DMZ_corner[]=this.edge_as_beams.slice(ray, ray+1).map(r=> ( {angle:this.karthesic_to_angle(r.v.map(o=>Math.sign(o))), signs:r.v.map(o=>Math.sign(o)) } ) as DMZ_corner )
 
-		// from point of view of DMZ, slope needs to be negated
-		s[0].angle+=4
-		s[0].signs.map(s=>-s)
+	// 	// from point of view of DMZ, slope needs to be negated
+	// 	s[0].angle+=4
+	// 	s[0].signs.map(s=>-s)
 
-		for(let end=0;end<2;end++){
-			// pulling
-			let corner=s[end].signs // ref 
-			// rotate to wrap
-			let ordinate=0
-			for (;ordinate<2;ordinate++){
-				if (corner[ordinate]==0 ) {corner[ordinate] = corner[1-ordinate] * (end*2-1);break} //todo:return
-			}
-			if (ordinate > 1) {
-				this.rotate(corner, end)
-			}
-			s[end].angle=this.karthesic_to_angle(corner)
-			// exception : axis aligned slithers => invisible
-		}
+	// 	for(let end=0;end<2;end++){
+	// 		// pulling
+	// 		let corner=s[end].signs // ref 
+	// 		// rotate to wrap
+	// 		let ordinate=0
+	// 		for (;ordinate<2;ordinate++){
+	// 			if (corner[ordinate]==0 ) {corner[ordinate] = corner[1-ordinate] * (end*2-1);break} //todo:return
+	// 		}
+	// 		if (ordinate > 1) {
+	// 			this.rotate(corner, end)
+	// 		}
+	// 		s[end].angle=this.karthesic_to_angle(corner)
+	// 		// exception : axis aligned slithers => invisible
+	// 	}
 
-		if (s[1].angle<s[0].angle) s[1].angle+=4
+	// 	if (s[1].angle<s[0].angle) s[1].angle+=4
 
-		const cursor=s[0].signs.slice()  // should I already convert to bitfields as I will for JRISC?
+	// 	const cursor=s[0].signs.slice()  // should I already convert to bitfields as I will for JRISC?
 
-		// How exactly does the top-left rule look like? For axis aligned edges (polygon at higher values), a fraction of 0 means that we just reached the next higher integer .. so we just dodged the ray at exact pixel position. "Flooring rule"
-		// If a portal and an edge behind it exactly cross a pixel, what does it mean for our DMZ. I mean the case where the wrap goes over 3 corners.
-		// the portal edges may meet at the internal (far) corner. And the meet with the polygon
-		// This would be the only case where the far corner even matters. Now it seems if this corner is on the lower right, it is inside the portal
-		// if a polygon sneaks into the portal there, the same flooring rule applies and the ray does not hit
-		// if a polygon ends there, the corner hits the polygon, but we don't need the edge for this.
-		// So: we don't care for the internal corner. For the other corners we know that the cut with the actual edge not overflow -- ah no, we lost this property ( grazing incidence, slithers )
-		// Grazing incidence will probably trigger precision issues when floating. Pure algebra. Sadly, the geometric connection is lost. Out of bounds crossings can simply be detected using integer ranges on x and y.
-		// Geometric interpretation: Check over the (closed (because we don't know which DMZ border is crossed)) x or y interval. Axis alignment with camera space simplfies calculation.
-		// the multiplication tests around the DMZ set up the precision pulled for edge slope and bias. The cut between the two edges need to use at least the same precision. This is probably expensive, but looks like the a mandatory cost. Real. Based on some underlying maths.
-		// The calc y for two x or vice versa. Check if delta between both edges changes (last operation is XOR). Using fractions, this becomes multiplication.
-		// Temporary values can be reused for checking forEachEach n-gon vs m-portal edges.
-		// Special case of horizontal always exists. This would imply that two DMZs at the end of a portal edge share one intY value. So I already need to check there?
-		// All cases with cut on integer x or y will give us a zero ( so sign is not that meaningful ). TopLeft rule again? Floor rule?
-		// IMHO the portal vs polygon situation will make this edge irrelavant. It needs to be clearly inside at either y.
-		// Closed interval hurts, we don't care about cuts in the DMZ. So just another "refinement" step :-(. Remedy: check inside corners of DMZ to find the border which is actually crossed.
-		// Special case: All cuts in the same DMZ .. can this even happen? Otherwise this a closed interval. It is enough to check one range. Ah, I don't want to depend on the rasterizer, not even for a convention here. I need to check both, even for a closed intervall
-		// Ah, DMZ becomes the old guad band all over again? I can only cull edges fast. It almost looks like I need to calculate all cuts with all portal edges for all passing polygon edges.
-		// If the portal area (in real covered pixels -- consider for sithers an alignment! You need to rasterize) becomes small enough, I may switch to raytracing in Camera 3dspace.
+	// 	// How exactly does the top-left rule look like? For axis aligned edges (polygon at higher values), a fraction of 0 means that we just reached the next higher integer .. so we just dodged the ray at exact pixel position. "Flooring rule"
+	// 	// If a portal and an edge behind it exactly cross a pixel, what does it mean for our DMZ. I mean the case where the wrap goes over 3 corners.
+	// 	// the portal edges may meet at the internal (far) corner. And the meet with the polygon
+	// 	// This would be the only case where the far corner even matters. Now it seems if this corner is on the lower right, it is inside the portal
+	// 	// if a polygon sneaks into the portal there, the same flooring rule applies and the ray does not hit
+	// 	// if a polygon ends there, the corner hits the polygon, but we don't need the edge for this.
+	// 	// So: we don't care for the internal corner. For the other corners we know that the cut with the actual edge not overflow -- ah no, we lost this property ( grazing incidence, slithers )
+	// 	// Grazing incidence will probably trigger precision issues when floating. Pure algebra. Sadly, the geometric connection is lost. Out of bounds crossings can simply be detected using integer ranges on x and y.
+	// 	// Geometric interpretation: Check over the (closed (because we don't know which DMZ border is crossed)) x or y interval. Axis alignment with camera space simplfies calculation.
+	// 	// the multiplication tests around the DMZ set up the precision pulled for edge slope and bias. The cut between the two edges need to use at least the same precision. This is probably expensive, but looks like the a mandatory cost. Real. Based on some underlying maths.
+	// 	// The calc y for two x or vice versa. Check if delta between both edges changes (last operation is XOR). Using fractions, this becomes multiplication.
+	// 	// Temporary values can be reused for checking forEachEach n-gon vs m-portal edges.
+	// 	// Special case of horizontal always exists. This would imply that two DMZs at the end of a portal edge share one intY value. So I already need to check there?
+	// 	// All cases with cut on integer x or y will give us a zero ( so sign is not that meaningful ). TopLeft rule again? Floor rule?
+	// 	// IMHO the portal vs polygon situation will make this edge irrelavant. It needs to be clearly inside at either y.
+	// 	// Closed interval hurts, we don't care about cuts in the DMZ. So just another "refinement" step :-(. Remedy: check inside corners of DMZ to find the border which is actually crossed.
+	// 	// Special case: All cuts in the same DMZ .. can this even happen? Otherwise this a closed interval. It is enough to check one range. Ah, I don't want to depend on the rasterizer, not even for a convention here. I need to check both, even for a closed intervall
+	// 	// Ah, DMZ becomes the old guad band all over again? I can only cull edges fast. It almost looks like I need to calculate all cuts with all portal edges for all passing polygon edges.
+	// 	// If the portal area (in real covered pixels -- consider for sithers an alignment! You need to rasterize) becomes small enough, I may switch to raytracing in Camera 3dspace.
 
-		for(var angle=s[0].signs[0];angle<s[1].signs[0];angle++){ // todo: bring back cyclic, but in a clean way
-			// check exposed corners of pixel DMZ
-			const c=p.v.map((o,i)=> (o+cursor[i]+1)/2)  // top left pixel convention. So like, the offset needs to be >=0 . Is also memory management convention
-			const v=new Vec3([[...c,1000]])   // todo: Ah, here the z appears again. This has to match the relation between FoV 0.8 (mostly used to define aspect ratio) and FoV in pixels. The real (common FoV) is determined by the transformation into camera space.
-			var collection=edge_as_beam.innerProduct(v)  // collection is for debugging. We keep the whole number, not just the sign for this. Later shorten, but how much: still need to scan for two sign changes
+	// 	for(var angle=s[0].signs[0];angle<s[1].signs[0];angle++){ // todo: bring back cyclic, but in a clean way
+	// 		// check exposed corners of pixel DMZ
+	// 		const c=p.v.map((o,i)=> (o+cursor[i]+1)/2)  // top left pixel convention. So like, the offset needs to be >=0 . Is also memory management convention
+	// 		const v=new Vec3([[...c,1000]])   // todo: Ah, here the z appears again. This has to match the relation between FoV 0.8 (mostly used to define aspect ratio) and FoV in pixels. The real (common FoV) is determined by the transformation into camera space.
+	// 		var collection=edge_as_beam.innerProduct(v)  // collection is for debugging. We keep the whole number, not just the sign for this. Later shorten, but how much: still need to scan for two sign changes
 
-			this.rotate(cursor,0)
-		}
-	}
+	// 		this.rotate(cursor,0)
+	// 	}
+	// }
 
 	private rotate(corner: number[], end: number) {
 		const copy = corner.slice()
@@ -364,7 +364,7 @@ class Portal { //implements Pyramid {
 
 			const normal=p3.crossProduct(p3)  // two vertices. => 32 bit !!! This is t After projection the wedge product is only 16 bit. Not just due to the removed z, but 
 			// 3d vertex is 32 bit  , well 24 . What if a polygon is split by a BPS? I clearly only want this effort on the real, outermost portal. If I stick to corners I can save a lot of code
-			const only_sign_matters=p3.innerProduct(new Vec2([v3.inSpace]) ) // vertex-camera -> vector !! Then stick to it
+		//	const only_sign_matters=p3.innerProduct(new Vec2([v3.inSpace]) ) // vertex-camera -> vector !! Then stick to it
 			// how much code is this anyways? Does 16x32 rotation give me signed vectors?
 			// imult, imac, imac, resmac    3 of these
 			// carry  (read this from bottom to top):
@@ -399,123 +399,123 @@ class Portal { //implements Pyramid {
 	// We calculate cuts because even the direct way doe it. just it only has one division
 	// divisions are always the same cycles. So make them give us 16bit ordinates (8.8), which we need for the rasterizer anyway.
 	// floats would be cool, but also difficult to debug. Perhaps local memory for data should be used to keep code size down -- so much norm add shift
-	cut(item: Item[][]): number[] {
-		if (item[0][1] == null && item[1][1] == null) {
-			if (item.map(it => it.reduce<boolean>(
-				(p, i) => p && ((i == null) || (i instanceof Vertex_OnScreen)), true)
-			)) {
-				// Just use 16 bit vertex coords
+	// cut(item: Item[][]): number[] {
+	// 	if (item[0][1] == null && item[1][1] == null) {
+	// 		if (item.map(it => it.reduce<boolean>(
+	// 			(p, i) => p && ((i == null) || (i instanceof Vertex_OnScreen)), true)
+	// 		)) {
+	// 			// Just use 16 bit vertex coords
 
-				// Trying to invert without actually writing this word here. Somehow express as wedge product and right multiplication?
-				// Is this duality? Or axial vectors? The fact that math somehow makes me keep around slope and gradient vectors
+	// 			// Trying to invert without actually writing this word here. Somehow express as wedge product and right multiplication?
+	// 			// Is this duality? Or axial vectors? The fact that math somehow makes me keep around slope and gradient vectors
 
-				// for vertex -> border the item order around the polygon might not fit. Local reverse here!
-				const slope = new Matrix2()
-				slope.nominator = item.map(it => {
-					const v = new Vec2([(it[2] as Vertex_OnScreen).position, (it[0] as Vertex_OnScreen).position])
-					// const grad=new Vec2([[2]])
-					// grad.v=[-v[1],v[0]]
-					return v
-				}
-				);
+	// 			// for vertex -> border the item order around the polygon might not fit. Local reverse here!
+	// 			const slope = new Matrix2()
+	// 			slope.nominator = item.map(it => {
+	// 				const v = new Vec2([(it[2] as Vertex_OnScreen).position, (it[0] as Vertex_OnScreen).position])
+	// 				// const grad=new Vec2([[2]])
+	// 				// grad.v=[-v[1],v[0]]
+	// 				return v
+	// 			}
+	// 			);
 
-				const grad = new Matrix2()
-				grad.nominator = item.map(it => {
-					const v = new Vec2([(it[2] as Vertex_OnScreen).position, (it[0] as Vertex_OnScreen).position])
-					const grad = new Vec2([[2]])
-					grad.v = [-v.v[1], v.v[0]]   // wedging . Todo check sign. Was this convention okay? Ah I think Bresenham breaks the sign anyway. So lets keep this convention because it feels natural in my head.
-					return grad
-				}
-				);
-				// we always have grad. Sometimes form vertices, sometimes directly from horizon
+	// 			const grad = new Matrix2()
+	// 			grad.nominator = item.map(it => {
+	// 				const v = new Vec2([(it[2] as Vertex_OnScreen).position, (it[0] as Vertex_OnScreen).position])
+	// 				const grad = new Vec2([[2]])
+	// 				grad.v = [-v.v[1], v.v[0]]   // wedging . Todo check sign. Was this convention okay? Ah I think Bresenham breaks the sign anyway. So lets keep this convention because it feels natural in my head.
+	// 				return grad
+	// 			}
+	// 			);
+	// 			// we always have grad. Sometimes form vertices, sometimes directly from horizon
 
-				const vertex_involved_count: number = 1// works for vertex-border thanks to reverse above
-				// use wedge product to check if the vertices of the other edge are both on the same side. No dependency on rotation order
-				// new . Todo: write as early out (classic for, extract into function, return) and also skip the edge
+	// 			const vertex_involved_count: number = 1// works for vertex-border thanks to reverse above
+	// 			// use wedge product to check if the vertices of the other edge are both on the same side. No dependency on rotation order
+	// 			// new . Todo: write as early out (classic for, extract into function, return) and also skip the edge
 
-				// if one of the edges is horizon, us it for this and don't loop. If both are horizon .. uh the generic math problem . We cannot cull and it don't need to (to avoid glitches). We alredy checked if something is a horizon? Did we? Ah, only for the portal. The new polygon is .. uh so we check the vertices in 3d and 2d? 3d needs to be as precise to avoid . At least the portal is classified. The algorithm looks better in symmetric fashion.
-				//  for the order of cuts, at least in 2d I already floated the slope ~= gradient for max precision and no influence from z. 
-				// 3d edge vs Beam is problematic due to rounding. Even with reactangle I basically clip twice ( second time after rounding the slope ).
-				// 3d vertex vs beam is possible, but imperfect. we get a lot of portal edge candidates. If I later implement BSP merging, I need symmetry anyways.
-				// my symmetric pyramid clipping code feels like it has holes. I get candidate beam faces for cuts, but with vertices far on the side, all faces are candidates. Does this lead to glitches?
-				// The beam edge cross polygon edge volume still gives me the actual face ( see corner code) . I don't understand how this could ever have glitched? Do I need to paint edges? Only case is when vertices are on the same side (see next code), but I extrapolated the edge. If I miss a corner, the corner traces will all ahve the sime size ( pyramid corner height over polygon "ground").
-				let same_side = false
-				item.forEach((polygon, i_grad) => {
-					let point_of_view_found = false
-					polygon.forEach(this_vertex => {
-						if (this_vertex instanceof Vertex_OnScreen && !point_of_view_found) {
-							point_of_view_found = true   // this allows for v-v  and v-s  for "this"
-							let side_p = 0
-							item[1 - i_grad].forEach(other_v => {
-								if (other_v instanceof Vertex_OnScreen) {  // I don't do it for "virtual" vertices because it would mean a chain calculation ( complicated (rounding) error propagation)
-									const side = grad.nominator[i_grad].innerProduct(new Vec2([other_v.position, this_vertex.position]))
-									if (side_p == side) same_side = true  // this is  return  for the algorithm, but how to express in funcitonal?
-									else side_p = side
-								}
-							})
-							// if (side_p!=0 && !same_side){   // on_Screen  -slope-> border  fits in this code in nicely .   // this allows for v-v  and v-s  for "that"
-							// 		const edge=null // dummy. Todo fiddle with the indexes!
-							// 		if (edge instanceof Edge_w_slope){   // while crafting the display list, the signs in slope have a meansing!
-							// 			const side=grad.nominator[i_grad].wedgeProduct(edge.gradient)   // Not for horizon
-							// 			if (side_p == side) same_side = true  // this is  return  for the algorithm, but how to express in funcitonal?
-							// 			else side_p = side										
-							// 		}
-							// }
-						}
-					})
-				});   
+	// 			// if one of the edges is horizon, us it for this and don't loop. If both are horizon .. uh the generic math problem . We cannot cull and it don't need to (to avoid glitches). We alredy checked if something is a horizon? Did we? Ah, only for the portal. The new polygon is .. uh so we check the vertices in 3d and 2d? 3d needs to be as precise to avoid . At least the portal is classified. The algorithm looks better in symmetric fashion.
+	// 			//  for the order of cuts, at least in 2d I already floated the slope ~= gradient for max precision and no influence from z. 
+	// 			// 3d edge vs Beam is problematic due to rounding. Even with reactangle I basically clip twice ( second time after rounding the slope ).
+	// 			// 3d vertex vs beam is possible, but imperfect. we get a lot of portal edge candidates. If I later implement BSP merging, I need symmetry anyways.
+	// 			// my symmetric pyramid clipping code feels like it has holes. I get candidate beam faces for cuts, but with vertices far on the side, all faces are candidates. Does this lead to glitches?
+	// 			// The beam edge cross polygon edge volume still gives me the actual face ( see corner code) . I don't understand how this could ever have glitched? Do I need to paint edges? Only case is when vertices are on the same side (see next code), but I extrapolated the edge. If I miss a corner, the corner traces will all ahve the sime size ( pyramid corner height over polygon "ground").
+	// 			let same_side = false
+	// 			item.forEach((polygon, i_grad) => {
+	// 				let point_of_view_found = false
+	// 				polygon.forEach(this_vertex => {
+	// 					if (this_vertex instanceof Vertex_OnScreen && !point_of_view_found) {
+	// 						point_of_view_found = true   // this allows for v-v  and v-s  for "this"
+	// 						let side_p = 0
+	// 						item[1 - i_grad].forEach(other_v => {
+	// 							if (other_v instanceof Vertex_OnScreen) {  // I don't do it for "virtual" vertices because it would mean a chain calculation ( complicated (rounding) error propagation)
+	// 								const side = grad.nominator[i_grad].innerProduct(new Vec2([other_v.position, this_vertex.position]))
+	// 								if (side_p == side) same_side = true  // this is  return  for the algorithm, but how to express in funcitonal?
+	// 								else side_p = side
+	// 							}
+	// 						})
+	// 						// if (side_p!=0 && !same_side){   // on_Screen  -slope-> border  fits in this code in nicely .   // this allows for v-v  and v-s  for "that"
+	// 						// 		const edge=null // dummy. Todo fiddle with the indexes!
+	// 						// 		if (edge instanceof Edge_w_slope){   // while crafting the display list, the signs in slope have a meansing!
+	// 						// 			const side=grad.nominator[i_grad].wedgeProduct(edge.gradient)   // Not for horizon
+	// 						// 			if (side_p == side) same_side = true  // this is  return  for the algorithm, but how to express in funcitonal?
+	// 						// 			else side_p = side										
+	// 						// 		}
+	// 						// }
+	// 					}
+	// 				})
+	// 			});   
 
-				// new  				///// This code may duplicate some math, but it needs to stay readabl? 
-				// so now, a slope vector  inner product  gradient vector  is 0 if with its dual, but wedge product if cross. I keep these arround for all edges of polygon and portal ( size of the total state of cuts() )
-				// How do we describe a cut? There is this relative vector between the bases. Bias looks ugly
-				// a cut is zero on grad is inner prod=> easy . But what is inversion here? How can xy be a result of two inner products ( the multiplication of the inverse matrix)
-				// from algebra we know: xy = wedged,transposed &* gradient &* (bias=delta vector )
-				// reverse reading
-				// decompose delta vector
-				let arg = item.map(it => (it[0] as Vertex_OnScreen).position)
-				const delta = new Vec2(arg)				// cuts are stored per portal and polygon. For portal-polygon cutting, we have nxm delta. This is similar to how we compare each edge with every corner
-				//  into parts orthogonal to each line   => gives us the abstract s,t coords similar to texture mapping
-				const parts_carried_by_basis_vector = grad.mul_left_vec(delta)   // not normalized     // return from here if any basis vector starting from VertexOnScreen is negative! How to share code with horizon? What is the equivalent ot the mul only check on the corners? It is the area between 3 cuts. So actually, do we really have to do nxm cuts with rounding? With vertex on screen, we can decide by the sign. Corner is a vertex on screen here ( OOP inheritance). Likewise vertices of the polygon need to be on different sides of the beam-plane.
-				const de = grad.nominator[0].innerProduct(slope.nominator[1])  // determinant = denominator to normalize the parts vector. This obviously scales with the length of our basis vectors. The formula for inverse tells us that this is correct. Physics units would be m^2 and compensates both products
-				if (de == 0) return null
+	// 			// new  				///// This code may duplicate some math, but it needs to stay readabl? 
+	// 			// so now, a slope vector  inner product  gradient vector  is 0 if with its dual, but wedge product if cross. I keep these arround for all edges of polygon and portal ( size of the total state of cuts() )
+	// 			// How do we describe a cut? There is this relative vector between the bases. Bias looks ugly
+	// 			// a cut is zero on grad is inner prod=> easy . But what is inversion here? How can xy be a result of two inner products ( the multiplication of the inverse matrix)
+	// 			// from algebra we know: xy = wedged,transposed &* gradient &* (bias=delta vector )
+	// 			// reverse reading
+	// 			// decompose delta vector
+	// 			let arg = item.map(it => (it[0] as Vertex_OnScreen).position)
+	// 			const delta = new Vec2(arg)				// cuts are stored per portal and polygon. For portal-polygon cutting, we have nxm delta. This is similar to how we compare each edge with every corner
+	// 			//  into parts orthogonal to each line   => gives us the abstract s,t coords similar to texture mapping
+	// 			const parts_carried_by_basis_vector = grad.mul_left_vec(delta)   // not normalized     // return from here if any basis vector starting from VertexOnScreen is negative! How to share code with horizon? What is the equivalent ot the mul only check on the corners? It is the area between 3 cuts. So actually, do we really have to do nxm cuts with rounding? With vertex on screen, we can decide by the sign. Corner is a vertex on screen here ( OOP inheritance). Likewise vertices of the polygon need to be on different sides of the beam-plane.
+	// 			const de = grad.nominator[0].innerProduct(slope.nominator[1])  // determinant = denominator to normalize the parts vector. This obviously scales with the length of our basis vectors. The formula for inverse tells us that this is correct. Physics units would be m^2 and compensates both products
+	// 			if (de == 0) return null
 
-				//const parts_carried_by_basis_vector=new Vec() ; // the vector space is 2d (s,t) + z + .. There is no norm defined and no cross product. Inner product works though?
-				if (vertex_involved_count > 0 && parts_carried_by_basis_vector.v.reduce((p, c) => p || Math.sign(c) < 0, false)) return null  // cut is on the outside of either edge. Think of it as a triangle. Delta is the basis. Polygon order wants the cut to be corner C . Also need to point up both of them.
-				if (vertex_involved_count == 2) {  // using the other vertices. Same triangle argument. Somehow I feel like I should check both other vertices relative to one of mine if they are on the same side of me. This is just early out. Perhaps a way to test the code for the 3d case? Area between cuts sign should give the saem result. I just do this because cuts are really expensive (in JRISC). Code size is not even the worst aspect here.
-					let arg = item.map(it => (it[1] as Vertex_OnScreen).position)
-					const delta = new Vec2(arg)
-					const parts_carried_by_basis_vector = grad.mul_left_vec(delta)
-					if (parts_carried_by_basis_vector.v.reduce((p, c) => p || Math.sign(c) < 0, false)) return null
-				}
+	// 			//const parts_carried_by_basis_vector=new Vec() ; // the vector space is 2d (s,t) + z + .. There is no norm defined and no cross product. Inner product works though?
+	// 			if (vertex_involved_count > 0 && parts_carried_by_basis_vector.v.reduce((p, c) => p || Math.sign(c) < 0, false)) return null  // cut is on the outside of either edge. Think of it as a triangle. Delta is the basis. Polygon order wants the cut to be corner C . Also need to point up both of them.
+	// 			if (vertex_involved_count == 2) {  // using the other vertices. Same triangle argument. Somehow I feel like I should check both other vertices relative to one of mine if they are on the same side of me. This is just early out. Perhaps a way to test the code for the 3d case? Area between cuts sign should give the saem result. I just do this because cuts are really expensive (in JRISC). Code size is not even the worst aspect here.
+	// 				let arg = item.map(it => (it[1] as Vertex_OnScreen).position)
+	// 				const delta = new Vec2(arg)
+	// 				const parts_carried_by_basis_vector = grad.mul_left_vec(delta)
+	// 				if (parts_carried_by_basis_vector.v.reduce((p, c) => p || Math.sign(c) < 0, false)) return null
+	// 			}
 
-				// add up the basis vectors    // this only needs a scalar factor per basis vector
-				const xy_rel = Matrix.mul__Matrices_of_Rows([[parts_carried_by_basis_vector], slope.nominator])  // adding up vectors brings up back into the xy coordinate system. Matrix of Rows looks weird as static method
-				const xy = xy_rel.nominator[0].scalarProduct(1 / de).apply((item[0][0] as Vertex_OnScreen).position)  // I have 3 point types: 3d, 2d, ah and 2d with an interface for the rasterizer: integer_part_of_y_()
-				return xy   // if we use (subpixel) correct screen coordinates, at least it is easy to debug the code ( which gives us the order of vertices ). My fear is the lack of bounds for almost parallel edges from polygon and portal. This would still be a problem because I always round. At least these are the real y for Bresenham. I can detect ovefflow as with the screen borders..Error calculation is straight forward and I could just have a multi-edge inner loop (exception) which takes the minimum on every line and stores the result for portal cascade or BSP merging
-
-
-				// divide by determinand = cross wedgeProduct .. where does this sum come from? Ah, this is just the normalization from the step above
-				// PS: Why don't we need per vector normalization here like in gram schmidt?
-				//     The wedge product propagates the length of both factors . Gramm Schmidt in 3d is just different. Perhaps it is due to the fact that we acually normalize there. For orthogonalize we would use the cross product only, which would get unstable if basis vectors drift to different lengths. But here, the length mean something and we don't iterate so the glitch would be single frame.
-
-				// Old
-				// invert flipped andere diagonale als transpos
-				// off diagnoal elements negativ
-				// To be compatible with vector methods this can be decomposed into
-				// wedging per vector (as part of Matrix)  . New method for vector
-				// Matrix multiplication using inner products: matrix of ros  *  Matrix of cols  . result with self => 0 . others det=wedgeProd
-
-				//const bias=grad.mul_left_vec( new Vec2( [(item[0][0] as Vertex_OnScreen).position,(item[1][0] as Vertex_OnScreen).position] )  ) 
-				// inner product pulls into the value coord-system. Weird: so matrix is of rows of field and pos are col of field "trans"
-				// value=gradient &* xy  . invers
+	// 			// add up the basis vectors    // this only needs a scalar factor per basis vector
+	// 			const xy_rel = Matrix.mul__Matrices_of_Rows([[parts_carried_by_basis_vector], slope.nominator])  // adding up vectors brings up back into the xy coordinate system. Matrix of Rows looks weird as static method
+	// 			const xy = xy_rel.nominator[0].scalarProduct(1 / de).apply((item[0][0] as Vertex_OnScreen).position)  // I have 3 point types: 3d, 2d, ah and 2d with an interface for the rasterizer: integer_part_of_y_()
+	// 			return xy   // if we use (subpixel) correct screen coordinates, at least it is easy to debug the code ( which gives us the order of vertices ). My fear is the lack of bounds for almost parallel edges from polygon and portal. This would still be a problem because I always round. At least these are the real y for Bresenham. I can detect ovefflow as with the screen borders..Error calculation is straight forward and I could just have a multi-edge inner loop (exception) which takes the minimum on every line and stores the result for portal cascade or BSP merging
 
 
-				//xy.nominator.forEach((n,i)=> xy.nominator[i].v[0] /=de )
-			}
+	// 			// divide by determinand = cross wedgeProduct .. where does this sum come from? Ah, this is just the normalization from the step above
+	// 			// PS: Why don't we need per vector normalization here like in gram schmidt?
+	// 			//     The wedge product propagates the length of both factors . Gramm Schmidt in 3d is just different. Perhaps it is due to the fact that we acually normalize there. For orthogonalize we would use the cross product only, which would get unstable if basis vectors drift to different lengths. But here, the length mean something and we don't iterate so the glitch would be single frame.
 
-		}
+	// 			// Old
+	// 			// invert flipped andere diagonale als transpos
+	// 			// off diagnoal elements negativ
+	// 			// To be compatible with vector methods this can be decomposed into
+	// 			// wedging per vector (as part of Matrix)  . New method for vector
+	// 			// Matrix multiplication using inner products: matrix of ros  *  Matrix of cols  . result with self => 0 . others det=wedgeProd
 
-	}
+	// 			//const bias=grad.mul_left_vec( new Vec2( [(item[0][0] as Vertex_OnScreen).position,(item[1][0] as Vertex_OnScreen).position] )  ) 
+	// 			// inner product pulls into the value coord-system. Weird: so matrix is of rows of field and pos are col of field "trans"
+	// 			// value=gradient &* xy  . invers
+
+
+	// 			//xy.nominator.forEach((n,i)=> xy.nominator[i].v[0] /=de )
+	// 		}
+
+	// 	}
+
+	// }
 
 	is_edge_inside_corner(): number {
 		//if (typeof )

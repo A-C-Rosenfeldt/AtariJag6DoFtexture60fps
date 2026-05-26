@@ -1,4 +1,4 @@
-import { Vec3, Matrix, Matrix2, Vec2, Vec } from './clipping.js';
+import { Vec3, Matrix,  Vec2, Vec } from './clipping.js';
 //import { SimpleImage } from './GL.js';
 import { Camera_in_stSpace, Mapper, CameraViewvector } from './infinite_plane_mapper.js'
 import { EdgeShader, PixelShader } from './PixelShader.js';
@@ -269,7 +269,7 @@ export class SymmetricRectangle_clipper extends Polygon_in_cameraSpace {
 		let texturemap = new Camera_in_stSpace()  // Camera is in (0,0) in its own space .
 		//  I should probably pull the next line into the constructor
 		//let s:Vec3=new Vec3([vertices[0].inSpace])
-		let payload: {uvzw_from_viewvector:Matrix , uvz_cameraHover:Vec} //Matrix
+		let payload: {uvzw_from_viewvector:Matrix<3,3> , uvz_cameraHover:Vec<3>} //Matrix
 		{
 			let t = vertices.slice(0, 3).map(v => (v.inSpace))  // take 3 vertices and avoid overdetermination for polygons
 			texturemap.transform_into_texture_space__constructor(new Vec3([t[0], t[1]]), new Vec3([t[2], t[1]]))  // My first model will have the s and t vectors on edges 0-1-2  .  for z-comparison and texture maps		
@@ -725,7 +725,7 @@ export class SymmetricRectangle_clipper extends Polygon_in_cameraSpace {
 
 	// The beam tree will make everything convex and trigger a lot of MUL 16*16 in the process. Code uses Exception patter: First check if all vertices are convex -> break . Then check for self-cuts => split, goto first . ZigZag concave vertices. Find nearest for last. Zig-zag schould not self cut? 
 	// For the MVP, we do best effort for polygons with nore than 3 edges: Ignore up slopes. Do backface culling per span. 
-	private rasterize_onscreen(vertex: Array<Item>, payload: {uvzw_from_viewvector:Matrix , uvz_cameraHover:Vec}, vertex_control: Vertex_in_cameraSpace[]) {  // may be a second pass like in the original JRISC. Allows us to wait for the backbuffer to become available.
+	private rasterize_onscreen(vertex: Array<Item>, payload: {uvzw_from_viewvector:Matrix<4,3> , uvz_cameraHover:Vec<3>}, vertex_control: Vertex_in_cameraSpace[]) {  // may be a second pass like in the original JRISC. Allows us to wait for the backbuffer to become available.
 		const l = vertex.length
 		let min_max = [[0, this.half_screen[1]], [0, -this.half_screen[1]]]  //weird to proces second component first. Rotate?
 
@@ -956,7 +956,7 @@ export class SymmetricRectangle_clipper extends Polygon_in_cameraSpace {
 
 				let accumulator = edge.bias + edge.gradient.innerProduct(new Vec2([[x_at_y_int, y_int]])); //y_int*d[0]+x_at_y_int*d[1]
 
-				let gradient: Vec = edge.gradient;
+				let gradient: Vec<2> = edge.gradient;
 				if (gradient.v[0] < 0) {
 					gradient = gradient.scalarProduct(-1) // for akku
 					accumulator = -accumulator
@@ -1022,7 +1022,7 @@ export class SymmetricRectangle_clipper extends Polygon_in_cameraSpace {
 			}
 
 			if (edge instanceof Edge_w_slope) {
-				let gradient:Vec = edge.gradient; // see belowvar slope_integer=
+				let gradient:Vec<2> = edge.gradient; // see belowvar slope_integer=
 
 				// while filling the display list, the signs of the slope were used to identify a corner
 				// But now we only want a stable rasterizer
@@ -1144,7 +1144,7 @@ export class SymmetricRectangle_clipper extends Polygon_in_cameraSpace {
 		return { x_at_y_int, overshot }
 	}
 
-	private subpixelCorrectionBorder(accumulator: number, gradient: Vec, x_at_y_int: number, Bresenham: Gradient, check_here: number[], y_int: number) {
+	private subpixelCorrectionBorder(accumulator: number, gradient: Vec<2>, x_at_y_int: number, Bresenham: Gradient, check_here: number[], y_int: number) {
 		if (Math.abs(accumulator) < (this.screen[0] + 1) * Math.abs(gradient.v[0])) { // Todo: Why d[0] < 0 ?
 			x_at_y_int = Math.floor(-accumulator / gradient.v[0]); // - is for compensation. Floor is for the left top pixel convention // This should be the same code for all edges
 			if (isNaN(x_at_y_int) || x_at_y_int<-this.half_screen[0] || x_at_y_int>this.half_screen[0]) {

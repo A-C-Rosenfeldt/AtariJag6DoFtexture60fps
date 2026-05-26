@@ -1,6 +1,6 @@
-import {  Matrix, Matrix_frac, Vec } from "clipping"
-import {Gradient } from "rasterizer"
-import { Item } from './Item'
+import {  Matrix,  Vec } from "./clipping"
+import {Gradient } from "./rasterizer"
+//import { Item } from './Item'
 import { Mapper } from "./infinite_plane_mapper"
 
 // Define Gradient type (adjust as needed for your code)
@@ -23,7 +23,7 @@ export class EdgeShader {
 	slope: number
 	camera_hover_over_st: any
 
-	constructor(x_at_y_int:number,y:number, slope_floored:number,Bresenham_k_gradient:Gradient,payload:{uvzw_from_viewvector:Matrix , uvz_cameraHover:Vec},infinite_plane_FoV:number[]){ //edge:Item , x_at_y_int:number , slope_inc:number ) {  // number is int   @ vertex2d
+	constructor(x_at_y_int:number,y:number, slope_floored:number,Bresenham_k_gradient:Gradient,payload:{uvzw_from_viewvector:Matrix<4,3> , uvz_cameraHover:Vec<3>},infinite_plane_FoV:number[]){ //edge:Item , x_at_y_int:number , slope_inc:number ) {  // number is int   @ vertex2d
 		this.x_at_y_int=x_at_y_int
 		this.slope=slope_floored
 		this.Bresenham=new a_i()
@@ -88,7 +88,7 @@ export class PixelShader{
 
 	// PixelShader does not increment along axis units:  zst:Array<a_i>=new a_i[3]  // along axes units
 	// Rather we keep the data format from the 3d side
-	uvz_from_viewvecto: Matrix
+	uvz_from_viewvecto: Matrix<3,3>
 	half_screen: any
 	// and only on vertices convert from 3d Matrix structure to mutable a incr structure
 
