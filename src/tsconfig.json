@@ -1,6 +1,6 @@
 {
     "compilerOptions": {
-      "target": "ES2015",
+      "target": "ES2019",
       "module": "ES6",
       "sourceMap": true,
       "outDir": "../public",

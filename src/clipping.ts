@@ -595,6 +595,7 @@ export class Edge<N extends number> extends CanvasObject{
 }
 
 export class Edge2 extends Edge<2>{
+	vs:Vec2[]
 	toCanvas(marker:string=null):void{ let ctx=CanvasObject.ctx //ctx: CanvasRenderingContext2D): void {
 		ctx.strokeStyle = '#bbb'
 		ctx.beginPath(); // Start a new path
