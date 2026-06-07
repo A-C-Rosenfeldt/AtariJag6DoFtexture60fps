@@ -52,8 +52,8 @@ var sequence = -1
 
 // I need this data structure so that I can press down the face through the sieve that the BSP is.
 class Polygon {    
-    es: Edge2[]  // may be flipped, but
-    vs: Vec2[]    // we have the vertices
+    es: Edge2[] = new Array<Edge2>  // may be flipped, but
+    vs: Vec2[] = new Array<Vec2>   // we have the vertices
 }
 
 const dic:Polygon[]=[]
@@ -67,42 +67,44 @@ const dic:Polygon[]=[]
 //     v: Vec2
 // }
 const add_poly_sequen = (event: Event): void => {
-    if (sequence == -1 || sequence >= fileFormat.length) {
-        sequence = 0;
+    if (sequence == -1 || sequence+1 > fileFormat.length) {
+        sequence = -1;
         //     while (ps.length > 0) {
         //         ps.pop();
         //     }
     }
 
     // pse = sequence;
-    let poly = fileFormat[sequence++];
-    let vs_se: Vec2[] = [];
+    let poly = fileFormat[++sequence];dic.push(new Polygon())
+    //let vs_se: Vec2[] = [];
     let window: Vec2[] = [null]  // as in the window in LZW or register window in SPARC
-    let es_se: Edge2[] = [];
-    (poly.concat(poly[0])).forEach(vertex => {
+    //let es_se: Edge2[] = [];
+    const closed = poly.concat([poly[0]]);
+    closed.forEach(verte => {
+        const vertex=[verte[0], verte[0]<=0?verte[1]-320:verte[1], verte[2]-240]
         let RefOr0 = vertex[0]
         if (RefOr0 <= 0) {
             if (RefOr0 < 0) {
-                const polygon = dic[sequence - 1 + RefOr0].vs;
+                const polygon = dic[sequence  + RefOr0].vs;
                 window.push( polygon[vertex[1]] )
             } else {
                 window.push( new Vec2([vertex.slice(1)])) ;
             }
             // new vertex
 
-            if (window != null) { // todo: local function for closure
-                es_se.push(new Edge2(window))
+            if (window.length==2 && window[0] != null) { // todo: local function for closure
+                dic[sequence].es.push(new Edge2(window))
             }
             //const v = new Vertex_OnScreen();
             //v.xy = 
-            vs_se.push(window[1]);
+            dic[sequence].vs.push(window[1]);
             window.shift() // removes the first element. So last==0
             return
 
             //return v;
         } else {
             const resp_orient = Math.abs(vertex[1]);
-            const polygon = dic[sequence - 1 - RefOr0].es;
+            const polygon = dic[sequence  - RefOr0].es;
 
             const edge = polygon[resp_orient] //,(resp_orient+1)%polygon.length]            
             if (window[0] != null) { // todo: local function for closure
@@ -111,12 +113,12 @@ const add_poly_sequen = (event: Event): void => {
                 window.push(...e)
                 // I want all edges referenced explitcitely in order not to search ( and produce weird errors)
                 // so two cases can happen. Either two consecutive edges already close the border == share a vertex, or I have a single gap. No new vertices needed, but an edge. Looks easier in code than in comment.
-                if (window[0] != window[1]) { es_se.push(new Edge2(window.slice(0, 2))); vs_se.push(window[1]) }
+                if (window[0] != window[1]) { dic[sequence].es.push(new Edge2(window.slice(0, 2))); dic[sequence].vs.push(window[1]) }
                 window.shift();
             }
-            es_se.push(edge)
+            dic[sequence].es.push(edge)
             window.shift();
-            vs_se.push(window[0]);
+            dic[sequence].vs.push(window[0]);
             // so this is weird. What if I close a hole? What if it has 3 edges? So closure of the loop may not be necessary.            
         }
     });

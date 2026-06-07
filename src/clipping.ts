@@ -576,6 +576,9 @@ class Z_order{
 export class Edge<N extends number> extends CanvasObject{
 	vs:Vec<N>[]
 	constructor( vs:Vec<N>[]){
+		if (vs.length!=2) {
+			throw "2, please!"
+		}
 		super();
 		this.vs=vs;
 		this.toCanvas(); // On the one hand, new should be bright like on a CRT RADAR. On the other hand this is implicit.
