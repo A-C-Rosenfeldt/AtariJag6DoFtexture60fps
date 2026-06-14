@@ -1,5 +1,6 @@
 // import { Edge_on_Screen, Vertex_OnScreen } from "./BSP.js";
 import { Vec2, CanvasObject, Edge2 } from "./clipping.js";
+import { BSPnode, BSPtree } from "./BSP.js";
 
 const canvas: HTMLCanvasElement = document.getElementById("Canvas2d") as HTMLCanvasElement
 CanvasObject.ctx = canvas.getContext("2d");
@@ -56,7 +57,8 @@ class Polygon {
     vs: Vec2[] = new Array<Vec2>   // we have the vertices
 }
 
-const dic:Polygon[]=[]
+const polygons:Polygon[]=[]
+const bspTree=new BSPtree()
 
 // const parserDic: Vec2[][] = []  // same as ps, but pointers instead of idRef  
 // // ( code.ts friendly MemoryAddresses instead of debugable Id )
@@ -75,7 +77,10 @@ const add_poly_sequen = (event: Event): void => {
     }
 
     // pse = sequence;
-    let poly = fileFormat[++sequence];dic.push(new Polygon())
+    let poly = fileFormat[++sequence]
+    const polygon=new Polygon()
+    polygons.push(polygon)
+    const es=polygon.es, vs=polygon.vs
     //let vs_se: Vec2[] = [];
     let window: Vec2[] = [null]  // as in the window in LZW or register window in SPARC
     //let es_se: Edge2[] = [];
@@ -85,7 +90,7 @@ const add_poly_sequen = (event: Event): void => {
         let RefOr0 = vertex[0]
         if (RefOr0 <= 0) {
             if (RefOr0 < 0) {
-                const polygon = dic[sequence  + RefOr0].vs;
+                const polygon = polygons[sequence  + RefOr0].vs;
                 window.push( polygon[vertex[1]] )
             } else {
                 window.push( new Vec2([vertex.slice(1)])) ;
@@ -93,18 +98,18 @@ const add_poly_sequen = (event: Event): void => {
             // new vertex
 
             if (window.length==2 && window[0] != null) { // todo: local function for closure
-                dic[sequence].es.push(new Edge2(window))
+                es.push(new Edge2(window))
             }
             //const v = new Vertex_OnScreen();
             //v.xy = 
-            dic[sequence].vs.push(window[1]);
+            vs.push(window[1]);
             window.shift() // removes the first element. So last==0
             return
 
             //return v;
         } else {
             const resp_orient = Math.abs(vertex[1]);
-            const polygon = dic[sequence  - RefOr0].es;
+            const polygon = polygons[sequence  - RefOr0].es;
 
             const edge = polygon[resp_orient] //,(resp_orient+1)%polygon.length]            
             if (window[0] != null) { // todo: local function for closure
@@ -113,15 +118,18 @@ const add_poly_sequen = (event: Event): void => {
                 window.push(...e)
                 // I want all edges referenced explitcitely in order not to search ( and produce weird errors)
                 // so two cases can happen. Either two consecutive edges already close the border == share a vertex, or I have a single gap. No new vertices needed, but an edge. Looks easier in code than in comment.
-                if (window[0] != window[1]) { dic[sequence].es.push(new Edge2(window.slice(0, 2))); dic[sequence].vs.push(window[1]) }
+                if (window[0] != window[1]) { es.push(new Edge2(window.slice(0, 2))); vs.push(window[1]) }
                 window.shift();
             }
-            dic[sequence].es.push(edge)
+            es.push(edge)
             window.shift();
-            dic[sequence].vs.push(window[0]);
+            vs.push(window[0]);
             // so this is weird. What if I close a hole? What if it has 3 edges? So closure of the loop may not be necessary.            
         }
     });
+
+    // BSP
+    bspTree.insertPolygonLean(polygon,sequence)
 };
 
 //console.log("undeg",sequence-1-vertex[0],vertex[1],sequence,vertex)

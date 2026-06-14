@@ -55,7 +55,7 @@ const tes5 = tes3.popFromTop()
 
 //import {Acme} from "./BSP.d.ts"
 import { assert } from "chai";
-import { Vec, Vec2, Vec3, CanvasObject } from "./clipping.js"
+import { Vec, Vec2, Vec3, CanvasObject, Edge2 } from "./clipping.js"
 //import { Vertex_OnScreen } from "./Item"
 
 // class CanvasObject {
@@ -71,6 +71,11 @@ class Vertex_in_cameraSpace {
 	onScreen: Vertex_OnScreen  //nullable
 }
 
+class Polygon {
+	es: Edge2[] = new Array<Edge2>  // may be flipped, but
+	vs: Vec2[] = new Array<Vec2>   // we have the vertices
+}
+
 export class Polygon_in_cameraSpace implements CanvasObject {
 	fillStyle: string;
 
@@ -79,7 +84,8 @@ export class Polygon_in_cameraSpace implements CanvasObject {
 	// Clipped edges behave special on projection, but actually clipping and projection happen shortly after each other
 	// We persist screen coordinates ( ah, well, z does not exist for clipped edges ) . Just integers for scanlines
 	//toCanvas(ctx: CanvasRenderingContext2D): void {
-	toCanvas(marker:string=null):void { let ctx=CanvasObject.ctx		
+	toCanvas(marker: string = null): void {
+		let ctx = CanvasObject.ctx
 		// leaf (debug) ToCanvas needs the area to fill
 		if (false) {
 			ctx.fillStyle = this.fillStyle
@@ -93,7 +99,7 @@ export class Polygon_in_cameraSpace implements CanvasObject {
 		ctx.fillStyle = "#911"
 		this.selected %= this.vertices.length
 
-		this.vertices.forEach((v, i) => v.toCanvas( i == this.selected ? "bright":"" ))
+		this.vertices.forEach((v, i) => v.toCanvas(i == this.selected ? "bright" : ""))
 	}
 	selected = -1
 	constructor(vs?: Array<Vertex_OnScreen>, fillStyle = "rgba(0, 136, 0, 0.2)") {
@@ -159,8 +165,9 @@ export class Vertex_OnScreen extends Vec3 {//implements CanvasObject {
 		super([[0, 0, 1]])  // something about strict TypeScript
 		this.z = 1  // redundant
 	}
-	toCanvas(marker:string=null):void{ let ctx=CanvasObject.ctx //ctx: CanvasRenderingContext2D, selected = false): void {
-		const size = marker=="bright" ? 3 : 1
+	toCanvas(marker: string = null): void {
+		let ctx = CanvasObject.ctx //ctx: CanvasRenderingContext2D, selected = false): void {
+		const size = marker == "bright" ? 3 : 1
 		const full = 1 + 2 * size
 		ctx.fillRect(...this.normalize(size - debugshift), full, full)
 	}
@@ -209,7 +216,8 @@ export class Edge_on_Screen implements CanvasObject {
 	// 	this.toCanvas()
 	// }
 	vs: [Vertex_OnScreen, Vertex_OnScreen]
-	toCanvas(marker:string=null):void{ let ctx=CanvasObject.ctx //ctx: CanvasRenderingContext2D): void {
+	toCanvas(marker: string = null): void {
+		let ctx = CanvasObject.ctx //ctx: CanvasRenderingContext2D): void {
 		ctx.strokeStyle = '#bbb'
 		ctx.beginPath(); // Start a new path
 		ctx.moveTo(...(this.vs[0].normalize(-debugshift))); // Move the pen to (30, 50)
@@ -222,7 +230,8 @@ export class Edge_on_Screen implements CanvasObject {
 
 class BSPnode_ExtensiononStack extends Polygon_in_cameraSpace {
 	ctx: CanvasRenderingContext2D;
-	toCanvas(marker:string=null):void{ let ctx=CanvasObject.ctx  // toCanvas(ctx: CanvasRenderingContext2D): void { // dupe
+	toCanvas(marker: string = null): void {
+		let ctx = CanvasObject.ctx  // toCanvas(ctx: CanvasRenderingContext2D): void { // dupe
 		ctx.fillStyle = "green";
 		ctx.beginPath()
 		ctx.moveTo(...this.vertices[0].normalize(-debugshift))
@@ -443,11 +452,11 @@ class cut_base {
 export class Edge_cut extends cut_base {
 	e: BSPnode_edge = null
 	c: Vertex_OnScreen
-	constructor(e: BSPnode_edge|Vertex_OnScreen) { // So, I learned that typeScript does not really support the old JS way of constructing objects
+	constructor(e: BSPnode_edge | Vertex_OnScreen) { // So, I learned that typeScript does not really support the old JS way of constructing objects
 		//  (because it cannot interfere the interface? I only have properties)
 		super()
-		if (e instanceof BSPnode_edge )	this.e = e  // per frame
-		if (e instanceof Vertex_OnScreen )	this.c = e  // per insert
+		if (e instanceof BSPnode_edge) this.e = e  // per frame
+		if (e instanceof Vertex_OnScreen) this.c = e  // per insert
 	}
 
 	se: SplitEdge
@@ -489,7 +498,7 @@ export class BSPnode extends CanvasObject {
 	//cuts: Boxified<[cut_base, cut_base]>
 	cuts: [cut_base, cut_base]
 
-	children: (BSPnode|Leaf)[]
+	children: (BSPnode | Leaf)[]
 }
 
 
@@ -840,8 +849,8 @@ export class BSPnode_perFrame extends BSPnode {
 
 	stack_pointer: number
 
-	private decide_face_(cuts: Edge_cut[]){ // waste memory: stored by decide_edge;, parents_inOrder: number[] // lanes is differnt from edge.parents because those are not the parents of this face. But there i
-	 // lanes is wrong. We do not care about sync between lanes. Todo: Data structure: 
+	private decide_face_(cuts: Edge_cut[]) { // waste memory: stored by decide_edge;, parents_inOrder: number[] // lanes is differnt from edge.parents because those are not the parents of this face. But there i
+		// lanes is wrong. We do not care about sync between lanes. Todo: Data structure: 
 		this.stack_pointer++
 		// I check rotation order first. This has the effect that vertex only apply, if an edge-end is not cut. const sides = this.decide_vertices(cuts)
 		// We look from point of view of face+border and "insert" the BSP-node edge. After that we reverse the roles and solve any dangling vertices (decide_edge should have done that)
@@ -973,11 +982,11 @@ export class BSPnode_perFrame extends BSPnode {
 					}
 					if (r[1 - side] < r[0 + side]) {
 						//l2.splice(1, 0, ...(polygon.slice(r[1 - side], r[0 + side] + 1))) // todo: merge class
-						child_cut.push(...cuts.slice(r[1 - side]+1, r[0 + side])) // may be empty, but not negative because children are at least triangles
+						child_cut.push(...cuts.slice(r[1 - side] + 1, r[0 + side])) // may be empty, but not negative because children are at least triangles
 					}
 					else {
 						//l2.splice(1, 0, ...((polygon.slice(r[1 - side]))).concat(...(polygon.slice(0, r[0 + side] + 1)))) // wrap around. Todo: unify
-						child_cut.push(...cuts.slice(r[1 - side]+1).concat(...(cuts.slice(0, r[0 + side] ))))
+						child_cut.push(...cuts.slice(r[1 - side] + 1).concat(...(cuts.slice(0, r[0 + side]))))
 					}
 					// // rotate fresh from 1 to 0 . For debugging. Easier when parents and cuts align at parent
 					// const around=child_cut.shift()
@@ -1610,7 +1619,8 @@ export class BSPnode_perInsert extends BSPnode {
 
 
 
-	toCanvas(marker:string=null):void{ let ctx=CanvasObject.ctx  //toCanvas(ctx: CanvasRenderingContext2D, pi?: Array<Vec2> /*ref*/) {
+	toCanvas(marker: string = null): void {
+		let ctx = CanvasObject.ctx  //toCanvas(ctx: CanvasRenderingContext2D, pi?: Array<Vec2> /*ref*/) {
 
 		let r: [number, number], l = 0
 		const back = ctx.lineWidth
@@ -1821,6 +1831,28 @@ export class BSPtree extends CanvasObject {
 		return s;
 	}
 
+	insertPolygonLean(p: Polygon, ID: number) {
+
+		//const n = new BSPnode_perInsert(ID)
+		let e = new BSPnode_edge()
+		//n.edge.verts=p.es[0].vs[0]
+
+		const verts = [p.es[0].vs[0], p.es[0].vs[1]]
+		const vs = verts.map(v => {
+			const n = new Vertex_OnScreen()
+			return n
+		})
+		e.verts = [vs[0], vs[1]]
+		const n = Node_CreateFromVecs(e, ID);
+
+		if (this.root == null) {
+			this.root = n
+		}
+		else {
+			this.root.decide_edge(n, "rgba(0, 156, 204, 0.57)", false) // TODO check that the new vertices due to cuts are shown. Perhaps use the new types.
+		}
+	}
+
 	// this algorithm can queue in a compact data structure to draw trapezoids deferred if I wanna try vsync tricks
 	floodfill() {
 		// start with one node
@@ -1833,7 +1865,8 @@ export class BSPtree extends CanvasObject {
 		let covered: BSPtree // subtree . Child pointers are useless. The bits need to mean left and right in the base tree. Floodfill stops at the 32th child, and falls back to sector
 	}
 
-	toCanvas(marker:string=null):void{ let ctx=CanvasObject.ctx //toCanvas(ctx: CanvasRenderingContext2D) {
+	toCanvas(marker: string = null): void {
+		let ctx = CanvasObject.ctx //toCanvas(ctx: CanvasRenderingContext2D) {
 		if (this.root == null) return
 		let n = this.root
 		let ne = new BSPnode_ExtensiononStack
@@ -1856,6 +1889,18 @@ export class BSPtree extends CanvasObject {
 class PartialFilled extends BSPnode_perInsert {
 	// tuned=8 ; Here I can use a fixed size because flood fill can just fall back to sector fill
 	flips: number[]  // y where state flips from not filled to filled ( and back )
+}
+
+export function Node_CreateFromVecs(e: BSPnode_edge, ID: number) {
+	const normal = e.verts[0].crossProduct(e.verts[1])
+
+	e.xy = new Vec2([normal.v.slice(0, 2)])
+	e.z = normal.v[2]
+
+
+	const b = new BSPnode_perInsert(ID);
+	b.edge = e;
+	return b;
 }
 
 // Todo after unit tests are written -> pull in edge construction, integrate in constructor
