@@ -275,12 +275,56 @@ class BSPnode_ExtensiononStack extends Polygon_in_cameraSpace {
 
 var variance = 0
 
-// to harmonize splitting with lazy precision
-export class BSPnode_edge {
+export interface I_BSPnode_edge {
+	AsVec3(): Vec3
+	decide(v: Vertex_OnScreen): number
+}
+
+export class BSPnode_edgeBeam implements I_BSPnode_edge{
 	AsVec3(): Vec3 {
-		return new Vec3([this.xy.v.concat(this.z)])
+		return this.normal3d
 	}
-	xy: Vec2  //normal
+	normal3d: Vec3
+
+	decide(v: Vertex_OnScreen): number {
+
+		let side = this.normal3d.innerProduct(v)
+		if (v.z < 0) side = -side  // sorry to mutate local variables, but I need consistency for debugging
+		// why not ensure z on construction? Looks like construction is filling the vertices ??
+		//console.log("decide vertex", v.normalize(), "edge xy", this.xy.v, "z", this.z, "side", side, this.xy.innerProduct(v.xy), this.z * v.z) // todo: make sure that cuts point towards bigger z
+		if (side > 0) {
+			const dummy = 0
+		}
+		return side 
+	}	
+	
+	
+	constructor(vs:Vec<number>[] ){
+		// don't paint as vertices. No constructor. Uh, internally?
+		switch ( vs[0].v.length ){
+			case 2:	// 2d for the BSP tests and show
+			 if ( vs[0] instanceof Vec2 && vs[1] instanceof Vec2 ){				
+				this.normal3d = new Vec3([vs[0].subtract01(vs[1]).wedgePrep()],true)
+			 }
+			break;
+			case 3:// 3d for production	
+				if ( vs[0] instanceof Vec3 && vs[1] instanceof Vec3 ){
+					this.normal3d = vs[0].crossProduct(vs[1])
+				}else{
+					throw("Should not happen")
+				}
+			break;
+		} 
+	}
+
+}
+
+// to harmonize splitting with lazy precision
+export class BSPnode_edge implements I_BSPnode_edge{
+	AsVec3(): Vec3 {
+		return new Vec3([this.xy.v.concat(this.z)])  // For debugging, every vector construction is drawn. Can't have these converters
+	}
+	xy: Vec2  //2d normal
 	z: number  // bias
 
 	index = 0
@@ -1113,13 +1157,14 @@ export class BSPnode_perInsert extends BSPnode {
 
 
 
-	// chronologically this belongs before decide_face. todo: refactor
+	// chronologically this belongs before decide_face. todo, when we refactor
 	decide_edge(node: BSPnode_perInsert, fillStyle: string, last_edge_of_polygon = false): void {//:BSPnode_childref { 
 		const e = node.edge
 		//console.log("ncuts ", node.cuts.map(c => c.c.normalize()).toString(), "this cuts", this.cuts.map(c => c.c.normalize()).toString())
 		// probably I should just reserve memory for Edge_cut from the start on Jaguar
+		// Properties / pointers on edge. After compilation with the value type of course pointers need special consideration ( relative in local RAM )
 		const node_merged = e.verts.map((v, i) => node.cuts[i] ?? new Edge_cut(v)) // Certainly the Doom level editor just used floats and epsilon. But I am on Jaguar
-		const this_merged = this.edge.verts.map((v, i) => this.cuts[i] ?? new Edge_cut(v)) // Certainly the Doom level editor just used floats and epsilon. But I am on Jaguar
+		//const this_merged = this.edge.verts.map((v, i) => this.cuts[i] ?? new Edge_cut(v)) // Kinda useless because we know that this splits this node from end to end ( cut / extended to match ).
 		//const explicit_mesh = node_merged.map(v => this_merged.indexOf(v))
 		//console.log("sides{",)
 		// if (this.ID===3 && this.edge.index==0){
@@ -1228,11 +1273,13 @@ export class BSPnode_perInsert extends BSPnode {
 
 
 	private Cutter(e: BSPnode_edge) {
-		const e_to_insert = new Vec3([e.xy.v.concat(e.z)]);
-		const e_in_BSP = new Vec3([this.edge.xy.v.concat(this.edge.z)]);
+		// todo: cut out the middle man!		
+		const e_to_insert = e.AsVec3() //new Vec3([e.xy.v.concat(e.z)]);
+		const e_in_BSP = this.edge.AsVec3() ; //new Vec3([this.edge.xy.v.concat(this.edge.z)]);
+
 		const cut3d = e_to_insert.crossProduct(e_in_BSP);
 		//allocation problem for cached cuts  const cut3d_forward = cut3d.scalarProduct(Math.sign(cut3d.v[2]))
-		const c = new Vertex_OnScreen();
+		const c = new Vertex_OnScreen(); // log: different color!
 		if (e.index > 0) { // always
 			c.index_in_polygon = -e.index;
 		} else {

@@ -148,9 +148,9 @@ export class Vec<N extends number> extends CanvasObject{ // looks like I need 2 
 }
 
 export class Vec2 extends Vec<2>{
-	constructor(points:number[][]){
+	constructor(points:number[][], delta=false){
 		super(points)
-		this.toCanvas("hot")
+		if (!delta) this.toCanvas("hot")
 	}
 
 	// todo: move debug code back into the derived class?
@@ -176,7 +176,7 @@ export class Vec2 extends Vec<2>{
 		return new Vec2([this.v, other.v])
 	}
 	subtract01(other: Vec2): Vec2 {
-		return new Vec2([ other.v,this.v])
+		return new Vec2([ other.v,this.v],true)
 	}	
 	scalarProduct(f:number){
 		let v= this.v.map( comp=> comp*f)
@@ -185,11 +185,22 @@ export class Vec2 extends Vec<2>{
 	wedgeProduct(o:Vec2):number{
 		return this.v[0]*o.v[1]-this.v[1]*o.v[0]
 	}
+	wedgePrep():number[]{
+		return [ this.v[1],-this.v[0] ,1]
+		
+	}	
 }
 
 export class Vec3 extends Vec<3>{
+
+	// normals are part of an edge. I could draw them, but I'd rather draw the edge (shorter).
+	constructor(points:number[][],normal=false){
+		super(points)
+		if (!normal) this.toCanvas("hot")
+	}
+
 	crossProduct(o:Vec3):Vec3{
-		let v:Vec3=new Vec3([[this.v.length]])
+		let v:Vec3=new Vec3([[this.v.length]],true)  // I checked on application
 		for(let i=0;i<this.v.length;i++){
 			v.v[i]=this.v[(i+1)%3]*o.v[(i+2)%3]-this.v[(i+2)%3]*o.v[(i+1)%3]
 		}
