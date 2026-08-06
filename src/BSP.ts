@@ -48,14 +48,14 @@ declare global {
 
 	}
 }
-const tes5 = tes3.popFromTop()
+//fails: const tes5 = tes3.popFromTop()
 
 // const test:Acme:null
 // const tes2= (n:number, a:Acme) => 4
 
 //import {Acme} from "./BSP.d.ts"
 import { assert } from "chai";
-import { Vec, Vec2, Vec3, CanvasObject, Edge2 } from "./clipping.js"
+import { Vec, Vec2, Vec3, CanvasObject, Edge2, Edge3 } from "./clipping.js"
 //import { Vertex_OnScreen } from "./Item"
 
 // class CanvasObject {
@@ -71,7 +71,16 @@ class Vertex_in_cameraSpace {
 	onScreen: Vertex_OnScreen  //nullable
 }
 
-class Polygon {
+
+// I need this data structure so that I can press down the face through the sieve that the BSP represents.
+export class Polygon {    
+    es: Edge3[] = new Array<Edge3>  // may be flipped, but
+    vs: Vec3[] = new Array<Vec3>   // we have the vertices
+}
+
+
+// I can't use this for cuts because I use z for homogenous coordinates
+class Polygon2 {
 	es: Edge2[] = new Array<Edge2>  // may be flipped, but
 	vs: Vec2[] = new Array<Vec2>   // we have the vertices
 }
@@ -156,13 +165,14 @@ class Vertex_decision {
 	d: number
 }
 
-export class Vertex_OnScreen extends Vec3 {//implements CanvasObject {
+export class Vertex_OnScreen   {//implements CanvasObject {
 	cache_edge_decide: Vertex_decision[] = []
 	cache_read_pointer = 0
 	cache_ed: BSPnode_edge | null = null  // undefined would crash the if. is null implicit?
 	path: boolean[];
-	constructor() {
-		super([[0, 0, 1]])  // something about strict TypeScript
+	v:Vec3
+	constructor( v:Vec3) {
+		this.v=v  // something about strict TypeScript
 		this.z = 1  // redundant
 	}
 	toCanvas(marker: string = null): void {
@@ -174,17 +184,17 @@ export class Vertex_OnScreen extends Vec3 {//implements CanvasObject {
 	//xy: Vec2 // co-ordinate
 	//z: number
 	get xy(): Vec2 {
-		return new Vec2([this.v.slice(0, 2)])  // performance does not matter, new code uses Vec3 aka beam tree
+		return new Vec2([this.v.v.slice(0, 2)])  // performance does not matter, new code uses Vec3 aka beam tree
 	}
 	set xy(value: Vec2) {
-		this.v.splice(0, 2, ...(value.v));
+		this.v.v.splice(0, 2, ...(value.v));
 	}
 
 	get z(): number {
-		return this.v[2]  // performance does not matter, new code uses Vec3 aka beam tree
+		return this.v.v[2]  // performance does not matter, new code uses Vec3 aka beam tree
 	}
 	set z(value: number) {
-		this.v[2] = value
+		this.v.v[2] = value
 	}
 
 	//const coordinates = (id: number) => [id, id] as const;
@@ -288,7 +298,7 @@ export class BSPnode_edgeBeam implements I_BSPnode_edge{
 
 	decide(v: Vertex_OnScreen): number {
 
-		let side = this.normal3d.innerProduct(v)
+		let side = this.normal3d.innerProduct(v.v)
 		if (v.z < 0) side = -side  // sorry to mutate local variables, but I need consistency for debugging
 		// why not ensure z on construction? Looks like construction is filling the vertices ??
 		//console.log("decide vertex", v.normalize(), "edge xy", this.xy.v, "z", this.z, "side", side, this.xy.innerProduct(v.xy), this.z * v.z) // todo: make sure that cuts point towards bigger z
@@ -304,7 +314,7 @@ export class BSPnode_edgeBeam implements I_BSPnode_edge{
 		switch ( vs[0].v.length ){
 			case 2:	// 2d for the BSP tests and show
 			 if ( vs[0] instanceof Vec2 && vs[1] instanceof Vec2 ){				
-				this.normal3d = new Vec3([vs[0].subtract01(vs[1]).wedgePrep()],true)
+				this.normal3d = new Vec3([vs[0].subtract01(vs[1]).wedgePrep()],"#F80")
 			 }
 			break;
 			case 3:// 3d for production	
@@ -320,9 +330,23 @@ export class BSPnode_edgeBeam implements I_BSPnode_edge{
 }
 
 // to harmonize splitting with lazy precision
-export class BSPnode_edge implements I_BSPnode_edge{
+export class BSPnode_edge //extends Edge2
+
+
+ implements I_BSPnode_edge
+{
+	constructor(e?:Edge3){
+		if (e==null) return
+		this.edge=e
+		this.normal= e.vs[0].crossProduct(e.vs[1])
+
+		this.z=this.normal.v[2]
+		this.xy=new Vec2([this.normal.v.slice(0,2)])
+	}
+	edge:Edge3
+	normal:Vec3
 	AsVec3(): Vec3 {
-		return new Vec3([this.xy.v.concat(this.z)])  // For debugging, every vector construction is drawn. Can't have these converters
+		return this.normal //new Vec3([this.xy.v.concat(this.z)])  // For debugging, every vector construction is drawn. Can't have these converters
 	}
 	xy: Vec2  //2d normal
 	z: number  // bias
@@ -620,7 +644,7 @@ export class BSPnode_perFrame extends BSPnode {
 			for (let i = 0; i < 2; i++)
 				if (node.cuts[i] == null) {  // todo i , I cached these values per insert. Now with per-frame:  Where? Key?
 					const v = node.edge.verts[i];
-					sides[i] = this.edge.AsVec3().innerProduct(v)   // beam tree version of "decide"
+					sides[i] = this.edge.AsVec3().innerProduct(v.v)   // beam tree version of "decide"
 					sc++
 					// this needs to have cuts in order to form the tree . Todo:type
 					//node.cuts[i].fromToRefBorders=t[1]+(Math.abs(side)/2+l)%l   // same trick as crossing in same border segment
@@ -803,7 +827,7 @@ export class BSPnode_perFrame extends BSPnode {
 								// in 3d with beams:
 								const ex = this.parent
 								const border_beam_normal = ex.edge.AsVec3()
-								const raw_edge_3d = node.edge.verts[0].subtract01(node.edge.verts[1]) // oriented edge in 3d
+								const raw_edge_3d = node.edge.verts[0].v.subtract01(node.edge.verts[1].v) // oriented edge in 3d
 								const verID = border_beam_normal.innerProduct(raw_edge_3d)  // An alternative needs two products. Products cost in JRISC
 								const tert = (verID < 0) == (parents[bn.parents_rotation2gen[r]][1]) // border-segment needs to switch from own sides ( left hand | right hand) to border sides ( in | out)
 								fromToRefBorders[tert ? 1 : 0] = r   // todo: check signs
@@ -1272,15 +1296,17 @@ export class BSPnode_perInsert extends BSPnode {
 	}
 
 
-	private Cutter(e: BSPnode_edge) {
+	private Cutter(e: BSPnode_edge):Edge_cut {
 		// todo: cut out the middle man!		
 		const e_to_insert = e.AsVec3() //new Vec3([e.xy.v.concat(e.z)]);
 		const e_in_BSP = this.edge.AsVec3() ; //new Vec3([this.edge.xy.v.concat(this.edge.z)]);
 
-		const cut3d = e_to_insert.crossProduct(e_in_BSP);
+		const cut3d = e_to_insert.crossProduct(e_in_BSP); // graphic log
 		//allocation problem for cached cuts  const cut3d_forward = cut3d.scalarProduct(Math.sign(cut3d.v[2]))
-		const c = new Vertex_OnScreen(); // log: different color!
-		if (e.index > 0) { // always
+		//const c = new Vertex_OnScreen(); // log: different color!
+
+		
+/* 		if (e.index > 0) { // always
 			c.index_in_polygon = -e.index;
 		} else {
 			const dummy = 0;
@@ -1291,9 +1317,10 @@ export class BSPnode_perInsert extends BSPnode {
 		// d.e = this.edge
 		// c.cache_edge_decide[0] = d // todo: probably useless
 		c.xy = new Vec2([cut3d.v.slice(0, 2)]);
-		c.z = cut3d.v[2];
-		var cut = new Edge_cut(c); // kinda : go to derived class
-		return cut
+		c.z = cut3d.v[2];*/
+		var cut = new Edge_cut(e); // kinda : go to derived class
+		cut.c=new Vertex_OnScreen(cut3d )  // probably dumb to use inheritance here?
+		return cut 
 	}
 
 	decide_face(p: Polygon_in_cameraSpace, cuts?: Edge_cut[]) { // todo: use edges to pull the vsp==undefined case out of this function
@@ -1881,23 +1908,29 @@ export class BSPtree extends CanvasObject {
 	insertPolygonLean(p: Polygon, ID: number) {
 
 		//const n = new BSPnode_perInsert(ID)
-		let e = new BSPnode_edge()
+		p.es.forEach(e => {
+			//let en = new BSPnode_edge(e)   not compatible with 3d math
+			const n = Node_CreateFromVecs(e, ID);
+
+			if (this.root == null) {
+				this.root = n
+			}
+			else {
+				this.root.decide_edge(n, "rgba(0, 156, 204, 0.57)", false) // TODO check that the new vertices due to cuts are shown. Perhaps use the new types.
+			}
+		})
+
 		//n.edge.verts=p.es[0].vs[0]
 
-		const verts = [p.es[0].vs[0], p.es[0].vs[1]]
-		const vs = verts.map(v => {
-			const n = new Vertex_OnScreen()
-			return n
-		})
-		e.verts = [vs[0], vs[1]]
-		const n = Node_CreateFromVecs(e, ID);
+		// would lead to duplicated vertices in the mesh. I need to lazy pull vertices to test my face code. Conceptionally / later it may make more sense to go over all vertices first. Access to external RAM is not so slow in Tom.
+		// const verts = [p.es[0].vs[0], p.es[0].vs[1]]
+		// const vs = verts.map(v => {
+		// 	const w=new Vec3([[...v.v,1]],"#8FF")
+		// 	const n = new Vertex_OnScreen(w)
+		// 	return n
+		// })
+		//e.verts = [vs[0], vs[1]]
 
-		if (this.root == null) {
-			this.root = n
-		}
-		else {
-			this.root.decide_edge(n, "rgba(0, 156, 204, 0.57)", false) // TODO check that the new vertices due to cuts are shown. Perhaps use the new types.
-		}
 	}
 
 	// this algorithm can queue in a compact data structure to draw trapezoids deferred if I wanna try vsync tricks
@@ -1938,15 +1971,19 @@ class PartialFilled extends BSPnode_perInsert {
 	flips: number[]  // y where state flips from not filled to filled ( and back )
 }
 
-export function Node_CreateFromVecs(e: BSPnode_edge, ID: number) {
-	const normal = e.verts[0].crossProduct(e.verts[1])
+export function Node_CreateFromVecs(e: Edge3, ID: number) {
 
-	e.xy = new Vec2([normal.v.slice(0, 2)])
-	e.z = normal.v[2]
+	const ne=new BSPnode_edge(e)  // popular interface .. takes time to refactor. AI?
+
+	// e.normal = e.vs[0].crossProduct(e.vs[1])
+
+	// const en=()
+	// e.xy = new Vec2([normal.v.slice(0, 2)])
+	// e.z = normal.v[2]
 
 
 	const b = new BSPnode_perInsert(ID);
-	b.edge = e;
+	b.edge = ne;
 	return b;
 }
 

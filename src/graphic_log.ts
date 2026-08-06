@@ -1,11 +1,11 @@
 // import { Edge_on_Screen, Vertex_OnScreen } from "./BSP.js";
-import { Vec2, CanvasObject, Edge2 } from "./clipping.js";
-import { BSPnode, BSPtree } from "./BSP.js";
+import { Vec2, CanvasObject, Edge2, Vec3, Edge3 } from "./clipping.js";
+import { BSPnode, BSPtree ,Polygon} from "./BSP.js";
 
 const canvas: HTMLCanvasElement = document.getElementById("Canvas2d") as HTMLCanvasElement
 CanvasObject.ctx = canvas.getContext("2d");
 
-console.log("pre")
+/* console.log("pre")
 var vs = [new Vec2([[-10, 0]]), new Vec2([[+10, 0]])];
 console.log("post");
 
@@ -18,7 +18,7 @@ var e = new Edge2(vs) // todo use vec<2> instead of tupel
 var v1 = [vs[1], new Vec2([[0, 7]])]
 // var e = new Edge2(v1)
 
-// inserting in tree should not create anything new
+// inserting in tree should not create anything new */
 
 
 
@@ -51,12 +51,6 @@ var sequence = -1
 //     }
 // }
 
-// I need this data structure so that I can press down the face through the sieve that the BSP is.
-class Polygon {    
-    es: Edge2[] = new Array<Edge2>  // may be flipped, but
-    vs: Vec2[] = new Array<Vec2>   // we have the vertices
-}
-
 const polygons:Polygon[]=[]
 const bspTree=new BSPtree()
 
@@ -82,7 +76,7 @@ const add_poly_sequen = (event: Event): void => {
     polygons.push(polygon)
     const es=polygon.es, vs=polygon.vs
     //let vs_se: Vec2[] = [];
-    let window: Vec2[] = [null]  // as in the window in LZW or register window in SPARC
+    let window: Vec3[] = []  // as in the window in LZW or register window in SPARC
     //let es_se: Edge2[] = [];
     const closed = poly.concat([poly[0]]);
     closed.forEach(verte => {
@@ -93,17 +87,21 @@ const add_poly_sequen = (event: Event): void => {
                 const polygon = polygons[sequence  + RefOr0].vs;
                 window.push( polygon[vertex[1]] )
             } else {
-                window.push( new Vec2([vertex.slice(1)])) ;
+                window.push( new Vec3([vertex.slice(1).concat(1)],"rgb(143, 90, 31)")) ; // Any later new creates dupes, unfortunately
             }
             // new vertex
 
-            if (window.length==2 && window[0] != null) { // todo: local function for closure
-                es.push(new Edge2(window))
+            if (window.length == 2) {
+                if (window[0] != null) { // todo: local function for closure
+                    es.push(new Edge3(window,"rgb(74, 31, 143)"))
+                                    window.shift() // removes the first element. So last==0
+                }
             }
+
             //const v = new Vertex_OnScreen();
             //v.xy = 
-            vs.push(window[1]);
-            window.shift() // removes the first element. So last==0
+            vs.push(window[window.length-1]);
+
             return
 
             //return v;
@@ -118,7 +116,7 @@ const add_poly_sequen = (event: Event): void => {
                 window.push(...e)
                 // I want all edges referenced explitcitely in order not to search ( and produce weird errors)
                 // so two cases can happen. Either two consecutive edges already close the border == share a vertex, or I have a single gap. No new vertices needed, but an edge. Looks easier in code than in comment.
-                if (window[0] != window[1]) { es.push(new Edge2(window.slice(0, 2))); vs.push(window[1]) }
+                if (window[0] != window[1]) { es.push(new Edge3(window.slice(0, 2))); vs.push(window[1]) }
                 window.shift();
             }
             es.push(edge)

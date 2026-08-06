@@ -1,5 +1,5 @@
 import { BSPtree, Polygon_in_cameraSpace, Vertex_OnScreen } from "./BSP.js"
-import { Vec2 } from "./clipping.js";
+import { Vec2, Vec3 } from "./clipping.js";
 
 window.document.getElementById("singleStep").addEventListener("click",
 	(event) => {
@@ -72,8 +72,8 @@ const add_poly_sequen = (event: Event): void => {
 	let poly = fileFormat[sequence++];
 	let vs = poly.map(vertex => {
 		if (vertex[0] == 0) {
-			const v = new Vertex_OnScreen();
-			v.xy = new Vec2([vertex.slice(1)]);
+			const v = new Vertex_OnScreen(new Vec3([vertex.slice(1)]));
+			//v.xy = new Vec2([vertex.slice(1)]);
 			return v;
 		}
 		//console.log("undeg",sequence-1-vertex[0],vertex[1],sequence,vertex)
@@ -111,7 +111,7 @@ function touch_button(a: number, b: number) {
 	}
 }
 
-const ps = (function initSample() {
+const ps:Polygon_in_cameraSpace[] = [] /*(function initSample() {
 	let v: Vertex_OnScreen
 	// v.xy=new Vec2([[90,50]])
 	// ctx.fillRect(100, 40, 3, 3);
@@ -136,9 +136,12 @@ const ps = (function initSample() {
 	return [p, q, t]
 })()
 
+*/
 let pse = 0
+
 let p = ps[pse]
 p.selected = 0
+
 
 function CanvasCstr() {
 	const canvas = document.getElementById("Canvas2d") as HTMLCanvasElement;

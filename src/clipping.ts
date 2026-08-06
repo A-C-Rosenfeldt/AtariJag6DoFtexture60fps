@@ -148,9 +148,9 @@ export class Vec<N extends number> extends CanvasObject{ // looks like I need 2 
 }
 
 export class Vec2 extends Vec<2>{
-	constructor(points:number[][], delta=false){
+	constructor(points:number[][], marker:string=null){
 		super(points)
-		if (!delta) this.toCanvas("hot")
+		if (marker!=null) this.toCanvas(marker)
 	}
 
 	// todo: move debug code back into the derived class?
@@ -165,8 +165,11 @@ export class Vec2 extends Vec<2>{
 		var ctx=CanvasObject.ctx  // I can access protected members
 		if (ctx==null) return  // ctx is set for debugging. Single step. then for walking and displaying the tree. Does it make sense to show debugging lines? verbosity level? BSP lines are created on instert. Walk should not need to repaint them. Just draw the official faces in bright colors. And handles.
 
-		ctx.fillStyle = "#F80"
-		let hsize=marker!=null && marker=="hot" ? 3:0
+		let hsize=0
+		if (marker!=null){
+			ctx.fillStyle = marker //"#F80"
+			hsize=3
+		}
 		let coords=[CanvasObject.screen[0]/2+this.v[0] , CanvasObject.screen[1]/2+this.v[1]]
 		ctx.fillRect( coords[0]-hsize, coords[1]-hsize, 2*hsize+1, 2*hsize+1)
 
@@ -176,7 +179,7 @@ export class Vec2 extends Vec<2>{
 		return new Vec2([this.v, other.v])
 	}
 	subtract01(other: Vec2): Vec2 {
-		return new Vec2([ other.v,this.v],true)
+		return new Vec2([ other.v,this.v],"#F80")
 	}	
 	scalarProduct(f:number){
 		let v= this.v.map( comp=> comp*f)
@@ -194,13 +197,13 @@ export class Vec2 extends Vec<2>{
 export class Vec3 extends Vec<3>{
 
 	// normals are part of an edge. I could draw them, but I'd rather draw the edge (shorter).
-	constructor(points:number[][],normal=false){
+	constructor(points:number[][], marker:string=null){
 		super(points)
-		if (!normal) this.toCanvas("hot")
+		if (marker!=null) this.toCanvas(marker)
 	}
 
 	crossProduct(o:Vec3):Vec3{
-		let v:Vec3=new Vec3([[this.v.length]],true)  // I checked on application
+		let v:Vec3=new Vec3([[this.v.length]],"#F80")  // I checked on application
 		for(let i=0;i<this.v.length;i++){
 			v.v[i]=this.v[(i+1)%3]*o.v[(i+2)%3]-this.v[(i+2)%3]*o.v[(i+1)%3]
 		}
@@ -215,13 +218,19 @@ export class Vec3 extends Vec<3>{
 		var ctx=CanvasObject.ctx  // I can access protected members
 		if (ctx==null) return  // ctx is set for debugging. Single step. then for walking and displaying the tree. Does it make sense to show debugging lines? verbosity level? BSP lines are created on instert. Walk should not need to repaint them. Just draw the official faces in bright colors. And handles.
 
+		
 		ctx.fillStyle = "rgb(225, 0, 255)"
-		let hsize=marker!=null && marker=="hot" ? 3:0
-		const s = CanvasObject.screen.map(full=>full/2);
-		const m=Math.max(...s);
-		let coords=this.v.map( (w,i)=>s[i]+m*w/this.v[2])    // square pixels. NDC strikes again .. almost
-		ctx.fillRect( coords[0], coords[1], 2*hsize+1, 2*hsize+1)
+		let hsize=0
+		if (marker!=null){
+			ctx.fillStyle = marker
+			hsize= 3
+		}
 
+		const s = CanvasObject.screen.map(full=>full/2);
+		const m=1 // Math.max(...s); I dunno why I don't get used to NDC
+		let coords=this.v.map( (w,i)=>s[i]+m*w/this.v[2])    // square pixels. NDC strikes again .. almost
+		//ctx.fillRect( coords[0], coords[1], 2*hsize+1, 2*hsize+1)
+		ctx.fillRect( coords[0]-hsize, coords[1]-hsize, 2*hsize+1, 2*hsize+1)
 	 } 
 
 }
@@ -586,13 +595,13 @@ class Z_order{
 
 export class Edge<N extends number> extends CanvasObject{
 	vs:Vec<N>[]
-	constructor( vs:Vec<N>[]){
+	constructor( vs:Vec<N>[], marker:string=null){
 		if (vs.length!=2) {
 			throw "2, please!"
 		}
 		super();
-		this.vs=vs;
-		this.toCanvas(); // On the one hand, new should be bright like on a CRT RADAR. On the other hand this is implicit.
+		this.vs=vs.slice(0);
+		this.toCanvas(marker); // On the one hand, new should be bright like on a CRT RADAR. On the other hand this is implicit.
 	}
 	toCanvas(marker:string=null){} // abstract
 	toCanvasInner(coords:number[][], marker:string=null):void{
@@ -622,6 +631,8 @@ export class Edge2 extends Edge<2>{
 }
 
 export class Edge3 extends Edge<3>{
+		vs:Vec3[]
+	//	normal:Vec3
 	toCanvas(marker:string=null):void{ let ctx=CanvasObject.ctx //ctx: CanvasRenderingContext2D): void {
 		ctx.strokeStyle = '#bbb'
 		ctx.beginPath(); // Start a new path
