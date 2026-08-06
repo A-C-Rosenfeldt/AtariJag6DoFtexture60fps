@@ -202,6 +202,14 @@ export class Vec3 extends Vec<3>{
 		if (marker!=null) this.toCanvas(marker)
 	}
 
+	// TODO extract interface
+	normalize(offset = 0): [number, number] {
+		const w=1 / this.v[2]
+		const v = this.v.slice(0,2).map(c=> c*w-offset)
+		// does not work if (v.length==2) return v ;// typeGuard 
+		return [v[0], v[1]]  // okay for only 2
+	}
+
 	crossProduct(o:Vec3):Vec3{
 		let v:Vec3=new Vec3([[this.v.length]],"#F80")  // I checked on application
 		for(let i=0;i<this.v.length;i++){

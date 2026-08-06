@@ -520,11 +520,13 @@ class cut_base {
 export class Edge_cut extends cut_base {
 	e: BSPnode_edge = null
 	c: Vertex_OnScreen
-	constructor(e: BSPnode_edge | Vertex_OnScreen) { // So, I learned that typeScript does not really support the old JS way of constructing objects
+	constructor(e: BSPnode_edge | Vertex_OnScreen| Edge3|Vec3) { // So, I learned that typeScript does not really support the old JS way of constructing objects
 		//  (because it cannot interfere the interface? I only have properties)
 		super()
+		if (e instanceof Edge3) {this.e = new BSPnode_edge(e) ;} // per insert
 		if (e instanceof BSPnode_edge) this.e = e  // per frame
 		if (e instanceof Vertex_OnScreen) this.c = e  // per insert
+		if (e instanceof Vec3) {this.c = new Vertex_OnScreen(e) }  // per insert
 	}
 
 	se: SplitEdge
@@ -1183,11 +1185,11 @@ export class BSPnode_perInsert extends BSPnode {
 
 	// chronologically this belongs before decide_face. todo, when we refactor
 	decide_edge(node: BSPnode_perInsert, fillStyle: string, last_edge_of_polygon = false): void {//:BSPnode_childref { 
-		const e = node.edge
+		const e = node.edge.edge  // todo: change to 3d
 		//console.log("ncuts ", node.cuts.map(c => c.c.normalize()).toString(), "this cuts", this.cuts.map(c => c.c.normalize()).toString())
 		// probably I should just reserve memory for Edge_cut from the start on Jaguar
 		// Properties / pointers on edge. After compilation with the value type of course pointers need special consideration ( relative in local RAM )
-		const node_merged = e.verts.map((v, i) => node.cuts[i] ?? new Edge_cut(v)) // Certainly the Doom level editor just used floats and epsilon. But I am on Jaguar
+		const node_merged = e.vs.map((v, i) => node.cuts[i] ?? new Edge_cut(v)) // Certainly the Doom level editor just used floats and epsilon. But I am on Jaguar
 		//const this_merged = this.edge.verts.map((v, i) => this.cuts[i] ?? new Edge_cut(v)) // Kinda useless because we know that this splits this node from end to end ( cut / extended to match ).
 		//const explicit_mesh = node_merged.map(v => this_merged.indexOf(v))
 		//console.log("sides{",)
@@ -1218,7 +1220,7 @@ export class BSPnode_perInsert extends BSPnode {
 
 			if (cut == null) {
 				// beam tree
-				var cut = this.Cutter(e); // kinda : go to derived class
+				var cut = this.Cutter(node.edge); // kinda : go to derived class
 				//cut.c = c
 				cut.e = this.edge
 				console.log("push cut", node.edge.index, this.ID, this.edge.index, sides)
@@ -1240,7 +1242,7 @@ export class BSPnode_perInsert extends BSPnode {
 			if (sides.map(si => si == (2 * s) - 1).reduce((p, c) => p || c, false)) { // any points to insert on this side of tree
 				let c = this.children[s]
 				const n = new BSPnode_perInsert(node.ID)
-				n.edge = e  // why no cut at this point? The "sides" code depends on it. The face wants to reuse it
+				n.edge =node.edge  // why no cut at this point? The "sides" code depends on it. The face wants to reuse it
 				//n.cuts = node.cuts.slice() // temporarly for insert.
 				const res = Object.assign(n.cuts, node.cuts); // nessary for test .. new code has records. I wrote the tests for array. Now test old and new code!
 
@@ -1861,14 +1863,19 @@ export class BSPtree extends CanvasObject {
 			// }
 
 			const s = BSPtree.BSP_heuristic(p.edges);
+			const s_lean = BSPtree.BSP_heuristic(p.edges );//)).edges);
 			for (let i = s.length - 1; i >= 0; i--) {
-				const n = new BSPnode_edge()
+				const verts = (s[i][1]).vs    //new Vec2( [ lv[1].normalize() ]  ) )
+				const n :BSPnode_edge= null; throw "change2newTypes"; //new BSPnode_edge(verts)
 				n.index = 1 + s[i][2] //; console.log("new edge",n.index)
 				p.edges_in_BSP.push(n) // for the cuts
-				const verts = (s[i][1]).vs    //new Vec2( [ lv[1].normalize() ]  ) )
+
 
 				// cross product of the beam tree. Trying to optimize, but still 6 multiplications = 2+2+2
-				const b = Node_CreateFromVerts(verts, n, p.vertices.length); // Refactor using editor to be able to add automated test . Long term goal is just co-incidental: get math out of the business logic
+					const b = new BSPnode_perInsert(p.vertices.length /* hack to id polygons on screen */);
+	b.edge = n;
+	
+			//	const b = // dated:Node_CreateFromVerts(verts, n, p.vertices.length); // Refactor using editor to be able to add automated test . Long term goal is just co-incidental: get math out of the business logic
 				p.nodes_in_BSP.push(b)
 				if (this.root == null) {
 					this.root = b
@@ -1904,6 +1911,19 @@ export class BSPtree extends CanvasObject {
 		s.sort((a, b) => a[0] - b[0]);
 		return s;
 	}
+
+	public static BSP_heuristic_lean(edges: Edge3[]) {
+		const s = edges.map((e, i) => {
+			const vecs = e.vs.map(v => new Vec2([v.normalize()])); // vertices start with v. I should rename to point to differentiate from vector -- but what about Transformation?
+			const delta = vecs[0].subtract01(vecs[1]);
+			//if (normal.v[2] >= 0) e.vs.reverse()  // uh too much cognitive load. Pehaps there is a way to figure out backfaces within a BSP, but not for me
+			const r: [number, Edge3, number] = [delta.innerProduct(delta), e, i]; //  ref type
+			return r;
+		});
+		s.sort((a, b) => a[0] - b[0]);
+		return s;
+	}
+
 
 	insertPolygonLean(p: Polygon, ID: number) {
 
