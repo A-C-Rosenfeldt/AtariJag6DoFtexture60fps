@@ -28,15 +28,22 @@ var v1 = [vs[1], new Vec2([[0, 7]])]
 // forward indices are not allow ( single pass parser to prevent weird error states ). So I use negative indices to indicate orientation swapped edges
 const fileFormat = [
     [[0, 160, 140], [0, 240, 60], [0, 40, 160]],
-    [[0, 6, 260], [1, 0], [1, 2]],
-    [[0, 106, 260], [1, 1], [1, 0]],
+    [[0, 6, 260], [1, 2,+1]],//, [1, 2,-1]],
+    [[0, 106, 260], [1, 2,+1]],
+    
     [[0, 140, 265], [0, 340, 125], [0, 340, 247], [0, 320, 377]],
-    [[0, 100, 350], [1, 0], [1, 3]],
+    [[0, 100, 350], [1,  3, 1 ]],
     [[0, 440, 360], [0, 540, 260], [0, 500, 240]],
-    [[0, 400, 260], [1, 0], [1, 2]],
-    [[0, 380, 380], [1, 0], [1, 1]],
-    [[0, 500, 380], [1, 0], [1, 2]],
-    [[4, 1], [1, 2], [1, 0]]
+    [[0, 400, 260], [1, 2,+1]],
+    [[0, 380, 380], [1, 2,+1]],
+    [[0, 500, 380], [1, 0,+1]]
+    // [[0, 500, 380], [2, 1,+1]],
+    // [[0, 500, 380], [3, 2,+1]],
+    , [[1, 2, -1], [4, 0, +1]]
+ //   , [[2, 2, +1], [5, 0, -1]]
+//    , [[1, 3, -1], [6, 0, +1]]
+    // [[2, 2, +1], [5, 1, +1]],
+    // [[3, 2, +1], [6, 2, +1]]
 ]
 
 
@@ -62,32 +69,43 @@ const bspTree=new BSPtree()
 // //     RefOr0: number
 //     v: Vec2
 // }
+
+// TODO automated test: do all vertices end up in the final data structure
 const add_poly_sequen = (event: Event): void => {
-    if (sequence == -1 || sequence+1 > fileFormat.length) {
+    if ( sequence+1 >= fileFormat.length) {
         sequence = -1;
-        //     while (ps.length > 0) {
-        //         ps.pop();
-        //     }
+            while (polygons.length > 0) {
+                polygons.pop();
+            }
+            const ctx=CanvasObject.ctx
+            if (ctx) ctx.clearRect(0, 0, canvas.width, canvas.height);
     }
 
     // pse = sequence;
-    let poly = fileFormat[++sequence]
+    let poly = fileFormat[++sequence];console.log(sequence+" < "+fileFormat.length)
     const polygon=new Polygon()
     polygons.push(polygon)
     const es=polygon.es, vs=polygon.vs
     //let vs_se: Vec2[] = [];
     let window: Vec3[] = []  // as in the window in LZW or register window in SPARC
     //let es_se: Edge2[] = [];
-    const closed = poly.concat([poly[0]]);
-    closed.forEach(verte => {
-        const vertex=[verte[0], verte[0]<=0?verte[1]-320:verte[1], verte[2]-240]
+    const closed = poly.concat([poly[0]]); // so I have to set up meshes that there is never a final filler face? TODO
+    closed.forEach((verte,i) => {
+        const vertex=verte.slice()
+
         let RefOr0 = vertex[0]
         if (RefOr0 <= 0) {
+            vertex[1]-=320
+            vertex[2]-=240            
             if (RefOr0 < 0) {
                 const polygon = polygons[sequence  + RefOr0].vs;
                 window.push( polygon[vertex[1]] )
             } else {
-                window.push( new Vec3([vertex.slice(1).concat(1)],"rgb(143, 90, 31)")) ; // Any later new creates dupes, unfortunately
+                if (i==closed.length-1){
+                    window.push( vs[0])
+                }else{
+                    window.push( new Vec3([vertex.slice(1).concat(1)],"rgb(143, 90, 31)")) ; // Any later new creates dupes, unfortunately
+                }
             }
             // new vertex
 
@@ -110,16 +128,22 @@ const add_poly_sequen = (event: Event): void => {
             const polygon = polygons[sequence  - RefOr0].es;
 
             const edge = polygon[resp_orient] //,(resp_orient+1)%polygon.length]            
-            if (window[0] != null) { // todo: local function for closure
 
-                const e = vertex[1] < 0 ? [edge.vs[1], edge.vs[0]] : edge.vs
-                window.push(...e)
+            const e = vertex[2] < 0 ? [edge.vs[1], edge.vs[0]] : edge.vs
+            window.push(...e)
+
+            if (window.length>2) { // todo: local function for closure
+
+
                 // I want all edges referenced explitcitely in order not to search ( and produce weird errors)
                 // so two cases can happen. Either two consecutive edges already close the border == share a vertex, or I have a single gap. No new vertices needed, but an edge. Looks easier in code than in comment.
-                if (window[0] != window[1]) { es.push(new Edge3(window.slice(0, 2))); vs.push(window[1]) }
+                if (window[0] != window[1]) {
+                     es.push(new Edge3(window.slice(0, 2)))
+                      vs.push(window[1]) 
+                    }
                 window.shift();
             }
-            es.push(edge)
+            es.push(edge) // edges can have the wrong orientation. State is my enemy. So code in the hot path will have to compare edge.vs[0]
             window.shift();
             vs.push(window[0]);
             // so this is weird. What if I close a hole? What if it has 3 edges? So closure of the loop may not be necessary.            
