@@ -371,8 +371,8 @@ export class BSPnode_edge //extends Edge2
 	// import {Portal} from "./pyramid.js"
 	// import { Vec, Vec2, Vec3 } from "./clipping.js"
 
-	toCanvas(ctx: CanvasRenderingContext2D, sector?: Array<Vec2> /*ref*/, verbose = true) {
-
+	toCanvas(ctx?: CanvasRenderingContext2D, sector?: Array<Vec2> /*ref*/, verbose = true) {
+		ctx = ctx ?? CanvasObject.ctx
 
 		let r: [number, number], last = 0, current = last, l = 0, last_v: Vec2
 		const count_splits = 2
@@ -394,7 +394,7 @@ export class BSPnode_edge //extends Edge2
 		}
 
 		if (ctx != null) {
-			ctx.strokeStyle = "#FF01"
+			ctx.strokeStyle = "#FF0"  // rafactor? "#FF0" :  mass test?  "#FF01"
 			ctx.beginPath()
 		}
 		const cache = new Array<number>(length);// cache lazy infinite precision values
@@ -404,6 +404,7 @@ export class BSPnode_edge //extends Edge2
 				// This is not the inner loop. If I want to remove branches, I need to optimize the compiler to unroll loops and implement those lag by one iteration variables
 				//const v = new Vec2([cxy])
 				co = [v.v[0] + debugshift, v.v[1] + debugshift] //;console.log("v",co[0],co[1])
+				console.log(co)
 				if (l++ == 0) ctx.moveTo(...co)
 				else {
 					ctx.lineTo(...co)
@@ -411,6 +412,8 @@ export class BSPnode_edge //extends Edge2
 			}
 
 			current = this.xy.innerProduct(v) + this.z  // todo: * v.z . inner product when corners are assumed to be vertices at a distance
+			const o=new Vec3([  BSPnode_perInsert.screen.map((s, i) => v.v[i]-s/2).concat(1) ])
+			current= this.normal.innerProduct(o)
 			// let sign = 0
 			// // Make JRISC behaves like this! Signed int2
 			if (current < 0) { last = current; last_v = v }
@@ -423,7 +426,7 @@ export class BSPnode_edge //extends Edge2
 			ctx.stroke(); l = 0
 			const back = ctx.lineWidth
 			ctx.lineWidth = 1
-			ctx.strokeStyle = "#0" + variance.toString() + "F"; variance = (variance + 1) % 10
+			ctx.strokeStyle = "#FF9" // "#0" + variance.toString() + "F"; variance = (variance + 1) % 10
 			ctx.beginPath()
 		}
 
@@ -438,12 +441,14 @@ export class BSPnode_edge //extends Edge2
 					let cxy = v.v.slice()
 					const from_last = (corner ^ 1) & 1;
 					let from_corner = current / this.xy.v[from_last]
+					from_corner = current / this.normal.v[from_last]
 					cxy[from_last] -= from_corner
 
 					var co: [number, number] = [cxy[0] + debugshift, cxy[1] + debugshift]
 					if (ctx != null && verbose) {
-						ctx.fillStyle = "#F80"
-						ctx.fillRect(co[0], co[1], 1, 1)
+						ctx.fillStyle = "rgb(0, 225, 255)"
+						const hw=4
+						ctx.fillRect(co[0]-hw, co[1]-hw, 2*hw, 2*hw)
 					}
 					var cut = new Vec2([cxy]);
 					//console.log("cut",cut.v)
@@ -455,7 +460,7 @@ export class BSPnode_edge //extends Edge2
 					co = [cut.v[0] + debugshift, cut.v[1] + debugshift]
 					if (ctx != null && verbose) {
 						ctx.fillStyle = "#288"
-						ctx.fillRect(co[0], co[1], 1, 1)
+						ctx.fillRect(co[0], co[1], 10, 10)
 					}
 
 				}
@@ -1994,6 +1999,7 @@ class PartialFilled extends BSPnode_perInsert {
 export function Node_CreateFromVecs(e: Edge3, ID: number) {
 
 	const ne=new BSPnode_edge(e)  // popular interface .. takes time to refactor. AI?
+	ne.toCanvas() // splitting leads to new Nodes, but not new edges
 
 	// e.normal = e.vs[0].crossProduct(e.vs[1])
 
