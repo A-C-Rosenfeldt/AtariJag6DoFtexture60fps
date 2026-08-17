@@ -359,7 +359,9 @@ export class BSPnode_edge //extends Edge2
 	cache_face: Polygon_in_cameraSpace;
 	decide(v: Vertex_OnScreen): number {
 
-		let side = this.xy.innerProduct(v.xy) + this.z * v.z;
+		//let side = this.xy.innerProduct(v.xy) + this.z * v.z; // old
+		let side = this.normal.innerProduct(v.v) //+ this.z * v.z; // new  
+		if (side==0) throw("pointer equal hätte dies schon abfangen sollen"); // TODO: Brauche ich die wilden Datenstrukturen? Merged darf keinen Konstruktor aufraumen		
 		if (v.z < 0) side = -side  // sorry to mutate local variables, but I need it for debug and JRISC does it all the time
 		//console.log("decide vertex", v.normalize(), "edge xy", this.xy.v, "z", this.z, "side", side, this.xy.innerProduct(v.xy), this.z * v.z) // todo: make sure that cuts point towards bigger z
 		if (side > 0) {
@@ -1194,14 +1196,15 @@ export class BSPnode_perInsert extends BSPnode {
 		//console.log("ncuts ", node.cuts.map(c => c.c.normalize()).toString(), "this cuts", this.cuts.map(c => c.c.normalize()).toString())
 		// probably I should just reserve memory for Edge_cut from the start on Jaguar
 		// Properties / pointers on edge. After compilation with the value type of course pointers need special consideration ( relative in local RAM )
-		const node_merged = e.vs.map((v, i) => node.cuts[i] ?? new Edge_cut(v)) // Certainly the Doom level editor just used floats and epsilon. But I am on Jaguar
+		const that_merged = e.vs.map((v, i) => node.cuts[i] ?? new Edge_cut(v)) // Certainly the Doom level editor just used floats and epsilon. But I am on Jaguar
+		const this_merged=this.edge.edge.vs.map((v, i) => node.cuts[i] ?? new Edge_cut(v))
 		//const this_merged = this.edge.verts.map((v, i) => this.cuts[i] ?? new Edge_cut(v)) // Kinda useless because we know that this splits this node from end to end ( cut / extended to match ).
 		//const explicit_mesh = node_merged.map(v => this_merged.indexOf(v))
 		//console.log("sides{",)
 		// if (this.ID===3 && this.edge.index==0){
 		// 	console.log("does it really look at the cuts?",node_merged.map(n=>n.c.normalize())) // todo: cuts went to wrong child
 		// }
-		const sides = this.decide_vertices(node_merged) //node.cuts)
+		const sides = this.decide_vertices(that_merged,this_merged) //node.cuts)
 
 		// explicit_mesh.map((f, i) => {
 		// 	if (f >= 0) {//console.log("vertex eq by index");
@@ -1260,6 +1263,7 @@ export class BSPnode_perInsert extends BSPnode {
 					// console.log("cuts on inserted and split edge", n.debugy, n.cuts)
 				}
 
+				// todo : children=null or . undefined == true  -- it looks like. NULL is better because like cuts: 2 sides are expected
 				if (c == null || (c instanceof Leaf)) {
 					// console.log("try to insert on side",s)
 					this.children[s] = n  // I don't want too many instanceOf in my code.
@@ -1398,7 +1402,8 @@ export class BSPnode_perInsert extends BSPnode {
 		// thanks to an explicit mesh, I insert every edge only once
 		// So this.edge (aka border) could not have seen node.edge before
 		// insert face is just a replay. Doom space here means: faces in 3d (Quake) would cut stuff, but in 2d they cannot
-		const sides_v = this.decide_vertices(cs)
+
+		//const sides_v = this.decide_vertices(cs)
 
 
 
@@ -1426,7 +1431,8 @@ export class BSPnode_perInsert extends BSPnode {
 			}
 		})
 
-		const sides = this.decide_vertices(cs)
+		//throw(" implementation changed")
+		const sides = this.decide_vertices(cs,null)
 		// const explicit_mesh = cs.map(v => this.edge.verts.indexOf(v)) // some "cuts" are actually just the original vertices
 		// const explicit_medg = eg.map(e => this.cuts.indexOf(eg))
 		// const sides = explicit_mesh.map((f, i) => {
@@ -1652,15 +1658,24 @@ export class BSPnode_perInsert extends BSPnode {
 	}
 
 	// todo: ed: as property, not parameter
-	decide_vertices(cs: Edge_cut[]): number[] {
+	decide_vertices(cs: Edge_cut[],this_merged: Edge_cut[]): number[] {
 
 		return cs.map((c, vi) => { // the callback function is a JS artifact. JRISC uses releative branch. Even Java has a sane forEach
 			const v = c.c
-			const vf = this.cuts.findIndex((cut, ci) => {
-				if (typeof cut == 'undefined') {
-					return this.edge.verts[ci] == v
+			const vf =  this_merged.findIndex((cut, ci) => {
+				console.log(cut.c.v.v)
+				 console.log( v.v.v)
+				return cut.c.v==v.v;
+				/*
+				const boo = cut == null;
+				console.log("boo",boo)
+				// cut == null  is for record type = tupel / value type for Jag . Vielleicht hatte ich damals die Tupel nicht gekonnt.
+				if ( boo ){ //  'undefined') { // what is even the use of undefined ? Here cuts act as an overlay, but the indices 0 and 1 are expected to be used -- other indices are not. So clearly the other indices would be undefined .. more null than null. Out of range.
+					return this.edge.verts[ci] == v  // Vertices outside of the current sector cannot be met. Rounding is only a second order argument. Pointers don't care
+					// so symmetric: merged ( or rather "combined") verte
 				}
 				return false
+				*/
 			})
 			if (vf > -1) return 0
 			// for (let w = 0; w < 2; w++) {
@@ -1672,6 +1687,7 @@ export class BSPnode_perInsert extends BSPnode {
 			// edges can have a similar cache for their cuts. Ordered. Order given by edges for faces and vertices. So this is differnt then the Transformation pipeline: V -> E-> F
 
 			// premature optimization, but I am mostly intersted in the JRISC cost!
+			// TODO: write test: nothing in cache on first pass
 			const ed = c.e
 			if (ed != null) {
 				if (v.cache_ed != ed) {
