@@ -1156,6 +1156,30 @@ class Edge_may_touch_Border {
 	}
 }
 
+/**
+ * start: (vertex) --edge-- (vertex)             														log:  draw them all in their position . Color : orange
+ * expand edge into line using implicit function: dual vector for inner products. "bra ket"				
+ * cut back: edge intersection("cut") with borders . I need this for debugging. Make it real?			log:  color : blue for edge and borderCuts
+ *  endcap -- edge --    // with endcap -> [ vertex |  cut ]
+ * 											vertex will be compared by reference ( in a mesh or even a simple polygon), while cuts belong to the current edge
+ * 								endcaps and cuts like vertices are "bra" vectors  ( not dual )    We can use inner product to find out on which side of an edge "ket" they lie
+ *  log:  wedge product: to draw parallels to depict the process how we instert the edge into the tree going down the nodes
+ *  log cuts .. so actually I do not care about lines or edges here. Even with regards to the color: colorize the endcaps to designate the type
+ *  log inserts: Though I care for the final insert as node into the tree. BSP nodes refer to lines (not edges). So the insert should be blue.
+ *  The line segment lives on the edge. I could draw it in a second window . Like if I do this all to remove hidden surfaces in vectors graphics without filling the faces.
+ */
+
+/*
+Insert Face. Two panels in a row below the two edge panels.
+I can fill a face in the log very translucent, I can just "redraw" the outline
+face recognizes its edges. But would I not show insertion from root? Mark the node.lines that I touch.
+Line where polygon falls on one side: grey
+Line which meets the polygon  aka  the both belong to same edge: yellow   with endCaps drawn as points . Showing the re-collection of segments which had been split by other lines -- same which split the polygon..
+Line which cuts through the polygon: red
+	Splits internally to the polygon: For example if we started with small polygon in front. And it has many edges. And its BSP eats some of them with only two going outside.
+	so it would be interesting to see red  edges (from the tree; not necessarily from the polygon) inside a polygon which has far less cut edges
+*/
+
 export class BSPnode_perInsert extends BSPnode {
 	children: (BSPnode_perInsert | Leaf)[] = new Array<BSPnode_perInsert>() // 0,1  // cannot be declared in parent. Perhaps a generic tree?
 
@@ -1262,6 +1286,10 @@ export class BSPnode_perInsert extends BSPnode {
 					n.cuts[iso] = cut   // the other end of the line is replaced. Why did I flip this ever?
 					// console.log("cuts on inserted and split edge", n.debugy, n.cuts)
 				}
+
+				//TODO combine toCanvas of edge ( starting from border) and node (vertices)
+				// if vertex meets parent, still set cut  ? Yes, later cut.toCanvas should not reach the border
+				// draw from other cut to meeting point
 
 				// todo : children=null or . undefined == true  -- it looks like. NULL is better because like cuts: 2 sides are expected
 				if (c == null || (c instanceof Leaf)) {
