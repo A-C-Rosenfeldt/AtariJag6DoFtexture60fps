@@ -298,7 +298,7 @@ export class BSPnode_line_Beam implements I_BSPnode_line{
 
 	decide(v: Vertex_OnScreen): number {
 
-		let side = this.normal3d.innerProduct(v.v)
+		let side = this.normal3d.innerProduct(v.v) // endcaps and cuts like vertices are "bra" vectors  ( not dual )    We can use inner product to find out on which side of an edge "ket" they lie
 		if (v.z < 0) side = -side  // sorry to mutate local variables, but I need consistency for debugging
 		// why not ensure z on construction? Looks like construction is filling the vertices ??
 		//console.log("decide vertex", v.normalize(), "edge xy", this.xy.v, "z", this.z, "side", side, this.xy.innerProduct(v.xy), this.z * v.z) // todo: make sure that cuts point towards bigger z

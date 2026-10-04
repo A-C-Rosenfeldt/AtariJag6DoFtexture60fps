@@ -79,8 +79,27 @@ interface Array<T> {
 export class CanvasObject {
 	static screen = [640, 480];
 	static ctx: CanvasRenderingContext2D
-	static slowmo_ms=0;
-	toCanvas(marker:string=null):void { }   // virtual  todo Placeholder
+	static slowmo_ms = 0;
+	static toCanvas(marker: string = null): void { }   // virtual  todo Placeholder
+}
+class CanvasHelper{ // TODO: better name
+	static log_view(v: number[], l: LogParallelLines, hsize = 0) {
+		const m = 1; // Math.max(...s); I dunno why I don't get used to NDC
+
+		//let coords=this.v.map( (w,i)=>s[i]+m*w/this.v[2])    // square pixels. NDC strikes again .. almost
+		//ctx.fillRect( coords[0], coords[1], 2*hsize+1, 2*hsize+1)
+		const center = new Vec2([CanvasObject.screen.map(full => full / 2 - hsize)]);
+		const perspective = new Vec2([v.slice(0, 2)]).scalarProduct(1 / v[2]);
+		perspective.add(center);
+
+		if (l) {
+			const proj = new Vec2([l.normal.v.slice(0, 2)]);
+			const shift = proj.scalarProduct(l.log_para / proj.innerProduct(proj)); // Edge with length=0 should be caught on model load / 3d -> 2d projection
+			perspective.add(shift);
+		}
+		const coords = perspective.v.concat(2 * hsize + 1); // poor mans argument spread
+		return coords;
+	}
 }
 
 export class Vec<N extends number> extends CanvasObject{ // looks like I need 2 and 3 dimensions to show off this (adaptive) linear approximation trick for textures after persepective projection 
@@ -194,15 +213,20 @@ export class Vec2 extends Vec<2>{
 	}	
 }
 
+export class LogParallelLines{
+	log_para: number;
+	normal:Vec3;
+}
+
 export class Vec3 extends Vec<3>{
 
 	// normals are part of an edge. I could draw them, but I'd rather draw the edge (shorter).
-	constructor(points:number[][], marker:string=null){
+	constructor(points:number[][], marker:string=null, l?:LogParallelLines){
 		super(points)
-		if (marker!=null) this.toCanvas(marker)
+		if (marker!=null) this.toCanvas(marker, l)
 	}
 
-	// TODO extract interface
+	// TODO extract interface, rename because Vec3.normalize has a different meaning. And also: Do we need this?
 	normalize(offset = 0): [number, number] {
 		const w=1 / this.v[2]
 		const v = this.v.slice(0,2).map(c=> c*w-offset)
@@ -210,15 +234,15 @@ export class Vec3 extends Vec<3>{
 		return [v[0], v[1]]  // okay for only 2
 	}
 
-	crossProduct(o:Vec3):Vec3{
-		let v:Vec3=new Vec3([[this.v.length]],"#F80")  // I checked on application
+	crossProduct(o: Vec3, l?:LogParallelLines):Vec3{
+		let v:Vec3=new Vec3([[this.v.length]],"#F80",l)  // I checked on application
 		for(let i=0;i<this.v.length;i++){
 			v.v[i]=this.v[(i+1)%3]*o.v[(i+2)%3]-this.v[(i+2)%3]*o.v[(i+1)%3]
 		}
 		return v
 	}
 
-	toCanvas(marker:string=null) {
+	toCanvas(marker: string = null, l?:LogParallelLines) {
 		this.v[0];
 		this.v[1];
 		if (this.v[2]<=0) return; // z == 2 . I guess that I have to accept this convention
@@ -233,13 +257,15 @@ export class Vec3 extends Vec<3>{
 			ctx.fillStyle = marker
 			hsize= 3
 		}
+		
+		const coords = CanvasHelper.log_view(this.v ,l, hsize);  // poor mans argument spread
 
-		const s = CanvasObject.screen.map(full=>full/2);
-		const m=1 // Math.max(...s); I dunno why I don't get used to NDC
-		let coords=this.v.map( (w,i)=>s[i]+m*w/this.v[2])    // square pixels. NDC strikes again .. almost
-		//ctx.fillRect( coords[0], coords[1], 2*hsize+1, 2*hsize+1)
-		ctx.fillRect( coords[0]-hsize, coords[1]-hsize, 2*hsize+1, 2*hsize+1)
+		//const c2 = 2 * hsize + 1;
+		ctx.fillRect(  coords[0], coords[1],coords[2],coords[2])
 	 } 
+
+
+
 
 }
 
@@ -603,16 +629,16 @@ class Z_order{
 
 export class Edge<N extends number> extends CanvasObject{
 	vs:Vec<N>[]
-	constructor( vs:Vec<N>[], marker:string=null){
+	constructor( vs:Vec<N>[], marker:string=null, l?:LogParallelLines){
 		if (vs.length!=2) {
 			throw "2, please!"
 		}
 		super();
 		this.vs=vs.slice(0);
-		this.toCanvas(marker); // On the one hand, new should be bright like on a CRT RADAR. On the other hand this is implicit.
+		this.toCanvas(marker,l); // On the one hand, new should be bright like on a CRT RADAR. On the other hand this is implicit.
 	}
-	toCanvas(marker:string=null){} // abstract
-	toCanvasInner(coords:number[][], marker:string=null):void{
+	toCanvas(marker:string=null, l?:LogParallelLines){} // abstract
+	toCanvasInner(coords:number[][], marker:string=null, l?:LogParallelLines):void{
 		let ctx=CanvasObject.ctx //ctx: CanvasRenderingContext2D): void {
 		ctx.strokeStyle = '#bbb'
 		ctx.beginPath(); // Start a new path
@@ -641,14 +667,16 @@ export class Edge2 extends Edge<2>{
 export class Edge3 extends Edge<3>{
 		vs:Vec3[]
 	//	normal:Vec3
-	toCanvas(marker:string=null):void{ let ctx=CanvasObject.ctx //ctx: CanvasRenderingContext2D): void {
+	toCanvas(marker:string=null, l?:LogParallelLines):void{ let ctx=CanvasObject.ctx //ctx: CanvasRenderingContext2D): void {
 		ctx.strokeStyle = '#bbb'
 		ctx.beginPath(); // Start a new path
 
-		const s = CanvasObject.screen.map(full=>full/2);
-		let coords=this.vs.map(v=>v.v.map( (w,i)=>s[i]+w/v.v[2]))
+		// const s = CanvasObject.screen.map(full=>full/2);
+		// let coords=this.vs.map(v=>v.v.map( (w,i)=>s[i]+w/v.v[2]))
 
-		super.toCanvasInner(coords,marker);
+		const coords = this.vs.map(v=>CanvasHelper.log_view(v.v  , l));  // CanvasObject
+
+		super.toCanvasInner(coords,marker,l);
 	}	
 }
 
