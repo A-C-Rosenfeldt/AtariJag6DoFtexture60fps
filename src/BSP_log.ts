@@ -1,6 +1,6 @@
 import { assert } from "chai";
 import { Vec, Vec2, Vec3, CanvasObject, Edge2, Edge3, LogParallelLines } from "./clipping.js"
-import { BSPnode_line_Beam, Vertex_OnScreen } from "./BSP";
+import { BSPnode_line_Beam, Polygon, Vertex_OnScreen } from "./BSP.js";
 
 declare global {
 	interface Array<T> {
@@ -39,7 +39,7 @@ declare global {
 
  /* cut back: edge intersection("cut") with borders . I need this for debugging. Make it real?			log:  color : blue for edge and borderCuts
  *  endcap -- edge --    // with endcap -> [ vertex |  cut ]*/
- class Edge extends Edge_beam{    
+ class Edge_with_children extends Edge_beam{    
     // Not the ends of the line. I think that I don't need them in the algorithm. Then I should not log them (yet). No phantasy data!
     // In the previous version of this code I tried to be clever with immutable, but here I try out plain old pointers
     ends : Vec3[]
@@ -47,21 +47,22 @@ declare global {
     constructor(egb: Edge_beam, l?:LogParallelLines){
         super(egb,l);
 
+        //this.ends = new Array<Vec3>(2)
         // So , I could no decide between tupels and some vector magic at first. TODO slice
-        if (egb instanceof Edge)
+        if (egb instanceof Edge_with_children)
         {
             this.log_para=egb.log_para+1            
-            for(var i=0;i<this.ends.length;i++)
-                this.ends[i]=egb.ends[i];
+            //for(var i=0;i<this.ends.length;i++)
+                this.ends=egb.ends.slice();
         }else{
             this.log_para=1  // I want to try display in same canvas as asset loader xor final display
-            for(var i=0;i<this.ends.length;i++)
-                this.ends[i]=egb.vs[i];
+            //for(var i=0;i<this.ends.length;i++)
+                this.ends=egb.vs.slice();
         }
         
         // I need these for comparison. Or do I? The null check did not seem to fit the algorithm
-        for(var i=0;i<this.ends.length;i++)
-            this.vs[i]=egb.vs[i];
+        //for(var i=0;i<this.ends.length;i++)
+            this.vs=egb.vs.slice();
     }
 
     decide(prior : Edge_beam){
@@ -92,13 +93,34 @@ declare global {
         
         //var v=new Vertex_OnScreen(cross)
 
-        var child:[Edge,Edge]
+        var child:[Edge_with_children,Edge_with_children]
         for (var i = 0; i < this.ends.length; i++) {  // the magic of pointers
-            child[i]=new Edge(this,l)   // the original vertices are still one member acces operation . away
+            child[i]=new Edge_with_children(this,l)   // the original vertices are still one member acces operation . away
             child[i].ends[1-i]=cross   // but the ends point to the correct object
         }        
     }
  }
+
+ export class BSPtreeLog {
+    root: Edge_with_children
+     insertPolygonEdgeByEdge(p: Polygon, ID: number) {
+ 
+        //const n = new BSPnode_perInsert(ID)
+        p.es.forEach(e => {
+            //let en = new BSPnode_edge(e)   not compatible with 3d math
+            const b=new Edge_beam(e)
+            const n = new Edge_with_children(b) // Node_CreateFromVecs(e, ID);
+ 
+            // looka 
+            if (this.root == null) {
+                this.root = n
+            }
+            else {
+                this.root.decide(n)//, "rgba(0, 156, 204, 0.57)", false) // TODO check that the new vertices due to cuts are shown. Perhaps use the new types.
+            }
+        })
+}}
+
  /* 											
  * 								
  *  log:  wedge product: to draw parallels to depict the process how we instert the edge into the tree going down the nodes

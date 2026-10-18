@@ -135,8 +135,19 @@ export class Camera_in_stSpace{
 		// We may need to measure if it is faster to have two different 1/z or to compensate the s,t nominators
 		// Only scaling is possible ( and quite fast ). There can be offsets in s t to shift a texture around, but denominator needs to be real 1/z without offset
 		// so basically in homogenous NDC coordinates, w is the real 1/z used for division (divergence needs to stay at the horizon). And z is 1/z - 1/far_plane and used for the z-buffer.
-
 		// this.z inner product with s,t traced along lines of const-z is clearly const ( [a,b] is the slope of the horizon )
+
+		// OpenGL transforms perspectiv into isometric. Isometric has x,y,z . Isometric is limited [-1 .. +1]. This is fits the screen size, but also the z-buffer.
+		// But this z' is calculated by division by w . This makes it linear in screen space ( x,y,z are all multiplied by 1/w going along a line)
+		// going along a line by t : t*[x,y] aka t*r  results in r' = r/w . Backprojection involves just this w again. z' is not involved.
+		// So basically, z' is not used in my engine: No z-buffer, no near plane. Jaguar has z-buffer. Then I will have to calculate z' and w.
+		// This makes the code fat.
+		// So here is the thing, lines are lines, so z (for the z-buffer) is linear, but why is w? In forward projektion, w is linear in r  ( going along a line)
+		// w is linear because z == w if near plane is at 0 .
+		// I can only argue graphically. Lines are lines in x,y because of the beam tree. 1/z is linear when looking at the horizon and for all rolls.
+		// the more general linear term is clear in my deduction of ray casting texture mapping: I transform (linearly) the the rays into s,t,u coordinates. The hit point calculation involves one division
+		// .. see elsewhere in this file ..
+
 		// I don't know what I meant here. Now that I can clearly read the OpenGl perspective transformation matrix,
 		// It is clear that w= 1/z . W and Z switch places to draw this nice NDC picture with the same labes on the axes as in isometric projection
 		// It does not help with clipping, nor with textures. Lines will be lines, but markers along the line will not be like in isometric.

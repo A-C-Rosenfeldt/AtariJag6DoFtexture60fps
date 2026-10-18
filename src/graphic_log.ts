@@ -1,6 +1,7 @@
 // import { Edge_on_Screen, Vertex_OnScreen } from "./BSP.js";
 import { Vec2, CanvasObject, Edge2, Vec3, Edge3 } from "./clipping.js";
 import { BSPnode, BSPtree ,Polygon} from "./BSP.js";
+import { BSPtreeLog } from "./BSP_log.js";
 
 const canvas: HTMLCanvasElement = document.getElementById("Canvas2d") as HTMLCanvasElement
 CanvasObject.ctx = canvas.getContext("2d");
@@ -59,7 +60,7 @@ var sequence = -1
 // }
 
 const polygons:Polygon[]=[]
-const bspTree=new BSPtree()
+const bspTree=new BSPtreeLog() //BSPtree()
 
 // const parserDic: Vec2[][] = []  // same as ps, but pointers instead of idRef  
 // // ( code.ts friendly MemoryAddresses instead of debugable Id )
@@ -150,8 +151,12 @@ const add_poly_sequen = (event: Event): void => {
         }
     });
 
-    // BSP
-    bspTree.insertPolygonLean(polygon,sequence)
+    // old: BSP
+    //bspTree.insertPolygonLean(polygon,sequence)
+    // new: the BSP is not fat anymore. The root node is just an edge node. All other graphical elements are first class citizens, too. The frustum/pyramid borders are independent because the beam tree is only one way. Also the beam tree is supposed to replace the portal. I only have it for debugging. Same thing for portals or even some scanline stuff. No NDC in my Jaguar Engine. So the borders are not always there. 
+    // so I dunno about filling. I don't want to initialize the beam tree with the frustum. But I have for culling. Same for portals.
+    bspTree.insertPolygonEdgeByEdge(polygon,sequence)
+
 };
 
 //console.log("undeg",sequence-1-vertex[0],vertex[1],sequence,vertex)
