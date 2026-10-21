@@ -82,7 +82,7 @@ export class CanvasObject {
 	static slowmo_ms = 0;
 	static toCanvas(marker: string = null): void { }   // virtual  todo Placeholder
 }
-class CanvasHelper{ // TODO: better name
+export class CanvasHelper{ // TODO: better name
 	static log_view(v: number[], l: LogParallelLines, hsize = 0) {
 		const m = 1; // Math.max(...s); I dunno why I don't get used to NDC
 
@@ -94,7 +94,7 @@ class CanvasHelper{ // TODO: better name
 
 		if (l) {
 			const proj = new Vec2([l.normal.v.slice(0, 2)]);
-			const shift = proj.scalarProduct(l.log_para / proj.innerProduct(proj)); // Edge with length=0 should be caught on model load / 3d -> 2d projection
+			const shift = proj.scalarProduct(2*l.log_para / Math.sqrt( proj.innerProduct(proj) )); // Edge with length=0 should be caught on model load / 3d -> 2d projection
 			perspective.add(shift);
 		}
 		const coords = perspective.v.concat(2 * hsize + 1); // poor mans argument spread
@@ -235,17 +235,18 @@ export class Vec3 extends Vec<3>{
 	}
 
 	crossProduct(o: Vec3, l?:LogParallelLines):Vec3{
-		let v:Vec3=new Vec3([[this.v.length]],"#F80",l)  // I checked on application
+		let v:Vec3=new Vec3([[this.v.length]]) // I checked on application
 		for(let i=0;i<this.v.length;i++){
 			v.v[i]=this.v[(i+1)%3]*o.v[(i+2)%3]-this.v[(i+2)%3]*o.v[(i+1)%3]
+		}
+		if (l) {
+			v.toCanvas(  "#188",l)  
 		}
 		return v
 	}
 
 	toCanvas(marker: string = null, l?:LogParallelLines) {
-		this.v[0];
-		this.v[1];
-		if (this.v[2]<=0) return; // z == 2 . I guess that I have to accept this convention
+		//if (this.v[2]<=0) return; // makes no sense for cuts ( what is "up" and "down" for a beam?)  // z == 2 . I guess that I have to accept this convention
 
 		var ctx=CanvasObject.ctx  // I can access protected members
 		if (ctx==null) return  // ctx is set for debugging. Single step. then for walking and displaying the tree. Does it make sense to show debugging lines? verbosity level? BSP lines are created on instert. Walk should not need to repaint them. Just draw the official faces in bright colors. And handles.
@@ -635,12 +636,12 @@ export class Edge<N extends number> extends CanvasObject{
 		}
 		super();
 		this.vs=vs.slice(0);
-		this.toCanvas(marker,l); // On the one hand, new should be bright like on a CRT RADAR. On the other hand this is implicit.
+		if (marker!=null || l!=null)  this.toCanvas(marker,l); // On the one hand, new should be bright like on a CRT RADAR. On the other hand this is implicit.
 	}
 	toCanvas(marker:string=null, l?:LogParallelLines){} // abstract
 	toCanvasInner(coords:number[][], marker:string=null, l?:LogParallelLines):void{
 		let ctx=CanvasObject.ctx //ctx: CanvasRenderingContext2D): void {
-		ctx.strokeStyle = '#bbb'
+		ctx.strokeStyle = marker 
 		ctx.beginPath(); // Start a new path
 		let t=coords[0];
 		ctx.moveTo(t[0],t[1] ); // Move the pen to (30, 50) . So wild that this does not accept arrays.
@@ -668,13 +669,22 @@ export class Edge3 extends Edge<3>{
 		vs:Vec3[]
 	//	normal:Vec3
 	toCanvas(marker:string=null, l?:LogParallelLines):void{ let ctx=CanvasObject.ctx //ctx: CanvasRenderingContext2D): void {
-		ctx.strokeStyle = '#bbb'
-		ctx.beginPath(); // Start a new path
+		// ctx.strokeStyle = '#bbb'
+		// ctx.beginPath(); // Start a new path
 
 		// const s = CanvasObject.screen.map(full=>full/2);
 		// let coords=this.vs.map(v=>v.v.map( (w,i)=>s[i]+w/v.v[2]))
 
 		const coords = this.vs.map(v=>CanvasHelper.log_view(v.v  , l));  // CanvasObject
+
+		// unused todo
+		if (marker==null){
+			var marker= "rgb(" 
+			for (let i = 0; i < 3; i++) marker += (Math.round((Math.random() * 200)) + 55).toFixed(0) + " "  
+				marker+=")";//"#" + cst + "2")
+
+				//??"#8e8"
+		}
 
 		super.toCanvasInner(coords,marker,l);
 	}	

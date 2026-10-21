@@ -28,7 +28,7 @@ var v1 = [vs[1], new Vec2([[0, 7]])]
 // Indices: [0=self=no index.  !0 [relative index in the list of polygons] [vertex on poly]   > 0 => edge . < 0 => vertex .  [x,y] y<0 => flip vertices on an edges
 // forward indices are not allow ( single pass parser to prevent weird error states ). So I use negative indices to indicate orientation swapped edges
 const fileFormat = [
-    [[0, 160, 140], [0, 240, 60], [0, 40, 160]],
+    [[0, 160, 140], [0, 240, 55], [0, 40, 160]],
     [[0, 6, 260], [1, 2,+1]],//, [1, 2,-1]],
     [[0, 106, 260], [1, 2,+1]],
     
@@ -83,7 +83,7 @@ const add_poly_sequen = (event: Event): void => {
     }
 
     // pse = sequence;
-    let poly = fileFormat[++sequence];console.log(sequence+" < "+fileFormat.length)
+    let poly = fileFormat[++sequence] //;console.log(sequence+" < "+fileFormat.length)
     const polygon=new Polygon()
     polygons.push(polygon)
     const es=polygon.es, vs=polygon.vs
