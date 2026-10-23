@@ -1,7 +1,7 @@
 import { BSPtree, Polygon_in_cameraSpace, Vertex_OnScreen } from "./BSP.js"
 import { Vec2, Vec3 } from "./clipping.js";
 
-window.document.getElementById("singleStep").addEventListener("click",
+window.document.getElementById("single_step").addEventListener("click",
 	(event) => {
 		p.selected++
 		SingleSteps()

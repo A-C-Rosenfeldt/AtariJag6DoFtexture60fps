@@ -83,7 +83,7 @@ export class CanvasObject {
 	static toCanvas(marker: string = null): void { }   // virtual  todo Placeholder
 }
 export class CanvasHelper{ // TODO: better name
-	static log_view(v: number[], l: LogParallelLines, hsize = 0) {
+	static log_view(v: number[], l: LogParallelLines, hsize = 0):number[] {
 		const m = 1; // Math.max(...s); I dunno why I don't get used to NDC
 
 		//let coords=this.v.map( (w,i)=>s[i]+m*w/this.v[2])    // square pixels. NDC strikes again .. almost

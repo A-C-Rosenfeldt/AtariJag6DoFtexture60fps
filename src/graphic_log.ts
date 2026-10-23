@@ -29,8 +29,8 @@ var v1 = [vs[1], new Vec2([[0, 7]])]
 // forward indices are not allow ( single pass parser to prevent weird error states ). So I use negative indices to indicate orientation swapped edges
 const fileFormat = [
     [[0, 160, 140], [0, 240, 55], [0, 40, 160]],
-    [[0, 6, 260], [1, 2,+1]],//, [1, 2,-1]],
-    [[0, 106, 260], [1, 2,+1]],
+    [[0, 16, 250], [1, 2,+1]],//, [1, 2,-1]],
+    [[0, 186, 340], [1, 2,+1]],
     
     [[0, 140, 265], [0, 340, 125], [0, 340, 247], [0, 320, 377]],
     [[0, 100, 350], [1,  3, 1 ]],
