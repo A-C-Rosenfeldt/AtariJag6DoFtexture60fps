@@ -94,7 +94,7 @@ export class CanvasHelper{ // TODO: better name
 
 		if (l) {
 			const proj = new Vec2([l.normal.v.slice(0, 2)]);
-			const shift = proj.scalarProduct(2*l.log_para / Math.sqrt( proj.innerProduct(proj) )); // Edge with length=0 should be caught on model load / 3d -> 2d projection
+			const shift = proj.scalarProduct(3*l.log_para / Math.sqrt( proj.innerProduct(proj) )); // Edge with length=0 should be caught on model load / 3d -> 2d projection
 			perspective.add(shift);
 		}
 		const coords = perspective.v.concat(2 * hsize + 1); // poor mans argument spread

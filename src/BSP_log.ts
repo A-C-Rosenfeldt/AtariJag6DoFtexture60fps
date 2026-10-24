@@ -239,6 +239,7 @@ class Edge_with_children extends Edge_beam {
 
         children.forEach((child, i) => {
             if (child == null) return
+            //console.log(i)
             var p = prior.child[i]  // argument
             // todo: extract this if-block as function for root to also it.
             if (p == null) {
@@ -246,10 +247,11 @@ class Edge_with_children extends Edge_beam {
                 Edge_with_children.toCanvasLine(child);
 
             } else {
-                // todo
+                // falsch zugeordnet? todo
                 child.reach(p)
             }
         })
+        //console.log("<")
     }
 
     public static toCanvasLine(child: Edge_with_children) {
@@ -274,14 +276,17 @@ class Edge_with_children extends Edge_beam {
         );
     }
 
+    private sign_c= (n:number) => Math.min(1, 1 + Math.sign(n)) // convention like sign flag on 6502 and JRISC
+
     // math
+    // todo: returned array should be ordered by the sign of side. It does for the cases without split, but there was (is) a bug in the splitter code
     private decide(prior: Edge_beam): Children {
         var child: Children = [null, null]
         for (var j = 0; j < prior.vs.length; j++) {
             for (var i = 0; i < this.vs.length; i++) {
                 if (this.vs[i] == prior.vs[j]) { // only one vertex should be shared. Otherwise I would have a dupe edge. Todo: check
                     this.fix[i]=true
-                    const side = Math.min(1, 1 + Math.sign(prior.line.normal3d.innerProduct(this.vs[1 - i])))
+                    const side = this.sign_c(prior.line.normal3d.innerProduct(this.vs[1 - i]))
                     child[side] = this; // this looks weird todo "admit themselves to the hospital"
                     return child
                 }
@@ -293,18 +298,38 @@ class Edge_with_children extends Edge_beam {
         const sides = [0, 0]
 
         for (var j = 0; j < this.ends.length; j++) {
-            sides[j] = splitter.innerProduct(this.vs[j]) // splitter.decide(this.ends[j])
+            sides[j] = splitter.innerProduct(this.ends[j]) * Math.sign((this.ends[j].v[2])) // ray pointing backwards. Todo: why ends have wrong sign? It depends on vertex order of cutting edge! But how do I correct it for full 4pi sphere?
         }
-        const s0 = sides[0] > 0;
-        if (s0 == (sides[1] > 0)) {
-            const side = s0 ? 1 : 0
-            child[side] = this; // this looks weird todo "admit themselves to the hospital"
+        const ss = sides.map(s=>this.sign_c(s))
+        if (ss[0] == ss[1]) {
+            //const side = s0 ? 1 : 0
+            child[ss[0]] = this; // this looks weird todo "admit themselves to the hospital"
             return child
         }
 
         var l = new LogParallelLines()
         l.log_para = this.log_para  // pixels are small. Debugging steps are not smaller. Advance always. I don't like ticks, I mean aggressive rounding to make things look going step by step (easy)
-        if (l.log_para>1 ) return child  // todo  only for debug
+        // if (l.log_para>4 ) return child  // todo  only for debug
+        // if (l.log_para>1 ){
+        //         let brek=true
+        //         this.ends.forEach(e=>e.toCanvas("#FFF"))
+        //         const border_cuts=prior.ClipToPortal()
+                
+        //         const ctx: CanvasRenderingContext2D = CanvasObject.ctx; // CanvasRenderingContext2D,
+        //         if (ctx != null) {
+        //             ctx.strokeStyle = "rgba(25, 25, 255, 1)"; // rafactor? "#FF0" :  mass test?  "#FF01"
+        //             ctx.beginPath();
+        //             let b = border_cuts[0].v;
+        //             console.log(b)
+        //             ctx.moveTo(b[0]+CanvasObject.screen[0]/2, b[1]+CanvasObject.screen[1]/2); // todo: unify with logview
+        //             b = border_cuts[1].v;
+        //             console.log(b)
+        //             ctx.lineTo(b[0]+CanvasObject.screen[0]/2, b[1]+CanvasObject.screen[1]/2); // todo: unify with logview
+        //             ctx.stroke();
+        //         }
+
+        //         brek=brek
+        // }  // todo  only for debug
         l.normal = this.line.normal3d
 
         var cross = this.line.normal3d.crossProduct(splitter, l)  // this should log at para=1 ( odd/even)
@@ -316,7 +341,7 @@ class Edge_with_children extends Edge_beam {
             c.ends[1 - i] = cross   // but the ends point to the correct object
             c.fix[1 - i]=true // for logging
             c.toCanvas(null,l)
-            child[i] = c;
+            child[ss[i]] = c  //;console.log(ss[0],",",ss[1])
         }
 
         return child
@@ -350,6 +375,7 @@ export class BSPtreeLog {
                 Edge_with_children.toCanvasLine(n); // Todo: method of first argument
             }
             else {
+                //console.log("root")
                 // reversed from collection notion (see signature above) because this.root is just the start of a chain of nodes glossed over.
                 var child = n.reach(this.root)//, "rgba(0, 156, 204, 0.57)", false) // TODO check that the new vertices due to cuts are shown. Perhaps use the new types.
 
