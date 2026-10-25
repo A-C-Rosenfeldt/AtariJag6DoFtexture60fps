@@ -1,9 +1,7 @@
-# Roadmap
-	rotating cube
-		portal davor
+# EcmaScript Demos on 2dCanvas
+[beam tree](https://a-c-rosenfeldt.github.io/AtariJag6DoFtexture60fps/public/graphic_log.htm)
+[rasterizer (with texture mapping)](https://a-c-rosenfeldt.github.io/AtariJag6DoFtexture60fps/public/index.htm) 
 
-rasterizer: [EcmaScript Demo on 2dCanvas](https://a-c-rosenfeldt.github.io/AtariJag6DoFtexture60fps/public/index.htm)  (I am too lazy right now to set up a separate release repository. I wish that Pages would work like ASP.NET core)
-beamtree: not running at the moment.
 
 # Motivation
 One motivation is to check if a beam tree rans smoothly. It is actually not that interesting to build a hybrid which switches to traditional ways for speed.
