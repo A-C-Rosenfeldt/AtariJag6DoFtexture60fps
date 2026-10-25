@@ -50,9 +50,9 @@
             "webRoot": "${workspaceFolder}/public"
         },        
         {
-            "name": "Launch Edge linePartitions",
+            "name": "Launch chrome linePartitions",
             "request": "launch",
-            "type": "msedge",
+            "type": "chrome",
             "url": "http://localhost:3000/lines_partition.htm",
             "webRoot": "${workspaceFolder}/public"
         },

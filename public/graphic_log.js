@@ -1,0 +1,176 @@
+// import { Edge_on_Screen, Vertex_OnScreen } from "./BSP.js";
+import { CanvasObject, Vec3, Edge3 } from "./clipping.js";
+import { Polygon } from "./BSP.js";
+import { BSPtreeLog } from "./BSP_log.js";
+const canvas = document.getElementById("Canvas2d");
+CanvasObject.ctx = canvas.getContext("2d");
+/* console.log("pre")
+var vs = [new Vec2([[-10, 0]]), new Vec2([[+10, 0]])];
+console.log("post");
+
+// Todo: Constructor draws. So please actually construct an object
+var e = new Edge2(vs) // todo use vec<2> instead of tupel
+//var t=vs.map( s=>{let f=new Vertex_OnScreen();f.v=s.v;return f; } ) // Todo: Can't create new objects because they would draw => Need a bare Edge ?
+
+//e.vs=[t[0],t[1]]  ;
+
+var v1 = [vs[1], new Vec2([[0, 7]])]
+// var e = new Edge2(v1)
+
+// inserting in tree should not create anything new */
+// from lines_partitions 2026-05-31
+// Converting to the Jaguar: LoadP is fast. We go step by step: vertex buffer, edge buffer, faces
+// Indices: [0=self=no index.  !0 [relative index in the list of polygons] [vertex on poly]   > 0 => edge . < 0 => vertex .  [x,y] y<0 => flip vertices on an edges
+// forward indices are not allow ( single pass parser to prevent weird error states ). So I use negative indices to indicate orientation swapped edges
+const fileFormat = [
+    [[0, 160, 140], [0, 240, 55], [0, 40, 160]],
+    [[0, 16, 250], [1, 2, +1]],
+    [[0, 186, 340], [1, 2, +1]],
+    [[0, 140, 265], [0, 340, 125], [0, 340, 247], [0, 320, 377]],
+    [[0, 100, 350], [1, 3, 1]],
+    [[0, 440, 360], [0, 540, 260], [0, 500, 240]],
+    [[0, 400, 260], [1, 2, +1]],
+    [[0, 380, 380], [1, 2, +1]],
+    [[0, 500, 380], [1, 0, +1]]
+    // [[0, 500, 380], [2, 1,+1]],
+    // [[0, 500, 380], [3, 2,+1]],
+    ,
+    [[1, 2, -1], [4, 0, +1]]
+    //   , [[2, 2, +1], [5, 0, -1]]
+    //    , [[1, 3, -1], [6, 0, +1]]
+    // [[2, 2, +1], [5, 1, +1]],
+    // [[3, 2, +1], [6, 2, +1]]
+];
+var sequence = -1;
+// class Vertex_inPoly {
+//     vertex: Vec2
+//     edge: Edge2
+//     flipOrientation = false  // to reuse edge objects. BSP wants to reuse them. Polygon might be confused going around its border.
+//     public getEdge(): number[] {  // avoid the new ! Factories ?
+//         return [] // flipped vertices
+//     }
+// }
+const polygons = [];
+const bspTree = new BSPtreeLog(); //BSPtree()
+// const parserDic: Vec2[][] = []  // same as ps, but pointers instead of idRef  
+// // ( code.ts friendly MemoryAddresses instead of debugable Id )
+// // sign of IdRef is used to mirror edges. How to do with pointers?
+// const EdgeDic: Edge2[][] = []
+// // class Pair {
+// //     RefOr0: number
+//     v: Vec2
+// }
+// TODO automated test: do all vertices end up in the final data structure
+const add_poly_sequen = (event) => {
+    if (sequence + 1 >= fileFormat.length) {
+        sequence = -1;
+        while (polygons.length > 0) {
+            polygons.pop();
+        }
+        const ctx = CanvasObject.ctx;
+        if (ctx)
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+    }
+    // pse = sequence;
+    let poly = fileFormat[++sequence]; //;console.log(sequence+" < "+fileFormat.length)
+    const polygon = new Polygon();
+    polygons.push(polygon);
+    const es = polygon.es, vs = polygon.vs;
+    //let vs_se: Vec2[] = [];
+    let window = []; // as in the window in LZW or register window in SPARC
+    //let es_se: Edge2[] = [];
+    const closed = poly.concat([poly[0]]); // so I have to set up meshes that there is never a final filler face? TODO
+    closed.forEach((verte, i) => {
+        const vertex = verte.slice();
+        let RefOr0 = vertex[0];
+        if (RefOr0 <= 0) {
+            vertex[1] -= 320;
+            vertex[2] -= 240;
+            if (RefOr0 < 0) {
+                const polygon = polygons[sequence + RefOr0].vs;
+                window.push(polygon[vertex[1]]);
+            }
+            else {
+                if (i == closed.length - 1) {
+                    window.push(vs[0]);
+                }
+                else {
+                    window.push(new Vec3([vertex.slice(1).concat(1)], "rgb(143, 90, 31)")); // Any later new creates dupes, unfortunately
+                }
+            }
+            // new vertex
+            if (window.length == 2) {
+                if (window[0] != null) { // todo: local function for closure
+                    es.push(new Edge3(window, "rgb(74, 31, 143)"));
+                    window.shift(); // removes the first element. So last==0
+                }
+            }
+            //const v = new Vertex_OnScreen();
+            //v.xy = 
+            vs.push(window[window.length - 1]);
+            return;
+            //return v;
+        }
+        else {
+            const resp_orient = Math.abs(vertex[1]);
+            const polygon = polygons[sequence - RefOr0].es;
+            const edge = polygon[resp_orient]; //,(resp_orient+1)%polygon.length]            
+            const e = vertex[2] < 0 ? [edge.vs[1], edge.vs[0]] : edge.vs;
+            window.push(...e);
+            if (window.length > 2) { // todo: local function for closure
+                // I want all edges referenced explitcitely in order not to search ( and produce weird errors)
+                // so two cases can happen. Either two consecutive edges already close the border == share a vertex, or I have a single gap. No new vertices needed, but an edge. Looks easier in code than in comment.
+                if (window[0] != window[1]) {
+                    es.push(new Edge3(window.slice(0, 2)));
+                    vs.push(window[1]);
+                }
+                window.shift();
+            }
+            es.push(edge); // edges can have the wrong orientation. State is my enemy. So code in the hot path will have to compare edge.vs[0]
+            window.shift();
+            vs.push(window[0]);
+            // so this is weird. What if I close a hole? What if it has 3 edges? So closure of the loop may not be necessary.            
+        }
+    });
+    // old: BSP
+    //bspTree.insertPolygonLean(polygon,sequence)
+    // new: the BSP is not fat anymore. The root node is just an edge node. All other graphical elements are first class citizens, too. The frustum/pyramid borders are independent because the beam tree is only one way. Also the beam tree is supposed to replace the portal. I only have it for debugging. Same thing for portals or even some scanline stuff. No NDC in my Jaguar Engine. So the borders are not always there. 
+    // so I dunno about filling. I don't want to initialize the beam tree with the frustum. But I have for culling. Same for portals.
+    bspTree.insertPolygonEdgeByEdge(polygon, sequence);
+};
+//console.log("undeg",sequence-1-vertex[0],vertex[1],sequence,vertex)
+// I duplicate the data. Polygon -> vertex    and Polygon -> edge-> vertex will both exist to let me formulate algorithms in the best ways.
+// state is your enemy? No I don't think so, these refs will be const and ownership is clearly going over the edges and is not problem because I will purge the whole mesh every frame.
+//         return [{ RefOr0: RefOr0, v: EdgeDic[sequence - 1 - vertex[0]][vertex[1]] }];  // re used vertices. This shortens and idRef chain. Short is important for edges. So I have to use pointers?
+// }).flat();  // needs ES2019 in tsconfig.json
+//let parser_vs = vs.slice(0) // Pixel shaders, z, backface cully all happen after the BSP and have to deal with the cards given to them! No : to be able to turn back faces to front without messing up the indices
+// // // Constructor bad: let p = new Polygon_in_cameraSpace(parser_vs) // "rgb(" + cst + " / 20%)");
+// parserDic.push(vs.map(pair => pair.v));
+// // logically, edges happen after vertices. Just I try to keep the file human readable and the data structure cache friendly. So I hope to keep edge and vertex code in JRISC cache and pipeline the data as it comes.
+// let edges = vs.map((pair, i_current) => {
+//     if (pair.RefOr0 == 0) {
+//         // new edge
+//     } else {
+//         let i_other = (i_current + 1) % vs.length
+//         let vo = vs[i_other].v
+//         EdgeDic.findIndex(poly => poly.findIndex((v, i_Dic) =>   // this is how it looks like if I don't want to introduce extra idRefs for edges
+//             (pair.v == v.vs[0] && v.vs[1] == vo) ||
+//             (pair.v == v.vs[1] && v.vs[0] == vo)  // Sooooo ugly
+//         )); // Logic only needs to find any, but for debugging it would be nice to have an Id
+//     }
+// })  // all edges which use new vertices must be new  ( => )  .. later: find the others.
+//     // // let vs = []
+//     // // let	v = new Vertex_OnScreen(); v.xy = new Vec2([[40, 160]]); vs.push(v)
+//     // // 	v = new Vertex_OnScreen(); v.xy = new Vec2([[240, 60]]); vs.push(v)
+//     // // 	v = new Vertex_OnScreen(); v.xy = new Vec2([[160, 140]]); vs.push(v)
+//     // let cst = "";
+//     // for (let i = 0; i < 3; i++) cst += (Math.round((Math.random() * 200)) + 55).toFixed(0) + " "   //   toFixed(0) + " ";   // toString(16)
+//     // p = new Polygon_in_cameraSpace(vs, "#" + cst + "2") // "rgb(" + cst + " / 20%)");
+//     // ps.push(p);
+//     // //let pse = 0
+//     // //let p = ps[pse]
+//     // p.selected = 0;
+//     // selPoly();
+// };
+window.document.getElementById("sequence").addEventListener("click", add_poly_sequen);
+//# sourceMappingURL=graphic_log.js.map

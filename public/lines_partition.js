@@ -1,5 +1,9 @@
 import { BSPtree, Polygon_in_cameraSpace, Vertex_OnScreen } from "./BSP.js";
-import { Vec2 } from "./clipping.js";
+import { Vec2, Vec3 } from "./clipping.js";
+window.document.getElementById("single_step").addEventListener("click", (event) => {
+    p.selected++;
+    SingleSteps();
+});
 window.document.getElementById("forward").addEventListener("click", (event) => {
     p.selected++;
     drawCanvasGame();
@@ -54,8 +58,8 @@ const add_poly_sequen = (event) => {
     let poly = fileFormat[sequence++];
     let vs = poly.map(vertex => {
         if (vertex[0] == 0) {
-            const v = new Vertex_OnScreen();
-            v.xy = new Vec2([vertex.slice(1)]);
+            const v = new Vertex_OnScreen(new Vec3([vertex.slice(1)]));
+            //v.xy = new Vec2([vertex.slice(1)]);
             return v;
         }
         //console.log("undeg",sequence-1-vertex[0],vertex[1],sequence,vertex)
@@ -91,57 +95,53 @@ function touch_button(a, b) {
         drawCanvasGame();
     };
 }
-const ps = (function initSample() {
-    let v;
+const ps = []; /*(function initSample() {
+    let v: Vertex_OnScreen
     // v.xy=new Vec2([[90,50]])
     // ctx.fillRect(100, 40, 3, 3);
-    let vs = [];
-    v = new Vertex_OnScreen();
-    v.xy = new Vec2([[195, 212,]]);
-    vs.push(v); //[40, 160]]); vs.push(v)
-    v = new Vertex_OnScreen();
-    v.xy = new Vec2([[240, 60]]);
-    vs.push(v);
-    v = new Vertex_OnScreen();
-    v.xy = new Vec2([[160, 140]]);
-    vs.push(v);
-    const p = new Polygon_in_cameraSpace(vs);
-    vs = [];
-    v = new Vertex_OnScreen();
-    v.xy = new Vec2([[140, 265]]);
-    vs.push(v);
-    v = new Vertex_OnScreen();
-    v.xy = new Vec2([[340, 125]]);
-    vs.push(v);
-    v = new Vertex_OnScreen();
-    v.xy = new Vec2([[340, 247]]);
-    vs.push(v);
-    v = new Vertex_OnScreen();
-    v.xy = new Vec2([[320, 377]]);
-    vs.push(v);
-    const q = new Polygon_in_cameraSpace(vs, "rgba(170, 0, 204, 0.37)");
-    vs = [];
-    v = new Vertex_OnScreen();
-    v.xy = new Vec2([[440, 360]]);
-    vs.push(v);
-    v = new Vertex_OnScreen();
-    v.xy = new Vec2([[540, 260]]);
-    vs.push(v);
-    v = new Vertex_OnScreen();
-    v.xy = new Vec2([[500, 240]]);
-    vs.push(v);
-    const t = new Polygon_in_cameraSpace(vs, "rgba(173, 204, 0, 0.16)");
-    return [p, q, t];
-})();
+
+
+    let vs = []
+    v = new Vertex_OnScreen(); v.xy = new Vec2([[195, 212,]]); vs.push(v) //[40, 160]]); vs.push(v)
+    v = new Vertex_OnScreen(); v.xy = new Vec2([[240, 60]]); vs.push(v)
+    v = new Vertex_OnScreen(); v.xy = new Vec2([[160, 140]]); vs.push(v)
+    const p = new Polygon_in_cameraSpace(vs)
+    vs = []
+    v = new Vertex_OnScreen(); v.xy = new Vec2([[140, 265]]); vs.push(v)
+    v = new Vertex_OnScreen(); v.xy = new Vec2([[340, 125]]); vs.push(v)
+    v = new Vertex_OnScreen(); v.xy = new Vec2([[340, 247]]); vs.push(v)
+    v = new Vertex_OnScreen(); v.xy = new Vec2([[320, 377]]); vs.push(v)
+    const q = new Polygon_in_cameraSpace(vs, "rgba(170, 0, 204, 0.37)")
+    vs = []
+    v = new Vertex_OnScreen(); v.xy = new Vec2([[440, 360]]); vs.push(v)
+    v = new Vertex_OnScreen(); v.xy = new Vec2([[540, 260]]); vs.push(v)
+    v = new Vertex_OnScreen(); v.xy = new Vec2([[500, 240]]); vs.push(v)
+    const t = new Polygon_in_cameraSpace(vs, "rgba(173, 204, 0, 0.16)")
+    return [p, q, t]
+})()
+
+*/
 let pse = 0;
 let p = ps[pse];
 p.selected = 0;
-function drawCanvasGame() {
+function CanvasCstr() {
     const canvas = document.getElementById("Canvas2d");
-    canvas.style.background = '#000'; // Set background color
+    canvas.style.background = '#000'; // Set background color.  Todo (after single step drawing proof of principle): Draw the hot new stuff in a cavas without background. Placed over the permanent canvas.
     const ctx = canvas.getContext("2d");
-    if (ctx) {
+    if (ctx)
         ctx.clearRect(0, 0, canvas.width, canvas.height);
+    return ctx;
+}
+function SingleSteps() {
+    const ctx = CanvasCstr();
+    if (ctx) {
+        Vec2.ctx = ctx;
+        const t = new Vec2([[0, 0]]); // so, this should show up. Good OOP still means constructing a complete object. I hope that I can avoid POJO here; and even a Factory calls the constructor. Null to rescue? Let's try..
+    }
+}
+function drawCanvasGame() {
+    const ctx = CanvasCstr();
+    if (ctx) {
         ctx.strokeStyle = 'lightblue';
         // ctx.beginPath(); // Start a new path
         // ctx.moveTo(30, 50); // Move the pen to (30, 50)
@@ -151,9 +151,10 @@ function drawCanvasGame() {
         // ctx.fillRect(100, 40, 3, 3);
         // ctx.fillStyle = "#911";
         const t = new BSPtree();
+        BSPtree.ctx = ctx; // looks like globals are a better fit here than parameters (todo: check dependency injection )
         ps.forEach(p => t.insertPolygon(p));
-        t.toCanvas(ctx);
-        ps.forEach(p => p.toCanvas(ctx));
+        t.toCanvas();
+        ps.forEach(p => p.toCanvas());
     }
 }
 drawCanvasGame();

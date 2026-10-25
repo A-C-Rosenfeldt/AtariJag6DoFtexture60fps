@@ -117,7 +117,7 @@ function initVertexBuffers(shaderProgram, screenGl) {
     //     0.3,-0.3,//0,
     //     0.7,0.6//,0 
     //  ]
-    const gl = this;
+    const gl = new WebGL2RenderingContext();
     gl.bindBuffer(gl.ARRAY_BUFFER, gl.createBuffer()); // type? . create and set target for next command
     gl.bufferData(gl.ARRAY_BUFFER, // type and target slot
     new Float32Array(cross), // source
@@ -133,7 +133,7 @@ function initVertexBuffers(shaderProgram, screenGl) {
     );
     gl.enableVertexAttribArray(id);
 }
-function initShaderProgram(gl) { }
+//function initShaderProgram(gl) { }
 function loadShader(gl, type, source) {
     const shader = gl.createShader(type);
     gl.shaderSource(shader, source); // Send the source to the shader object

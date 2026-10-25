@@ -1,3 +1,4 @@
+"use strict";
 class FloatT {
 }
 class NodeWP {

@@ -76,6 +76,7 @@ export class Camera_in_stSpace {
         // So the screen z (of camera position) is queezed in before the in texture coordinates z (of the camera vector)
         uvzw_mapped.nominator = this.UVmapping_fromST.map(p => new Vec3([[...p, 0]])).concat(new Vec3([[...this.z, 0]]), new Vec3([[0, 0, 1]])); // Error: jaggies. In the trivial test with billboard polygon z=00 ( a third 0 is padded )
         // JRISC: replace 001 with code
+        // New discussion 20 lines below. Old:
         // Everone uses the general proof that 1/z is linear in screen space (far plane can be substracted.). Sorry that I cannot utilize my: "just calculate with fractions as in school!"
         // Linear allows for an offset. So 0 does not need to be the horizon. Together with scaling there are two degrees of freedom which can change from polygon to polygon
         // Do polygons bring their far-plane along? Perhaps due to vertex position
@@ -83,7 +84,8 @@ export class Camera_in_stSpace {
         // with viewVector should fix scaling
         // with cameraPostion should fix offset  ( both indirectly through cv.nominator)
         //console.log("uvzw_mapped",uvzw_mapped.nominator,stn_from_viewvector.nominator)  // For a billboard, uv should interpolate. z=0  w=const. And math says that polygon facing camera gives us -1 ( view vector facing down)
-        const uvzw_from_viewvector = Matrix.mul__Matrices_of_Rows([uvzw_mapped.nominator, stn_from_viewvector.viewVector.nominator]);
+        //const uvzw_from_viewvector=Matrix.mul__Matrices_of_Rows( [uvzw_mapped.nominator, stn_from_viewvector.viewVector.nominator]  ) 
+        const uvzw_from_viewvector = uvzw_mapped.thisMatrices_of_Rows__mul_thatRows(stn_from_viewvector.viewVector);
         let uvz_cameraHover;
         if (this.hoist_cameraHover) {
             // Later, UV offset into a large map can be added to add.32 it after division
@@ -99,6 +101,28 @@ export class Camera_in_stSpace {
         // Only scaling is possible ( and quite fast ). There can be offsets in s t to shift a texture around, but denominator needs to be real 1/z without offset
         // so basically in homogenous NDC coordinates, w is the real 1/z used for division (divergence needs to stay at the horizon). And z is 1/z - 1/far_plane and used for the z-buffer.
         // this.z inner product with s,t traced along lines of const-z is clearly const ( [a,b] is the slope of the horizon )
+        // OpenGL transforms perspectiv into isometric. Isometric has x,y,z . Isometric is limited [-1 .. +1]. This is fits the screen size, but also the z-buffer.
+        // But this z' is calculated by division by w . This makes it linear in screen space ( x,y,z are all multiplied by 1/w going along a line)
+        // going along a line by t : t*[x,y] aka t*r  results in r' = r/w . Backprojection involves just this w again. z' is not involved.
+        // So basically, z' is not used in my engine: No z-buffer, no near plane. Jaguar has z-buffer. Then I will have to calculate z' and w.
+        // This makes the code fat.
+        // So here is the thing, lines are lines, so z (for the z-buffer) is linear, but why is w? In forward projektion, w is linear in r  ( going along a line)
+        // w is linear because z == w if near plane is at 0 .
+        // I can only argue graphically. Lines are lines in x,y because of the beam tree. 1/z is linear when looking at the horizon and for all rolls.
+        // the more general linear term is clear in my deduction of ray casting texture mapping: I transform (linearly) the the rays into s,t,u coordinates. The hit point calculation involves one division
+        // .. see elsewhere in this file ..
+        // I don't know what I meant here. Now that I can clearly read the OpenGl perspective transformation matrix,
+        // It is clear that w= 1/z . W and Z switch places to draw this nice NDC picture with the same labes on the axes as in isometric projection
+        // It does not help with clipping, nor with textures. Lines will be lines, but markers along the line will not be like in isometric.
+        // Just think of a line along z. The 1/z transformation acts!
+        // I can't find a rigid proof, just that s,t,u,v -- and according to openGl naming -- w are linear in view space.
+        // Or rather: World space: otherwise z would an axis. I need to pull aka ray trace for my equations. So the forward Matrix muls of OpenGL don't help.
+        // Still, multiplying with the inverse ( easy for roto-scale ), keeps z linear.
+        // So, why is one 1/z enough? In the equations I have the altitude and the sink rate. Only this goes to the denominator -- for all linear functions on the plane.
+        // So when I have one ( ViewSpace z ), I have them all.
+        // So, why do my products look so ugly?
+        // 
+        // ???
         // If we proove that we have the same slope in nominator and denominator, we know that really we got on offset in w.
         // we get:              n + ax + by          d + ax + by       n-d
         //                 w = -------------  =  -----------------  + ------------ 
@@ -107,7 +131,7 @@ export class Camera_in_stSpace {
         // So there cannot be an offset
         // So multiplication with this.z really is just to scale?
         // infinte_checkerBoard_m mixes cv.viewVector.nominator[2] into these components
-        return { uvzw_from_viewvector, uvz_cameraHover };
+        return { uvzw_from_viewvector: uvzw_from_viewvector, uvz_cameraHover };
     }
     infinte_checkerBoard(C, V) {
         const c = this.transform_into_texture_space(C, this.UVmapping_Offest.concat(0)); // pos point of camera
@@ -140,7 +164,7 @@ export class Camera_in_stSpace {
             // This keeps the values in the nominator small. On the nose the view vector is a full 3d vector. The normal component goes into the denominator
             // the camera normal (5 in my test example) goes into the nominator, yeah. But the camere st does not go over the denominator, but is added (0,0,5) in my example
             if (this.hoist_cameraHover) {
-                cv.viewVector.nominator[st].v[2] += cv.cameraPosition.v[st] * cv.viewVector.nominator[2][2]; // [][2] (bias) in camera and [2(denominator)][bias] in view vector
+                cv.viewVector.nominator[st].v[2] += cv.cameraPosition.v[st] * cv.viewVector.nominator[2].v[2]; // [][2] (bias) in camera and [2(denominator)][bias] in view vector
             }
             //}
         }

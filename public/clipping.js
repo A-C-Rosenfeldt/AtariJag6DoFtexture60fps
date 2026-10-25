@@ -2,61 +2,29 @@
 Jaguar and plus/4 rather like unrolled code, branches, and parser generators
 I will cherry pick from below.
 */
-/*
-Guard band / power of two between screen and NDC
-
-This does not change that much. The screen border still triggers the use of the gradient most of the time.
-I don't use projected vertices for edges so I don't use vertices projected into the guard band for edges.
-The classification of the vertices itself internally takes vertex positions out of the guard band if available.
-This does not even change too much .. but I think some rounding.
-
-If all vertices and edges are outside of the screen, the polygon is either not visible or covers the whole screen.
-The edge tests may have already utilized the guard band to narrow down to two cases, but the final decision does not depend on it.
-We ray trace the (0,0,1) vector. The camera pointing direction. Alternatively: We check if the camera is above the plane ,xor, the camera points down.
-Mathematically, this is the cross product of the span inner-multiplied with a vector from the camers (0,0) to any of the vertices.
-Very few 32bit multiplications  in trade of extracting the results from one of the corners.
-More a wide calculation instead of a sequence.
-
-What is even the difference to the ray test? Ah, we don't care for all the edges. Ray edge intersection is the same maths. Hmm.
-Readable code? Degenerate this is anyway. Either I choose two spans from the polygon for the normal, or one vertex of the screen.
-Perhaps, based on vertices, I don't check all edges against one screen corner. Shortcuts.
-Even in a BSP, I only need to check the vertices which lie on the splitting plane.
-I could even acknowledge the convex polygon. Then each vertex is checked against each portal edge.
-If we can apply the separating-axis theorem, we don't need to check the polygon edge against the portal corner.
-
-*/
-/**
- * Regarding occlusion culling I seem to have two alternatives. After clipping to frustum in screen space even older hardware can give me 16 bit per ordinate, so 8.8 fixed point.
- * Yeah, 8 bit hardware may really need to stick to adaptive precision integers. So if I dual release plus4 and Jag?
- * It is not really a beam tree then anymore. Just a 2d tree. Binary area subdivision.
- * Without more precision I cannot subpixel decide on the circular order of cuts. Everything will have to be rounded first.
- * We only care about the rays, not the space between. These BSP unsuited areas become child nodes in the tree.
- * I still seek a general Theory where a profiler changes from tree, to scanlines with spans, to z-buffer ( at a small enough are, this will be fastest. Though it costs code size.
- *
- * Realy, with normalized deviced coordinates we only need DIV 16,16 . Only the vertices of the edge are 16 bit. Frustum is "1 bit". So we get the cutting position along the edge by 16/16 .
- * Then to get the position along the frustum we multiply with 16. (16*16)/16 is possible in most ISAs . It feels weird because we only want 8 bit .. ah for subpixel correction the OpenGL way, we want 16 bit.
- * This does not work with edge to edge. So even if we don't compare 3 edges for the hole they make, we run out of precision on some ISAs.
- * Edge to edge still have < 1px rounding error. So cut out a 2x2px quad. Quad is just a BSP. Bigger sectors become parents, small become children. 2x2 is quite small.
- * Within a quad for each pixel all edges are calculated. Z precision is less of a problem .. see z-sort.
- * Fall back and extra code? Infinite integers lead to the same code. So what is the advantage? With infinite precision I can use frame-to-frame coherence, which I find faszinating.
- * 1 cycle ( 2 cycles thanks to register file) MUL on JRISC makes scaling to pixels cheap. Ah, need a third cycle for SHR . For both cooridinates. So 6 cycles.
- * Maybe there is some synergy with the strange register layout of the address generator. It may be possible to keep values in the rotated position. Can still sort by integer y, right. For the triangle I mean.
- * Though, we should make sure to utilize AddQ.
- *
- * Multiply from normalized to screen is cheap on JRISC. Funny. With special FoV it can be done with some Adds in other ISAs.
- * The original values are clipped at exactly 1000 ( some 0 ). So multiply with FoV will not need rounding. All non clipped vertices are rounded, but never draw over the frustum.
- */
-/*
-World space occlusion culling, really only makes fun with frustrum rotating in world space. No vehicles (not even polygon monsters) . Bookkeeping is not thaaat bad.
-If I precalculate world space occlusion data structures like BSP or portals, I cannot allow rounding errors.
-Though a loose bounding volume hierachy can specify padding which is good enough until the far plane.
-This yields false positives but, would do something in camera space about this overlaps.
-On the other hand it would be cool if vehicles -- even if we cannot enter them -- would solve self occlusion ( shadows ) internally first.
-*/
-// no native vectors in JS. Buffers are for large data (also called vectors)
-// I need vec3 and only two products
-// I don't want external dependencies of fat because I later need to compile to JRISC
-export class Vec {
+export class CanvasObject {
+    static toCanvas(marker = null) { } // virtual  todo Placeholder
+}
+CanvasObject.screen = [640, 480];
+CanvasObject.slowmo_ms = 0;
+export class CanvasHelper {
+    static log_view(v, l, hsize = 0) {
+        const m = 1; // Math.max(...s); I dunno why I don't get used to NDC
+        //let coords=this.v.map( (w,i)=>s[i]+m*w/this.v[2])    // square pixels. NDC strikes again .. almost
+        //ctx.fillRect( coords[0], coords[1], 2*hsize+1, 2*hsize+1)
+        const center = new Vec2([CanvasObject.screen.map(full => full / 2 - hsize)]);
+        const perspective = new Vec2([v.slice(0, 2)]).scalarProduct(1 / v[2]);
+        perspective.add(center);
+        if (l) {
+            const proj = new Vec2([l.normal.v.slice(0, 2)]);
+            const shift = proj.scalarProduct(3 * l.log_para / Math.sqrt(proj.innerProduct(proj))); // Edge with length=0 should be caught on model load / 3d -> 2d projection
+            perspective.add(shift);
+        }
+        const coords = perspective.v.concat(2 * hsize + 1); // poor mans argument spread
+        return coords;
+    }
+}
+export class Vec extends CanvasObject {
     innerProduct(o) {
         let sum = 0;
         for (let i = 0; i < this.v.length; i++) {
@@ -73,6 +41,7 @@ export class Vec {
     }
     //constructor(points:number[][],len)
     constructor(points) {
+        super();
         if (points.length < 2) {
             if (points[0].length < 2)
                 this.v = new Array(points[0][0]).fill(0);
@@ -95,6 +64,7 @@ export class Vec {
     subtract(other) {
         return new Vec([this.v, other.v]);
     }
+    // How do I c
     subtract01(other) {
         return new Vec([other.v, this.v]);
     }
@@ -112,12 +82,35 @@ export class Vec {
     }
 }
 export class Vec2 extends Vec {
-    // override? covariant?
+    constructor(points, marker = null) {
+        super(points);
+        if (marker != null)
+            this.toCanvas(marker);
+    }
+    // todo: move debug code back into the derived class?
+    // so there would be two derived classes: one for debug, one for release
+    // Although, the final game will only draw "infinite plane"s (inspired by doom floors).
+    // Anyway, "Vertex on Screen" has so many code migration helper in it, while "toCanvas" is like ToString:
+    // Every Object should have it. I cannot debug in floats in the console -- sorry.
+    toCanvas(marker = null) {
+        this.v[0];
+        this.v[1];
+        var ctx = CanvasObject.ctx; // I can access protected members
+        if (ctx == null)
+            return; // ctx is set for debugging. Single step. then for walking and displaying the tree. Does it make sense to show debugging lines? verbosity level? BSP lines are created on instert. Walk should not need to repaint them. Just draw the official faces in bright colors. And handles.
+        let hsize = 0;
+        if (marker != null) {
+            ctx.fillStyle = marker; //"#F80"
+            hsize = 3;
+        }
+        let coords = [CanvasObject.screen[0] / 2 + this.v[0], CanvasObject.screen[1] / 2 + this.v[1]];
+        ctx.fillRect(coords[0] - hsize, coords[1] - hsize, 2 * hsize + 1, 2 * hsize + 1);
+    }
     subtract(other) {
         return new Vec2([this.v, other.v]);
     }
     subtract01(other) {
-        return new Vec2([other.v, this.v]);
+        return new Vec2([other.v, this.v], "#F80");
     }
     scalarProduct(f) {
         let v = this.v.map(comp => comp * f);
@@ -126,17 +119,50 @@ export class Vec2 extends Vec {
     wedgeProduct(o) {
         return this.v[0] * o.v[1] - this.v[1] * o.v[0];
     }
+    wedgePrep() {
+        return [this.v[1], -this.v[0], 1];
+    }
+}
+export class LogParallelLines {
 }
 export class Vec3 extends Vec {
-    crossProduct(o) {
+    // normals are part of an edge. I could draw them, but I'd rather draw the edge (shorter).
+    constructor(points, marker = null, l) {
+        super(points);
+        if (marker != null)
+            this.toCanvas(marker, l);
+    }
+    // TODO extract interface, rename because Vec3.normalize has a different meaning. And also: Do we need this?
+    normalize(offset = 0) {
+        const w = 1 / this.v[2];
+        const v = this.v.slice(0, 2).map(c => c * w - offset);
+        // does not work if (v.length==2) return v ;// typeGuard 
+        return [v[0], v[1]]; // okay for only 2
+    }
+    crossProduct(o, l) {
         let v = new Vec3([[this.v.length]]);
         for (let i = 0; i < this.v.length; i++) {
             v.v[i] = this.v[(i + 1) % 3] * o.v[(i + 2) % 3] - this.v[(i + 2) % 3] * o.v[(i + 1) % 3];
         }
+        if (l) {
+            v.toCanvas("#188", l);
+        }
         return v;
     }
-    subtract01(other) {
-        return new Vec3([other.v, this.v]);
+    toCanvas(marker = null, l) {
+        //if (this.v[2]<=0) return; // makes no sense for cuts ( what is "up" and "down" for a beam?)  // z == 2 . I guess that I have to accept this convention
+        var ctx = CanvasObject.ctx; // I can access protected members
+        if (ctx == null)
+            return; // ctx is set for debugging. Single step. then for walking and displaying the tree. Does it make sense to show debugging lines? verbosity level? BSP lines are created on instert. Walk should not need to repaint them. Just draw the official faces in bright colors. And handles.
+        ctx.fillStyle = "rgb(225, 0, 255)";
+        let hsize = 0;
+        if (marker != null) {
+            ctx.fillStyle = marker;
+            hsize = 3;
+        }
+        const coords = CanvasHelper.log_view(this.v, l, hsize); // poor mans argument spread
+        //const c2 = 2 * hsize + 1;
+        ctx.fillRect(coords[0], coords[1], coords[2], coords[2]);
     }
 }
 export class Vec2_den extends Vec2 {
@@ -147,7 +173,7 @@ export class Vec2_den extends Vec2 {
 }
 class Frac {
     compare(o) {
-        return this.nom[0] * o[1] < o[0] * this.nom[1];
+        return this.nom[0] * o.nom[1] < o.nom[0] * this.nom[1];
     }
     get_sign() {
         return this.nom[0] < 0 == this.nom[1] < 0;
@@ -158,12 +184,12 @@ export class Matrix {
         if (typeof cols == 'number')
             this.nominator = new Array(cols);
     }
-    static inverse(spanning2d) {
-        throw new Error("Method not implemented.");
-    }
-    inverse(m) {
-        return null;
-    }
+    // static inverse(spanning2d: Vec<N>[]) {
+    // 	throw new Error("Method not implemented.")
+    // }
+    // inverse(m:Vec<N>[]):Matrix_frac{ // see applications. May need to pull back here for unit tests
+    // 	return null;
+    // }
     // Matrix with vector shoud usually use the inner product for fast implementation in JRISC MMULT and for nice mathematical notation ( as opposed to the SUM sign Sigma)
     // So here the right Matrix is seen as a collection of vectors. Somehow this works great to interpolate, but badly for rotation.
     // Thinking of column major for the vector. We store along columns, we mmult along columns
@@ -174,7 +200,7 @@ export class Matrix {
     // But I just don't write it a Matrix. Just vector adds. So that I can skip some zeroes.
     mul_left(trans) {
         let res = new Matrix(this.nominator.length);
-        let k = 0;
+        let k = 0; // TODO
         for (let i = 0; i < this.nominator.length; i++) {
             res.nominator[i].v[k] = this.nominator[i].innerProductM(trans, k); // base would want vector add, while JRISC wants inner product
         }
@@ -209,18 +235,40 @@ export class Matrix {
     // Matrix multiplication cannot utilize inner product. It has to break up vectors of one of the factors.
     // Do we need transposed versions? This is used only for uv -> st mapping, so no.
     // uvz <- st <- viewVector  is pulling. So again, I use row major (Matrix of rows). It is an accident that rotation and texture mapping are both row major?
-    static mul__Matrices_of_Rows(A) {
-        const row_count = A[0].length;
-        const res = new Matrix(row_count);
+    // static mul__Matrices_of_Rows<innerProducts extends number,N extends number>(A: Vec<N>[][]): Matrix<innerProducts,N> {
+    // 	console.warn("There is probably no math or Matrix storage convetion/plan which needs this");
+    // 	const row_count = A[0].length;						// A[x].length is row count because I put both factors in an array. So this is kinda transposed? But I don't get it, how can I mess up math so bad that not at least one of the Matrices can utilize inner products?
+    // 	const res = new Matrix<innerProducts,N>(row_count)  // row count = innerProducts.Count . I imagine B = M.V  . Even though I love lambda V.M => B
+    // 	for (let row_i = 0; row_i < row_count; row_i++) {
+    // 		//if (row_i==row_count-1) console.log("mul row",A[0][row_i],A[1]) // debug
+    // 		const field_per_row__count = A[1][0].v.length  // 0=any
+    // 		const row= new Vec<N>([[field_per_row__count]])  // jagged array does not work here. The 90° rotate picture in my head for V=M&*V does not deal with the fields in the result well. My head cannot do multply from right like V=V &* M . I mean, there is no application in 3d graphics. Of course it is useful for eigen values for differential equations or the stress-strain tensor. But we are lucky, zero overlap with computer graphics here.
+    // 		for (let field_i = 0; field_i < field_per_row__count; field_i++) {
+    // 			if (A[0][field_i].v.length != A[1].length) throw new Error("Incompatible matrix sizes")
+    // 			for (let inner = 0; inner < A[1].length; inner++) {  // k inner ? inner loop? Encapsulated. Inner working?
+    // 				row.v[field_i] += A[0][row_i].v[inner] * A[1][inner].v[field_i]  // notice how indeces in second factor are interleaved. It looks like this transposed form is not natural for the application. So I have to transpose here.
+    // 				// for Vector Add, we want the last index select the component
+    // 				// So no matter what picture you have in your head ( row or column, left or right multiply),
+    // 				// Like in OpenGL Vectors would need to live in the right factor ( the inner loop ) as input
+    // 				// Output uses the other index
+    // 			}
+    // 		}
+    // 		res.nominator[row_i] = row
+    // 	}
+    // 	return res
+    // }
+    thisMatrices_of_Rows__mul_thatRows(A) {
+        const row_count = this.nominator.length; // == innerProducts . Seems like TypeScript cant convert Type number to const number.						// A[x].length is row count because I put both factors in an array. So this is kinda transposed? But I don't get it, how can I mess up math so bad that not at least one of the Matrices can utilize inner products?
+        const res = new Matrix(row_count); // row count = innerProducts.Count . I imagine B = M.V  . Even though I love lambda V.M => B
         for (let row_i = 0; row_i < row_count; row_i++) {
             //if (row_i==row_count-1) console.log("mul row",A[0][row_i],A[1]) // debug
-            const field_per_row__count = A[1][0].v.length; // 0=any
+            const field_per_row__count = A.nominator[0].v.length; // == otherDimension   0=any
             const row = new Vec([[field_per_row__count]]); // jagged array does not work here. The 90° rotate picture in my head for V=M&*V does not deal with the fields in the result well. My head cannot do multply from right like V=V &* M . I mean, there is no application in 3d graphics. Of course it is useful for eigen values for differential equations or the stress-strain tensor. But we are lucky, zero overlap with computer graphics here.
             for (let field_i = 0; field_i < field_per_row__count; field_i++) {
-                if (A[0][field_i].v.length != A[1].length)
+                if (this.nominator[row_i].v.length != A.nominator.length)
                     throw new Error("Incompatible matrix sizes");
-                for (let inner = 0; inner < A[1].length; inner++) { // k inner ? inner loop? Encapsulated. Inner working?
-                    row.v[field_i] += A[0][row_i].v[inner] * A[1][inner].v[field_i]; // notice how indeces in second factor are interleaved. It looks like this transposed form is not natural for the application. So I have to transpose here.
+                for (let inner = 0; inner < A.nominator.length; inner++) { // k inner ? inner loop? Encapsulated. Inner working?
+                    row.v[field_i] += this.nominator[row_i].v[inner] * A.nominator[inner].v[field_i]; // notice how indeces in second factor are interleaved. It looks like this transposed form is not natural for the application. So I have to transpose here.
                     // for Vector Add, we want the last index select the component
                     // So no matter what picture you have in your head ( row or column, left or right multiply),
                     // Like in OpenGL Vectors would need to live in the right factor ( the inner loop ) as input
@@ -232,16 +280,16 @@ export class Matrix {
         return res;
     }
 }
-export class Matrix2 extends Matrix {
-    inverse_rn(result_row) {
-        let m = this.nominator;
-        let det = m[0].wedgeProduct(m[1]);
-        if (det === 0)
-            throw new Error("Matrix is not invertible");
-        let vd = new Vec2_den([m[1 - result_row].v[result_row], m[result_row].v[1 - result_row]], det); // Vectors are always vertical. Otherwise my head would hurt
-        return vd;
-    }
-}
+// export class Matrix2 extends Matrix<N>{
+// 	override nominator: Vec2[]
+// 	inverse_rn(result_row:number): Vec2_den {
+// 		let m=this.nominator
+// 		let det = m[0].wedgeProduct(m[1]);
+// 		if (det === 0) throw new Error("Matrix is not invertible");
+// 		let vd=new Vec2_den( [m[1-result_row].v[result_row] , m[result_row].v[1-result_row] ], det) ;  // Vectors are always vertical. Otherwise my head would hurt
+// 		return vd;
+// 	}
+// }
 // So some engines don't seem to care, but I care about rounding
 // Now for Doom or portal renderers I need infinite precision to avoid glitches.
 // clipping to screen borders makes more sense after rotation ( even without normalized device coordinates .. because I clip a lot against portals and beam tree, Screen borders are nothing special)
@@ -358,10 +406,11 @@ export class Matrix_Rotation extends Matrix {
     // transpose only confuses me with other Matrices
     // Looks like Quaternions and Rotation Matrix belong together, while other Matrices don't
     MUL_left_transposed(v) {
-        let res = new Vec([[0, 0, 0]]);
+        const newLocal = [0, 0, 0];
+        let res = new Vec([newLocal]); // why is 3 a type ?
         for (let k = 0; k < this.nominator.length; k++) {
             for (let i = 0; i < this.nominator[k].v.length; i++) {
-                res[i] += this.nominator[k].v[i] * v[k]; //.innerProductM(trans,i)  // base would want vector add, while JRISC wants inner product
+                res.v[i] += this.nominator[k].v[i] * v.v[k]; //.innerProductM(trans,i)  // base would want vector add, while JRISC wants inner product
             }
         }
         return res;
@@ -404,8 +453,15 @@ export class Matrix_Rotation extends Matrix {
         }
     }
 }
-export class Matrix_frac extends Matrix {
-}
+// export class Matrix_frac extends Matrix{
+// 	denominator:number
+// /*  UV has no denominator .. super class suffices!
+// 	mul(trans:Vec[]):Matrix_frac{
+// 		let mf=new Matrix_frac()
+// 		mf.nominator=super.mul(trans).nominator
+// 		mf.denominator=this.denominator*trans.den
+// 	} */
+// }
 class Plane {
 }
 class Z_order {
@@ -413,8 +469,8 @@ class Z_order {
         let beam = e[0].crossProduct(e[1]); // edges are planes with a normal in a beam tree
         // normal.inner(l*beam ) = normal.inner( anchor ) 
         let l;
-        l[0] = normal.innerProduct(anchor);
-        l[1] = normal.innerProduct(beam);
+        l.nom[0] = normal.innerProduct(anchor);
+        l.nom[1] = normal.innerProduct(beam);
         return l;
     }
     // not really useful probably
@@ -429,8 +485,57 @@ class Z_order {
         //let r0=v.innerProduct(direction.crossProduct(reach[1])) / spat
     }
 }
-class Edge {
-    constructor(anchor, direction) {
+export class Edge extends CanvasObject {
+    constructor(vs, marker = null, l) {
+        if (vs.length != 2) {
+            throw "2, please!";
+        }
+        super();
+        this.vs = vs.slice(0);
+        if (marker != null || l != null)
+            this.toCanvas(marker, l); // On the one hand, new should be bright like on a CRT RADAR. On the other hand this is implicit.
+    }
+    toCanvas(marker = null, l) { } // abstract
+    toCanvasInner(coords, marker = null, l) {
+        let ctx = CanvasObject.ctx; //ctx: CanvasRenderingContext2D): void {
+        ctx.strokeStyle = marker;
+        ctx.beginPath(); // Start a new path
+        let t = coords[0];
+        ctx.moveTo(t[0], t[1]); // Move the pen to (30, 50) . So wild that this does not accept arrays.
+        t = coords[1];
+        ctx.lineTo(t[0], t[1]); // Draw a line to (150, 100)		
+        ctx.stroke(); // Render the path
+        // Might be need if caller is BSPtree this.vs.forEach(v=>v.toCanvas(ctx))
+    }
+}
+export class Edge2 extends Edge {
+    toCanvas(marker = null) {
+        let ctx = CanvasObject.ctx; //ctx: CanvasRenderingContext2D): void {
+        ctx.strokeStyle = '#bbb';
+        ctx.beginPath(); // Start a new path
+        const s = CanvasObject.screen.map(full => full / 2);
+        let coords = this.vs.map(v => v.v.map((w, i) => s[i] + w));
+        super.toCanvasInner(coords, marker);
+    }
+}
+export class Edge3 extends Edge {
+    //	normal:Vec3
+    toCanvas(marker = null, l) {
+        let ctx = CanvasObject.ctx; //ctx: CanvasRenderingContext2D): void {
+        // ctx.strokeStyle = '#bbb'
+        // ctx.beginPath(); // Start a new path
+        // const s = CanvasObject.screen.map(full=>full/2);
+        // let coords=this.vs.map(v=>v.v.map( (w,i)=>s[i]+w/v.v[2]))
+        const coords = this.vs.map(v => CanvasHelper.log_view(v.v, l)); // CanvasObject
+        // unused todo
+        if (marker == null) {
+            var marker = "rgb(";
+            for (let i = 0; i < 3; i++)
+                marker += (Math.round((Math.random() * 200)) + 55).toFixed(0) + " ";
+            marker += ")"; //"#" + cst + "2")
+            //??"#8e8"
+        }
+        super.toCanvasInner(coords, marker, l);
     }
 }
 class AroundVertex {
@@ -512,7 +617,7 @@ class Camera extends Player {
     // }
     // Todo: Find my text about this. I only use rotation matrix to be able to debug this
     // BeamTree language. Precision is no problem
-    edge_clip(origin) {
+    edge_clip() {
         // planes form a BSP, which breaks symmmetry
         // we go down the BSP. As long as both vertices fall into the same child, no problem
         // and edge is split each time we go down a node

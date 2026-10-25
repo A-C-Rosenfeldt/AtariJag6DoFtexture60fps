@@ -2,15 +2,15 @@
 import { expect, assert } from "chai";
 import 'mocha'
 import { BSPnode, Edge_cut, Vertex_OnScreen, BSPnode_edge, Node_CreateFromVerts, Leaf, Polygon_in_cameraSpace } from "../src/BSP"
-import { Vec2 } from "../src/clipping";
+import { Vec3 } from "../src/clipping";
 
 describe('I need to seggregate interfaces, but make sure they in combination the recreate the old.', () => {
 	it('check vertex', () => {
 		let bn = new BSPnode(4711)
 		expect(bn.ID).to.equal(4711)
-
-		let v = new Vertex_OnScreen()
-		v.xy = new Vec2([[452, 582]])
+let v_xy = new Vec3([[452, 582,1]])
+		let v = new Vertex_OnScreen(v_xy)
+		
 		const n = v.normalize();
 		expect(n[0]).to.equal(452)
 
@@ -19,7 +19,7 @@ describe('I need to seggregate interfaces, but make sure they in combination the
 
 		expect(ec.c.xy.v[0]).to.equal(452)
 
-		let ev = new Vec2([[1, 1]])
+		let ev = new Vec3([[1, 1]])
 		let ed = new BSPnode_edge()
 		ed.xy = ev
 		ed.z = 1
@@ -37,8 +37,8 @@ describe('I need to seggregate interfaces, but make sure they in combination the
 		var edge_to_be_inserted = new BSPnode_edge() // when test pass, continue to refactor
 
 		verts = [new Vertex_OnScreen(), new Vertex_OnScreen()]
-		verts[0].xy = new Vec2([[-1, 0]])
-		verts[1].xy = new Vec2([[+1, 0]])
+		verts[0].xy = new Vec3([[-1, 0]])
+		verts[1].xy = new Vec3([[+1, 0]])
 
 		// cross product of the beam tree. Trying to optimize, but still 6 multiplications = 2+2+2
 		const bb: BSPnode[] = []
@@ -47,16 +47,16 @@ describe('I need to seggregate interfaces, but make sure they in combination the
 
 		var verts: [Vertex_OnScreen, Vertex_OnScreen] = [new Vertex_OnScreen(), new Vertex_OnScreen()]
 		let v = verts[0]
-		v.xy = new Vec2([[0, -582]])
+		v.xy = new Vec3([[0, -582]])
 		let n = v.normalize();
 		expect(n[1]).to.equal(-582)
 
 		v = verts[1]
-		v.xy = new Vec2([[0, +452]])
+		v.xy = new Vec3([[0, +452]])
 		n = v.normalize();
 		expect(n[1]).to.equal(+452)
 
-		let ev = new Vec2([[1, 0]])
+		let ev = new Vec3([[1, 0]])
 		let ed = new BSPnode_edge()
 		ed.xy = ev
 		ed.z = 0
@@ -114,8 +114,8 @@ describe('I need to seggregate interfaces, but make sure they in combination the
 		edge_to_be_inserted = new BSPnode_edge() // when test pass, continue to refactor
 
 		verts = [bb[0].edge.verts[1], new Vertex_OnScreen()]  // Why do I do it? Index in(to) polygon? Would feel weird to set temporary value on duplicated vertices. Decisions should not change thanks to my use of fractions.
-		expect(verts[0].xy.v[0]).to.equal(new Vec2([[+1, 0]]).v[0])  // gotta keep math rotationial order
-		verts[1].xy = new Vec2([[+1, 1]])
+		expect(verts[0].xy.v[0]).to.equal(new Vec3([[+1, 0]]).v[0])  // gotta keep math rotationial order
+		verts[1].xy = new Vec3([[+1, 1]])
 		bb[1] = Node_CreateFromVerts(verts, edge_to_be_inserted, 8008)
 		node.decide_edge(bb[1], "857");
 		// so all verts on +
@@ -130,10 +130,10 @@ describe('I need to seggregate interfaces, but make sure they in combination the
 		edge_to_be_inserted = new BSPnode_edge() // when test pass, continue to refactor
 
 		verts = [bb[1].edge.verts[1], bb[0].edge.verts[0]]
-		//verts[0].xy = new Vec2([[+1, 1]])
-		expect(verts[0].xy.v[1]).to.equal(new Vec2([[+1, 1]]).v[1])  // gotta keep math rotationial order
-		//verts[1].xy = new Vec2([[-1, 0]])
-		expect(verts[1].xy.v[0]).to.equal(new Vec2([[-1, 0]]).v[0])  // gotta keep math rotationial order
+		//verts[0].xy = new Vec3([[+1, 1]])
+		expect(verts[0].xy.v[1]).to.equal(new Vec3([[+1, 1]]).v[1])  // gotta keep math rotationial order
+		//verts[1].xy = new Vec3([[-1, 0]])
+		expect(verts[1].xy.v[0]).to.equal(new Vec3([[-1, 0]]).v[0])  // gotta keep math rotationial order
 
 		// cross product of the beam tree. Trying to optimize, but still 6 multiplications = 2+2+2
 		bb[2] = Node_CreateFromVerts(verts, edge_to_be_inserted, 6502);
