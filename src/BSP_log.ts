@@ -298,7 +298,7 @@ class Edge_with_children extends Edge_beam {
         const sides = [0, 0]
 
         for (var j = 0; j < this.ends.length; j++) {
-            sides[j] = splitter.innerProduct(this.ends[j]) * Math.sign((this.ends[j].v[2])) // ray pointing backwards. Todo: why ends have wrong sign? It depends on vertex order of cutting edge! But how do I correct it for full 4pi sphere?
+            sides[j] = splitter.innerProduct(this.ends[j]) // this hack20261025 only works if you clip everything to a near plane: * Math.sign((this.ends[j].v[2])) // ray pointing backwards. Todo: why ends have wrong sign? It depends on vertex order of cutting edge! But how do I correct it for full 4pi sphere?
         }
         const ss = sides.map(s=>this.sign_c(s))
         if (ss[0] == ss[1]) {
@@ -335,6 +335,25 @@ class Edge_with_children extends Edge_beam {
         var cross = this.line.normal3d.crossProduct(splitter, l)  // this should log at para=1 ( odd/even)
 
         //var v=new Vertex_OnScreen(cross) // logging
+
+        //correct sign (orientation) of the end vector . The cross products seem to describe an infinite line, but we kinda need a ray to the camera, that means having a meaningful (correct) orientation. This should work in 3d with fly throughs
+        const line3d= this.vs[0].subtract01(this.vs[1] ) // not beam, but the direction in 3d space because I use homegenous coordinates not only to avoid rounding, but to work with perspective projection
+        // console.log("line3d",line3d.v)
+        // console.log("this.line.normal3d",this.line.normal3d.v)
+        const separator = this.line.normal3d.crossProduct( line3d ) // no special convention, just, subtract result is generic vec<3> , which does not know crossProduct
+        // console.log("separator",separator.v)
+        const checkSigns=this.vs.map(v=> separator.innerProduct(v))
+        // console.log("vs",this.vs[0].v,this.vs[1].v)
+        // console.log("checkSigns",checkSigns[0],checkSigns[1])
+        if (checkSigns[0]!=checkSigns[1]) console.warn("checkSigns[0]!=checkSigns[1]")
+        // console.log(checkSigns[0]<0)  // perhaps, this is finally fixed? The cut depends on the other plane, but this only on this plane.
+        const application = cross.innerProduct(separator);
+        if ((application<0)  != (checkSigns[0]<0)) {
+            // cross=cross.scalarProduct(-1) // type problem
+            cross.v=cross.v.map(c=>-c)  // todo: consider vec3.flip() if necessary at other places
+        }
+        // console.log("cross",cross.v)
+        // console.log("application",application) 
 
         for (var i = 0; i < this.ends.length; i++) {  // the magic of pointers
             const c = new Edge_with_children(this) //, l)   // the original vertices are still one member acces operation . away // todo: why nothing on canvas

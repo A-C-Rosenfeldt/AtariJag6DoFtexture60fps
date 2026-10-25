@@ -234,8 +234,8 @@ export class Vec3 extends Vec<3>{
 		return [v[0], v[1]]  // okay for only 2
 	}
 
-	crossProduct(o: Vec3, l?:LogParallelLines):Vec3{
-		let v:Vec3=new Vec3([[this.v.length]]) // I checked on application
+	crossProduct(o: Vec3|Vec<3>, l?:LogParallelLines):Vec3{
+		let v:Vec3=new Vec3([[this.v.length]])
 		for(let i=0;i<this.v.length;i++){
 			v.v[i]=this.v[(i+1)%3]*o.v[(i+2)%3]-this.v[(i+2)%3]*o.v[(i+1)%3]
 		}
