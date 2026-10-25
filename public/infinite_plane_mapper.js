@@ -255,7 +255,9 @@ export class Mapper {
             //const obj = { pixelFormat: "rgba-unorm8" }; // dated lib.dom.d.ts?? 2025-07-18
             //ctx.fillStyle = "black";
             //ctx.fillRect(0, 0, canvas.width, canvas.height);
-            const imageData = new ImageData(this.frame.pixel, 320, 200);
+            const framePixels = new Uint8ClampedArray(this.frame.pixel.length);
+            framePixels.set(this.frame.pixel);
+            const imageData = new ImageData(framePixels, 320, 200);
             ctx.putImageData(imageData, 0, 0);
             console.log("put Canvas2dGame");
             const canvas_z = document.getElementById("Canvas2dScaled");
