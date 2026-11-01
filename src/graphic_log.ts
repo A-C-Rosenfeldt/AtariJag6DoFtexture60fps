@@ -60,7 +60,7 @@ var sequence = -1
 // }
 
 const polygons:Polygon[]=[]
-const bspTree=new BSPtreeLog() //BSPtree()
+var bspTree=new BSPtreeLog() //BSPtree()
 
 // const parserDic: Vec2[][] = []  // same as ps, but pointers instead of idRef  
 // // ( code.ts friendly MemoryAddresses instead of debugable Id )
@@ -159,6 +159,16 @@ const add_poly_sequen = (event: Event): void => {
 
 };
 
+
+const replay_poly_sequen = (event: Event): void => {
+    const ctx = CanvasObject.ctx
+    if (ctx) ctx.clearRect(0, 0, canvas.width, canvas.height);
+    bspTree=new BSPtreeLog() //BSPtree()
+    polygons.forEach((polygon, sequence) => {
+        bspTree.insertPolygonEdgeByEdge(polygon, -2)
+    })
+};
+
 //console.log("undeg",sequence-1-vertex[0],vertex[1],sequence,vertex)
 // I duplicate the data. Polygon -> vertex    and Polygon -> edge-> vertex will both exist to let me formulate algorithms in the best ways.
 // state is your enemy? No I don't think so, these refs will be const and ownership is clearly going over the edges and is not problem because I will purge the whole mesh every frame.
@@ -200,3 +210,45 @@ const add_poly_sequen = (event: Event): void => {
 
 
 window.document.getElementById("sequence").addEventListener("click", add_poly_sequen)
+window.document.getElementById("replay").addEventListener("click", replay_poly_sequen)
+document.getElementById("Canvas2d").addEventListener("mousedown", nearest_vertex)
+document.getElementById("Canvas2d").addEventListener("mousemove", move_vertex)
+document.getElementById("Canvas2d").addEventListener("mouseup", drop_vertex)
+
+function nearest_vertex(this: HTMLElement, ev: MouseEvent) {
+    var mi:[Vec3, number]=[null,Number.MAX_VALUE]
+    // TODO vertex list
+    polygons.forEach((polygon, sequence) => {
+        polygon.vs.forEach((v, i) => {
+            const xy = v.v
+            const d0 = [ev.offsetX , ev.offsetY]
+            const d1=d0.map((d,i)=>d - (xy[i]+ CanvasObject.screen[i]/2)  )
+            const d2=d1.map(d=>d*d)
+            const sq=d2[0]  + d2[1] 
+            if (sq < mi[1]) {
+                //console.log("nearest vertex", sequence, i, xy, sq)
+                mi=[v, sq]
+                handle=d1
+            }
+        })
+    })
+
+    selected_vertex=mi[0]    
+    //console.log("handle", handle)
+}
+
+var  selected_vertex:Vec3
+var handle: number[]
+
+function drop_vertex(this: HTMLElement, ev: MouseEvent) {
+    selected_vertex=null
+}
+function move_vertex(this: HTMLElement, ev: MouseEvent) {
+    if (selected_vertex==null) return
+            const d0 = [ev.offsetX , ev.offsetY]
+            const d1=d0.map((d,i)=>d - handle[i]*1  )
+            const d2=d1.map((d,i)=>d -  CanvasObject.screen[i]/2  )    
+    selected_vertex.v=d2.concat(1)    
+    replay_poly_sequen(null)
+}
+
